@@ -1,0 +1,84 @@
+apiVersion: catalog.swiss/v1
+name: kimi-k2.5
+servedName: kimi-k2.5
+displayName: Kimi K2.5
+family: kimi
+license: modified-mit
+tags: [chat, reasoning, long-context, multi-node]
+description: >-
+  Does not fit on one node. The only variant here is a two-pod LeaderWorkerSet
+  group, TP8 inside each node and PP2 across the InfiniBand fabric between them.
+
+source:
+  hf: moonshotai/Kimi-K2.5
+  sizeGiB: 1900
+  requiredGlobs:
+    - config.json
+    - "*.safetensors"
+
+variants:
+  # -------------------------------------------------------------------------
+  # Multi-node. `nodes: 2` and `lws.size: 2` are the same number by necessity --
+  # the schema requires them to agree, because a group whose size disagrees with
+  # what it was scheduled for hangs at rendezvous rather than failing.
+  #
+  # Needs the LWS controller, rdma-shared-dev-plugin and rdma-injector in the
+  # cluster. Preflight checks for them; the catalog only declares the need.
+  # -------------------------------------------------------------------------
+  - id: sglang-pp2-lws-h100
+    default: true
+    engine: sglang
+    description: TP8 per node, PP2 across two H100 nodes over IB.
+    chart: { name: sglang, version: "0.8.0" }
+    image:
+      repository: lmsysorg/sglang
+      tag: v0.5.19
+    requires:
+      gpus: 8              # per pod; 16 across the group
+      nodes: 2
+      topology: lws
+      rdma: true
+      gpuProduct: [NVIDIA-H100-80GB-HBM3]
+    values:
+      model:
+        mountPath: /model
+        hostPathType: Directory
+      lws:
+        enabled: true
+        size: 2
+        distPort: 29500
+      extraArgs:
+        - --trust-remote-code
+        - --tp-size=8
+        - --pp-size=2
+        - --mem-fraction-static=0.85
+        - --enable-cache-report
+        - --stream-response-default-include-usage
+      env:
+        - name: NVIDIA_DISABLE_REQUIRE
+          value: "1"
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        # NCCL over IB. Without these the group falls back to TCP and the
+        # pipeline stage boundary becomes the bottleneck for every token.
+        - name: NCCL_IB_DISABLE
+          value: "0"
+        - name: NCCL_SOCKET_IFNAME
+          value: eth0
+      resources:
+        limits:
+          rdma/hca_shared: "1"
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Gi
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+      # 1.9 TiB and a two-node rendezvous. 160 x 15s = 40 minutes, which is the
+      # real observed cold load here, not a safety margin.
+      startupProbe:
+        periodSeconds: 15
+        failureThreshold: 160
+      terminationGracePeriodSeconds: 120

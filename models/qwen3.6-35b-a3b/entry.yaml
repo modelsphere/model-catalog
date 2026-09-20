@@ -1,0 +1,93 @@
+apiVersion: catalog.swiss/v1
+name: qwen3.6-35b-a3b
+displayName: Qwen3.6 35B-A3B
+family: qwen
+license: apache-2.0
+tags: [chat, moe, small]
+description: >-
+  35B MoE with 3B active. Small enough for two GPUs, which makes it the usual
+  choice for a fallback tier -- and the one model here offered on both engines,
+  so a site can hold the same weights behind either.
+
+source:
+  hf: Qwen/Qwen3.6-35B-A3B
+  sizeGiB: 70
+
+variants:
+  # -------------------------------------------------------------------------
+  # Two variants, same weights, same hardware, different engine. They are
+  # deliberately not merged: the flag sets have no overlap, and a single variant
+  # with an engine switch would be a form field that silently invalidates half
+  # the flags next to it.
+  # -------------------------------------------------------------------------
+  - id: sglang-tp2
+    default: true
+    engine: sglang
+    description: TP2 on two GPUs, single node.
+    chart: { name: sglang, version: "0.8.0" }
+    image:
+      repository: lmsysorg/sglang
+      tag: v0.5.19
+    requires:
+      gpus: 2
+      topology: single-node
+    values:
+      model:
+        mountPath: /model
+        hostPathType: Directory
+      extraArgs:
+        - --trust-remote-code
+        - --tp-size=2
+        - --mem-fraction-static=0.83
+        - --enable-cache-report
+        - --stream-response-default-include-usage
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+      startupProbe:
+        periodSeconds: 10
+        failureThreshold: 60
+
+  - id: vllm-tp2
+    engine: vllm
+    description: TP2 on two GPUs, single node, vLLM.
+    chart: { name: vllm, version: "0.4.0" }
+    image:
+      repository: vllm/vllm-openai
+      tag: v0.11.0
+    requires:
+      gpus: 2
+      topology: single-node
+    values:
+      model:
+        mountPath: /model
+        hostPathType: Directory
+      # vLLM spells these differently from SGLang. Same intent, no shared
+      # vocabulary -- which is the reason the two are separate variants.
+      extraArgs:
+        - --trust-remote-code
+        - --tensor-parallel-size=2
+        - --gpu-memory-utilization=0.83
+        - --enable-prefix-caching
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+      startupProbe:
+        periodSeconds: 10
+        failureThreshold: 60
