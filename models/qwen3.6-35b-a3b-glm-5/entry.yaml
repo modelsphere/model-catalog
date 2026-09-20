@@ -1,64 +1,75 @@
 apiVersion: catalog.swiss/v1
-name: qwen3.6-35b-a3b
-servedName: kimi
-displayName: Qwen3.6-35B-A3B
+name: qwen3.6-35b-a3b-glm-5
+servedName: glm-5
+displayName: GLM-5 (Qwen3.6-35B-A3B)
 family: qwen
-tags: [chat, moe, fallback]
+tags: [chat, moe, tool-use]
 description: >-
-  Qwen3.6-35B-A3B-793303 on two GPUs. Deployed as the fallback tier and served
-  under the name "kimi", so callers do not change when they land on it.
+  Qwen3.6-35B-A3B-793303-glm-5, served as "glm-5". Needs a merged MoE config
+  directory on every node it can land on; SGLANG_MOE_CONFIG_DIR points at it.
 
 source:
-  hf: modelforge/Qwen3.6-35B-A3B-793303
+  hf: modelforge/Qwen3.6-35B-A3B-793303-glm-5
   requiredGlobs:
     - config.json
     - "*.safetensors"
 
 variants:
+  # The flag spelling here is tied to the image. --mamba-scheduler-strategy was
+  # renamed --mamba-radix-cache-strategy by v0.5.15, and argparse EXITS on an
+  # unknown flag -- so a tag bump without a flag change is a CrashLoopBackOff
+  # that never loads the model. Image and extraArgs move together or not at all.
   - id: sglang-tp2
     default: true
     engine: sglang
     description: TP2 on two GPUs, single node.
     chart: { name: sglang, version: "0.8.0" }
     image:
-      repository: harbor.4pd.io/hardcore-tech/sglang
-      tag: v0.5.15-cu129
+      repository: harbor-contest.4pd.io/lijiashu/sglang
+      tag: v0.5.10.post1
     requires:
       gpus: 2
       topology: single-node
     values:
       model:
+        mountPath: /model
         hostPathType: Directory
-        # Never pinned: a number here would silently cap a 35B model.
-        contextLength: ""
+        contextLength: "262144"
       modelCheck:
         enabled: true
         requiredGlobs: [config.json, "*.safetensors"]
       extraArgs:
-        - --tp-size=2
-        - --mamba-radix-cache-strategy=extra_buffer
+        - --tp=2
+        - --mem-fraction-static=0.85
+        - --radix-eviction-policy=lru
+        - --mamba-scheduler-strategy=extra_buffer
+        - --page-size=64
         - --chunked-prefill-size=16384
-        - --mem-fraction-static=0.83
+        - --trust-remote-code
         - --enable-cache-report
         - --stream-response-default-include-usage
         - --reasoning-parser=qwen3
         - --tool-call-parser=qwen3_coder
       env:
-        - name: NVIDIA_DISABLE_REQUIRE
-          value: "1"
         - name: PYTORCH_ALLOC_CONF
           value: expandable_segments:True
+        - name: NCCL_DEBUG
+          value: WARN
+        - name: SGLANG_MOE_CONFIG_DIR
+          value: /moe-config
       volumes:
-        - name: dot-cache
-          emptyDir:
-            sizeLimit: 10Gi
+        - name: moe-config
+          hostPath:
+            path: /root/deploy/modelforge-moe-config-merged
+            type: Directory
         - name: dshm
           emptyDir:
             medium: Memory
             sizeLimit: 16Gi
       volumeMounts:
-        - name: dot-cache
-          mountPath: /root/.cache
+        - name: moe-config
+          mountPath: /moe-config
+          readOnly: true
         - name: dshm
           mountPath: /dev/shm
       resources:
@@ -68,7 +79,7 @@ variants:
           ephemeral-storage: 16Gi
       startupProbe:
         httpGet:
-          path: /health
+          path: /v1/models
           port: http
         periodSeconds: 15
         timeoutSeconds: 10
@@ -82,3 +93,5 @@ variants:
           pollIntervalSeconds: 5
         shutdownReserveSeconds: 20
         forceShutdown: true
+      hangWatcher:
+        enabled: true

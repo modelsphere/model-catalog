@@ -3,44 +3,9 @@
   "count": 3,
   "models": [
     {
-      "name": "glm-5.3",
-      "displayName": "GLM 5.3",
-      "description": "Reasoning and tool-use model. Served with SGLang's glm45 reasoning parser and glm47 tool-call parser, which are what make the <think> blocks and tool calls come back as structured fields rather than as raw text in the content.",
-      "family": "glm",
-      "tags": [
-        "chat",
-        "reasoning",
-        "tool-use"
-      ],
-      "source": {
-        "hf": "zai-org/GLM-5.3",
-        "sizeGiB": 700
-      },
-      "variants": [
-        {
-          "id": "sglang-tp8-b300",
-          "engine": "sglang",
-          "default": true,
-          "description": "TP8 on a single 8-GPU B300 node.",
-          "chart": {
-            "name": "sglang",
-            "version": "0.8.0"
-          },
-          "requires": {
-            "gpus": 8,
-            "topology": "single-node",
-            "gpuProduct": [
-              "NVIDIA-B300-SXM6-AC"
-            ]
-          }
-        }
-      ],
-      "path": "models/glm-5.3/entry.yaml"
-    },
-    {
       "name": "kimi-k2.5",
       "displayName": "Kimi K2.5",
-      "description": "Does not fit on one node. The only variant here is a two-pod LeaderWorkerSet group, TP8 inside each node and PP2 across the InfiniBand fabric between them.",
+      "description": "Does not fit on one node. A two-pod LeaderWorkerSet group, TP8 inside each node and PP2 across the InfiniBand fabric between them. Needs the LWS controller, rdma-shared-dev-plugin and rdma-injector.",
       "family": "kimi",
       "tags": [
         "chat",
@@ -49,15 +14,14 @@
         "multi-node"
       ],
       "source": {
-        "hf": "moonshotai/Kimi-K2.5",
-        "sizeGiB": 1900
+        "hf": "moonshotai/Kimi-K2.5"
       },
       "variants": [
         {
-          "id": "sglang-pp2-lws-h100",
+          "id": "sglang-pp2-lws",
           "engine": "sglang",
           "default": true,
-          "description": "TP8 per node, PP2 across two H100 nodes over IB.",
+          "description": "TP8 per node, PP2 across two nodes over IB.",
           "chart": {
             "name": "sglang",
             "version": "0.8.0"
@@ -66,28 +30,24 @@
             "gpus": 8,
             "nodes": 2,
             "topology": "lws",
-            "rdma": true,
-            "gpuProduct": [
-              "NVIDIA-H100-80GB-HBM3"
-            ]
+            "rdma": true
           }
         }
       ],
       "path": "models/kimi-k2.5/entry.yaml"
     },
     {
-      "name": "qwen3.6-35b-a3b",
-      "displayName": "Qwen3.6 35B-A3B",
-      "description": "35B MoE with 3B active. Small enough for two GPUs, which makes it the usual choice for a fallback tier -- and the one model here offered on both engines, so a site can hold the same weights behind either.",
+      "name": "qwen3.6-35b-a3b-glm-5",
+      "displayName": "GLM-5 (Qwen3.6-35B-A3B)",
+      "description": "Qwen3.6-35B-A3B-793303-glm-5, served as \"glm-5\". Needs a merged MoE config directory on every node it can land on; SGLANG_MOE_CONFIG_DIR points at it.",
       "family": "qwen",
       "tags": [
         "chat",
         "moe",
-        "small"
+        "tool-use"
       ],
       "source": {
-        "hf": "Qwen/Qwen3.6-35B-A3B",
-        "sizeGiB": 70
+        "hf": "modelforge/Qwen3.6-35B-A3B-793303-glm-5"
       },
       "variants": [
         {
@@ -103,14 +63,32 @@
             "gpus": 2,
             "topology": "single-node"
           }
-        },
+        }
+      ],
+      "path": "models/qwen3.6-35b-a3b-glm-5/entry.yaml"
+    },
+    {
+      "name": "qwen3.6-35b-a3b",
+      "displayName": "Qwen3.6-35B-A3B",
+      "description": "Qwen3.6-35B-A3B-793303 on two GPUs. Deployed as the fallback tier and served under the name \"kimi\", so callers do not change when they land on it.",
+      "family": "qwen",
+      "tags": [
+        "chat",
+        "moe",
+        "fallback"
+      ],
+      "source": {
+        "hf": "modelforge/Qwen3.6-35B-A3B-793303"
+      },
+      "variants": [
         {
-          "id": "vllm-tp2",
-          "engine": "vllm",
-          "description": "TP2 on two GPUs, single node, vLLM.",
+          "id": "sglang-tp2",
+          "engine": "sglang",
+          "default": true,
+          "description": "TP2 on two GPUs, single node.",
           "chart": {
-            "name": "vllm",
-            "version": "0.4.0"
+            "name": "sglang",
+            "version": "0.8.0"
           },
           "requires": {
             "gpus": 2,

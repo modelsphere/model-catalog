@@ -63,8 +63,8 @@ the model: 1.9 TiB over two nodes is a 40-minute load, and a default
 
 ## Adding a model
 
-1. `models/<name>/entry.yaml` — see `models/qwen3.6-35b-a3b/entry.yaml` for the
-   two-engine case, `models/kimi-k2.5/entry.yaml` for multi-node.
+1. `models/<name>/entry.yaml` — see `models/qwen3.6-35b-a3b/entry.yaml` for a
+   single-node model, `models/kimi-k2.5/entry.yaml` for multi-node.
 2. `./hack/build-index.sh`
 3. `./hack/validate.sh`
 4. Commit both the entry and `index.json`.
@@ -82,5 +82,7 @@ Needs `yq` and `jq`, plus `check-jsonschema` or `ajv` for validation.
   a compromised repo.
 - **Image digests.** `image.digest` is accepted but unused; nothing resolves tags
   to digests yet, so a moved tag still moves.
-- **Sizes and probe thresholds** in the example entries are illustrative. Measure
-  them on real hardware before trusting either.
+- **`servedName` is treated as a model property**, but the fallback release
+  serves Qwen under the name `kimi` so callers do not change. That is a deploy
+  decision wearing a catalog field; see the note in
+  `../swiss/docs/swiss-design.md`.
