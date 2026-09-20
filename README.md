@@ -1,6 +1,6 @@
 # swiss-catalog
 
-Public model catalog for [Swiss](../docs/swiss-design.md). One entry per model,
+Public model catalog for [Swiss](../swiss/docs/swiss-design.md). One entry per model,
 describing **how that model should be served** — and nothing about where.
 
 A consumer (`swiss`, `swissd`) fetches `index.json` to list models, then one
@@ -14,6 +14,15 @@ schema/entry.schema.json      what an entry is
 models/<name>/entry.yaml      one model
 hack/build-index.sh           regenerate index.json
 hack/validate.sh              CI
+hack/serve.sh                 serve it over HTTP, for local development
+```
+
+A published catalog is a static site. `./hack/serve.sh` is the smallest thing
+that behaves like one -- it rebuilds the index, then serves the tree:
+
+```sh
+./hack/serve.sh                 # http://127.0.0.1:8000
+swiss catalog list --catalog http://127.0.0.1:8000
 ```
 
 ## What belongs here
