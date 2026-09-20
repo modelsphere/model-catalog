@@ -19,7 +19,7 @@ variants:
     default: true
     engine: sglang
     description: TP2 on two GPUs, single node.
-    chart: { name: sglang, version: "0.8.0" }
+    chart: { name: sglang, version: "0.7.0" }
     image:
       repository: harbor.4pd.io/hardcore-tech/sglang
       tag: v0.5.15-cu129

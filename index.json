@@ -24,7 +24,7 @@
           "description": "TP8 per node, PP2 across two nodes over IB.",
           "chart": {
             "name": "sglang",
-            "version": "0.8.0"
+            "version": "0.7.0"
           },
           "requires": {
             "gpus": 8,
@@ -57,7 +57,7 @@
           "description": "TP2 on two GPUs, single node.",
           "chart": {
             "name": "sglang",
-            "version": "0.8.0"
+            "version": "0.7.0"
           },
           "requires": {
             "gpus": 2,
@@ -88,7 +88,7 @@
           "description": "TP2 on two GPUs, single node.",
           "chart": {
             "name": "sglang",
-            "version": "0.8.0"
+            "version": "0.7.0"
           },
           "requires": {
             "gpus": 2,
