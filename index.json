@@ -3,6 +3,44 @@
   "count": 3,
   "models": [
     {
+      "name": "glm5.1",
+      "displayName": "GLM 5.1 (Qwen3.6-35B-A3B)",
+      "description": "Qwen3.6-35B-A3B-793303-glm-5, served as \"glm-5\". Needs a merged MoE config directory on every node it can land on; SGLANG_MOE_CONFIG_DIR points at it.",
+      "family": "qwen",
+      "tags": [
+        "chat",
+        "moe",
+        "tool-use"
+      ],
+      "source": {
+        "hf": "modelforge/Qwen3.6-35B-A3B-793303-glm-5"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/glm5.1-1.0.0.yaml",
+          "digest": "sha256:c6039200fb177312ffbe383963c02c5c8a5630d0ac2535aff78411bcd0913221",
+          "variants": [
+            {
+              "id": "sglang-tp2",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP2 on two GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.0"
+              },
+              "requires": {
+                "gpus": 2,
+                "topology": "single-node"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "kimi-k2.5",
       "displayName": "Kimi K2.5",
       "description": "Does not fit on one node. A two-pod LeaderWorkerSet group, TP8 inside each node and PP2 across the InfiniBand fabric between them. Needs the LWS controller, rdma-shared-dev-plugin and rdma-injector.",
@@ -16,60 +54,36 @@
       "source": {
         "hf": "moonshotai/Kimi-K2.5"
       },
-      "variants": [
+      "latest": "1.0.0",
+      "versions": [
         {
-          "id": "sglang-pp2-lws",
-          "engine": "sglang",
-          "default": true,
-          "description": "TP8 per node, PP2 across two nodes over IB.",
-          "chart": {
-            "name": "sglang",
-            "version": "0.7.0"
-          },
-          "requires": {
-            "gpus": 8,
-            "nodes": 2,
-            "topology": "lws",
-            "rdma": true
-          }
+          "version": "1.0.0",
+          "path": "models/kimi-k2.5-1.0.0.yaml",
+          "digest": "sha256:90d44619c0d2994b5b22d4b3f8d9029b4846beec9a01f85f1bd9581de62959d7",
+          "variants": [
+            {
+              "id": "sglang-pp2-lws",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP8 per node, PP2 across two nodes over IB.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.0"
+              },
+              "requires": {
+                "gpus": 8,
+                "nodes": 2,
+                "topology": "lws",
+                "rdma": true
+              }
+            }
+          ]
         }
-      ],
-      "path": "models/kimi-k2.5/entry.yaml"
+      ]
     },
     {
-      "name": "qwen3.6-35b-a3b-glm-5",
-      "displayName": "GLM-5 (Qwen3.6-35B-A3B)",
-      "description": "Qwen3.6-35B-A3B-793303-glm-5, served as \"glm-5\". Needs a merged MoE config directory on every node it can land on; SGLANG_MOE_CONFIG_DIR points at it.",
-      "family": "qwen",
-      "tags": [
-        "chat",
-        "moe",
-        "tool-use"
-      ],
-      "source": {
-        "hf": "modelforge/Qwen3.6-35B-A3B-793303-glm-5"
-      },
-      "variants": [
-        {
-          "id": "sglang-tp2",
-          "engine": "sglang",
-          "default": true,
-          "description": "TP2 on two GPUs, single node.",
-          "chart": {
-            "name": "sglang",
-            "version": "0.7.0"
-          },
-          "requires": {
-            "gpus": 2,
-            "topology": "single-node"
-          }
-        }
-      ],
-      "path": "models/qwen3.6-35b-a3b-glm-5/entry.yaml"
-    },
-    {
-      "name": "qwen3.6-35b-a3b",
-      "displayName": "Qwen3.6-35B-A3B",
+      "name": "modelforge",
+      "displayName": "Modelforge (Qwen3.6-35B-A3B)",
       "description": "Qwen3.6-35B-A3B-793303 on two GPUs. Deployed as the fallback tier and served under the name \"kimi\", so callers do not change when they land on it.",
       "family": "qwen",
       "tags": [
@@ -80,23 +94,30 @@
       "source": {
         "hf": "modelforge/Qwen3.6-35B-A3B-793303"
       },
-      "variants": [
+      "latest": "1.0.0",
+      "versions": [
         {
-          "id": "sglang-tp2",
-          "engine": "sglang",
-          "default": true,
-          "description": "TP2 on two GPUs, single node.",
-          "chart": {
-            "name": "sglang",
-            "version": "0.7.0"
-          },
-          "requires": {
-            "gpus": 2,
-            "topology": "single-node"
-          }
+          "version": "1.0.0",
+          "path": "models/modelforge-1.0.0.yaml",
+          "digest": "sha256:f4aedd8c8162924c339c6769fee7d273fcb2a034c997bfcd78752b98a20f875d",
+          "variants": [
+            {
+              "id": "sglang-tp2",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP2 on two GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.0"
+              },
+              "requires": {
+                "gpus": 2,
+                "topology": "single-node"
+              }
+            }
+          ]
         }
-      ],
-      "path": "models/qwen3.6-35b-a3b/entry.yaml"
+      ]
     }
   ]
 }

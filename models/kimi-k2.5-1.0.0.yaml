@@ -1,5 +1,6 @@
 apiVersion: catalog.swiss/v1
 name: kimi-k2.5
+version: 1.0.0
 servedName: kimi-k2.5
 displayName: Kimi K2.5
 family: kimi

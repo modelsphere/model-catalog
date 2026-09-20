@@ -11,7 +11,7 @@ deploy reproducible six months later.
 ```
 index.json                    generated, the published surface
 schema/entry.schema.json      what an entry is
-models/<name>/entry.yaml      one model
+models/<name>-<version>.yaml  one model at one version
 hack/build-index.sh           regenerate index.json
 hack/validate.sh              CI
 hack/serve.sh                 serve it over HTTP, for local development
@@ -24,6 +24,25 @@ that behaves like one -- it rebuilds the index, then serves the tree:
 ./hack/serve.sh                 # http://127.0.0.1:8000
 swiss catalog list --catalog http://127.0.0.1:8000
 ```
+
+## Versions are immutable
+
+A model publishes versions, like a package: `models/qwen3.6-35b-a3b-1.2.0.yaml`,
+named the way helm names a chart archive. A deploy
+pins one or takes the latest, and records **the version and a sha256 of the entry
+file**. `index.json` carries that digest, and a consumer refuses an entry whose
+bytes no longer match it.
+
+Nothing parses that filename back apart. Model names carry dots and hyphens, so
+`qwen3.6-35b-a3b-glm-5-1.0.0.yaml` has no unambiguous split — and both
+`qwen3.6-35b-a3b` and `qwen3.6-35b-a3b-glm-5` are published here. The document
+declares its own `name` and `version`; the filename is checked against them, not
+read for them.
+
+So a published version is frozen. Fix a mistake by publishing `1.2.1`, never by
+editing `1.2.0` — a rewritten version silently changes what every existing deploy
+would recompose to, which is exactly what the digest exists to catch.
+`hack/validate.sh` refuses a commit that edits an already-published file.
 
 ## What belongs here
 
@@ -63,8 +82,9 @@ the model: 1.9 TiB over two nodes is a 40-minute load, and a default
 
 ## Adding a model
 
-1. `models/<name>/entry.yaml` — see `models/qwen3.6-35b-a3b/entry.yaml` for a
-   single-node model, `models/kimi-k2.5/entry.yaml` for multi-node.
+1. `models/<name>-<version>.yaml`, with `name:` and `version:` inside matching
+   the filename — see `models/qwen3.6-35b-a3b-1.0.0.yaml` for a single-node
+   model, `models/kimi-k2.5-1.0.0.yaml` for multi-node.
 2. `./hack/build-index.sh`
 3. `./hack/validate.sh`
 4. Commit both the entry and `index.json`.
