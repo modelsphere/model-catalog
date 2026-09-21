@@ -12,5 +12,4 @@ cd "$(dirname "$0")/.."
 port="${1:-8000}"
 ./hack/build-index.sh >/dev/null   # never serve a stale index
 
-echo "catalog: http://127.0.0.1:${port}/  ($(jq -r .count index.json) models)"
-exec python3 -m http.server "$port" --bind 127.0.0.1
+exec python3 -m http.server "$port" --bind 0.0.0.0
