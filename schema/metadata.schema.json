@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swiss.catalog/schema/metadata.schema.json",
+  "title": "Swiss catalog model metadata",
+  "description": "models/<name>/metadata.yaml: the cosmetic half of a model, shared by every version. Nothing here decides what a deploy renders, which is why it may be edited in place -- a description fixed today must not require republishing a version somebody has pinned. Anything that changes what gets deployed (servedName, source, variants) lives in the version file and is immutable.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "name",
+    "source"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "catalog.swiss/v1"
+    },
+    "name": {
+      "description": "Catalog id. Unique across the catalog, and the default served-model name.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "maxLength": 63
+    },
+    "displayName": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 2048
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri"
+    },
+    "license": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "family": {
+      "description": "Grouping key for the UI (glm, qwen, kimi, ...). Cosmetic.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]*$"
+      },
+      "uniqueItems": true
+    },
+    "deprecated": {
+      "description": "Hidden from the marketplace by default; existing deploys still resolve. A string is shown as the reason.",
+      "type": [
+        "boolean",
+        "string"
+      ]
+    },
+    "source": {
+      "description": "Model identity, never a location. The chart mounts weights from model.localPath on the host, which is a fact about a cluster -- the site profile derives that path from `hf`, and preflight checks it exists. Shared by every version: a different repo id is a different model, not a new version of this one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hf"
+      ],
+      "properties": {
+        "hf": {
+          "description": "Hugging Face repo id, org/name.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "revision": {
+          "description": "Commit sha or tag. Pin it when the repo's main branch moves.",
+          "type": "string",
+          "maxLength": 64
+        },
+        "sizeGiB": {
+          "description": "On-disk size of the weights. Feeds the site's disk preflight; not a chart value.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    }
+  }
+}

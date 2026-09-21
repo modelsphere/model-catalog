@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Regenerate index.json from models/<name>-<version>.yaml. Commit the result.
+# Regenerate index.json from models/<name>/. Commit the result.
 #
 # index.json is the published surface: a client fetches one file to render the
-# marketplace, and only pulls an entry once a model is opened. It is generated
+# marketplace, and only pulls a version once a model is opened. It is generated
 # rather than hand-written, and committed rather than built on demand, so that
 # what a consumer fetches is the reviewed artifact.
 #
 # Each version carries a sha256 of its file. That digest is the lock: a consumer
-# records it with the deploy and refuses the entry later if the bytes changed,
+# records it with the deploy and refuses the version later if the bytes changed,
 # which is what makes "pinned to 1.2.0" mean something in a repo anyone can push
 # to. There is deliberately no build timestamp -- a committed generated file must
 # produce an empty diff when nothing changed.
 #
-# The filename is never parsed back into a name and a version: both are read from
-# the document. Model names carry dots and hyphens, so splitting
-# qwen3.6-35b-a3b-1.0.0.yaml is guesswork the file itself can answer.
+# metadata.yaml is inlined here and never fetched by a consumer, which is what
+# lets it stay editable: it holds no value a deploy renders, so it needs no
+# digest and no version bump.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -24,14 +24,23 @@ sha256() {
   fi
 }
 
-for f in models/*.yaml; do
-  [ -e "$f" ] || continue
-  yq -o=json "$f" | jq -c --arg path "$f" --arg digest "sha256:$(sha256 "$f")" '{
-    name, displayName, description, family, tags, deprecated,
-    source: { hf: .source.hf, sizeGiB: .source.sizeGiB },
-    version, path: $path, digest: $digest,
-    variants: [.variants[] | {id, engine, default, description, chart, requires}]
-  } | del(.. | nulls)'
+for dir in models/*/; do
+  meta="$dir/metadata.yaml"
+  [ -e "$meta" ] || { echo "$dir: no metadata.yaml" >&2; exit 1; }
+
+  for f in "$dir"*-*.yaml; do
+    [ -e "$f" ] || continue
+    yq -o=json "$f" | jq -c \
+      --arg path "$f" \
+      --arg digest "sha256:$(sha256 "$f")" \
+      --argjson meta "$(yq -o=json "$meta")" '{
+        name, version, path: $path, digest: $digest,
+        displayName: $meta.displayName, description: $meta.description,
+        family: $meta.family, tags: $meta.tags, deprecated: $meta.deprecated,
+        source: { hf: $meta.source.hf, revision: $meta.source.revision, sizeGiB: $meta.source.sizeGiB },
+        variants: [.variants[] | {id, engine, default, description, chart, requires}]
+      } | del(.. | nulls)'
+  done
 done | jq -s '
   [ group_by(.name)[]
     | sort_by(.version | split(".") | map(tonumber? // 0)) as $vs

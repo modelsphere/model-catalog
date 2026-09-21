@@ -19,8 +19,8 @@
       "versions": [
         {
           "version": "1.0.0",
-          "path": "models/glm5.1-1.0.0.yaml",
-          "digest": "sha256:c6039200fb177312ffbe383963c02c5c8a5630d0ac2535aff78411bcd0913221",
+          "path": "models/glm5.1/glm5.1-1.0.0.yaml",
+          "digest": "sha256:f03cad9cf94eede2725f7b17860322f40245ee656fbe62ec4f420782254e36d7",
           "variants": [
             {
               "id": "sglang-tp2",
@@ -58,8 +58,8 @@
       "versions": [
         {
           "version": "1.0.0",
-          "path": "models/kimi-k2.5-1.0.0.yaml",
-          "digest": "sha256:90d44619c0d2994b5b22d4b3f8d9029b4846beec9a01f85f1bd9581de62959d7",
+          "path": "models/kimi-k2.5/kimi-k2.5-1.0.0.yaml",
+          "digest": "sha256:be25b1fb344b7080e56b7e686a957a0570a05065ab6f78e5dfbb6d84f9322706",
           "variants": [
             {
               "id": "sglang-pp2-lws",
@@ -98,8 +98,8 @@
       "versions": [
         {
           "version": "1.0.0",
-          "path": "models/modelforge-1.0.0.yaml",
-          "digest": "sha256:f4aedd8c8162924c339c6769fee7d273fcb2a034c997bfcd78752b98a20f875d",
+          "path": "models/modelforge/modelforge-1.0.0.yaml",
+          "digest": "sha256:0c723effda1a2bd84a76f433fa12dd0dda0c4627ea44594f7db7d82a80df710f",
           "variants": [
             {
               "id": "sglang-tp2",

@@ -1,15 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://swiss.catalog/schema/entry.schema.json",
-  "title": "Swiss catalog entry",
-  "description": "One model at one version, and the variants it can be served as. A variant is a hardware and parallelism decision, not a deploy: it carries only what the model needs to run at all. Anything site-specific (namespace, host paths, registry mirrors, route ConfigMaps) or per-deploy (replicas, scaling, scheduling, routing) is rejected here by design -- this file is public, and those values are neither public nor the same for two readers.",
+  "$id": "https://swiss.catalog/schema/version.schema.json",
+  "title": "Swiss catalog model version",
+  "description": "models/<name>/<name>-<version>.yaml: one model at one version, and the variants it can be served as. Everything that decides what a deploy renders lives here, so a published file is immutable -- consumers pin the version and verify its digest. Cosmetic fields live in metadata.yaml beside it. A variant is a hardware and parallelism decision, not a deploy: anything site-specific (namespace, host paths, registry mirrors, route ConfigMaps) or per-deploy (replicas, scaling, scheduling, routing) is rejected here by design.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "apiVersion",
     "name",
     "version",
-    "source",
     "variants"
   ],
   "properties": {
@@ -23,85 +22,15 @@
       "maxLength": 63
     },
     "version": {
-      "description": "This entry's version, semver. The file is models/<name>/<version>.yaml and a published version is immutable: consumers pin it and verify the file digest. Fix a mistake by publishing a new version, never by editing one.",
+      "description": "This version, semver. The file is models/<name>/<name>-<version>.yaml and a published version is immutable: consumers pin it and verify the file digest. Fix a mistake by publishing a new version, never by editing one.",
       "type": "string",
-      "pattern": "^\\\\d+\\\\.\\\\d+\\\\.\\\\d+(-[0-9A-Za-z.-]+)?$"
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
     },
     "servedName": {
       "description": "What the engine advertises as the model name (--served-model-name), when it should differ from `name`. Renders to model.name. Defaults to `name`.",
       "type": "string",
       "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._/-]*$",
       "maxLength": 128
-    },
-    "displayName": {
-      "type": "string",
-      "maxLength": 128
-    },
-    "description": {
-      "type": "string",
-      "maxLength": 2048
-    },
-    "homepage": {
-      "type": "string",
-      "format": "uri"
-    },
-    "license": {
-      "type": "string",
-      "maxLength": 64
-    },
-    "family": {
-      "description": "Grouping key for the UI (glm, qwen, kimi, ...). Cosmetic.",
-      "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9-]*$"
-    },
-    "tags": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "pattern": "^[a-z0-9][a-z0-9-]*$"
-      },
-      "uniqueItems": true
-    },
-    "deprecated": {
-      "description": "Hidden from the marketplace by default; existing deploys still resolve. A string is shown as the reason.",
-      "type": [
-        "boolean",
-        "string"
-      ]
-    },
-    "source": {
-      "description": "Model identity, never a location. The chart mounts weights from model.localPath on the host, which is a fact about a cluster -- the site profile derives that path from `hf`, and preflight checks it exists.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "hf"
-      ],
-      "properties": {
-        "hf": {
-          "description": "Hugging Face repo id, org/name.",
-          "type": "string",
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"
-        },
-        "revision": {
-          "description": "Commit sha or tag. Pin it when the repo's main branch moves.",
-          "type": "string",
-          "maxLength": 64
-        },
-        "sizeGiB": {
-          "description": "On-disk size of the weights. Feeds the site's disk preflight; not a chart value.",
-          "type": "number",
-          "exclusiveMinimum": 0
-        },
-        "requiredGlobs": {
-          "description": "Globs that must match directly under the mounted model directory. Renders to modelCheck.requiredGlobs. Defaults to [config.json].",
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "minItems": 1
-        }
-      }
     },
     "variants": {
       "type": "array",
@@ -214,7 +143,7 @@
               "default": "single-node"
             },
             "gpuProduct": {
-              "description": "Acceptable nvidia.com/gpu.product values (GFD labels). Any one matches. Absent means any GPU.",
+              "description": "Acceptable product-label values for the declared vendor -- nvidia.com/gpu.product for nvidia, the equivalent label for others. Any one matches. Absent means any card of that vendor.",
               "type": "array",
               "items": {
                 "type": "string",
@@ -230,6 +159,17 @@
             "rdma": {
               "description": "Needs an RDMA device from the shared-device plugin. Implied by topology lws, but stated where it matters.",
               "type": "boolean"
+            },
+            "vendor": {
+              "description": "Accelerator brand this variant is built for. Decides the extended resource the pod requests and the node label its product is published under -- nvidia.com/gpu and nvidia.com/gpu.product, huawei.com/Ascend910 and its own label, and so on. Singular on purpose: a CANN build of an engine is a different image with different flags than a CUDA build, so a model that runs on both publishes two variants rather than one variant claiming both.",
+              "enum": [
+                "nvidia",
+                "ascend",
+                "cambricon",
+                "hygon",
+                "amd"
+              ],
+              "default": "nvidia"
             }
           },
           "allOf": [

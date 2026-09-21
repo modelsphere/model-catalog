@@ -2,19 +2,6 @@ apiVersion: catalog.swiss/v1
 name: glm5.1
 version: 1.0.0
 servedName: glm-5
-displayName: GLM 5.1 (Qwen3.6-35B-A3B)
-family: qwen
-tags: [chat, moe, tool-use]
-description: >-
-  Qwen3.6-35B-A3B-793303-glm-5, served as "glm-5". Needs a merged MoE config
-  directory on every node it can land on; SGLANG_MOE_CONFIG_DIR points at it.
-
-source:
-  hf: modelforge/Qwen3.6-35B-A3B-793303-glm-5
-  requiredGlobs:
-    - config.json
-    - "*.safetensors"
-
 variants:
   # The flag spelling here is tied to the image. --mamba-scheduler-strategy was
   # renamed --mamba-radix-cache-strategy by v0.5.15, and argparse EXITS on an
@@ -24,7 +11,9 @@ variants:
     default: true
     engine: sglang
     description: TP2 on two GPUs, single node.
-    chart: { name: sglang, version: "0.7.0" }
+    chart:
+      name: sglang
+      version: 0.7.0
     image:
       repository: harbor-contest.4pd.io/lijiashu/sglang
       tag: v0.5.10.post1
@@ -36,9 +25,6 @@ variants:
         mountPath: /model
         hostPathType: Directory
         contextLength: "262144"
-      modelCheck:
-        enabled: true
-        requiredGlobs: [config.json, "*.safetensors"]
       extraArgs:
         - --tp=2
         - --mem-fraction-static=0.85

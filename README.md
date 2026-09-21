@@ -11,7 +11,8 @@ deploy reproducible six months later.
 ```
 index.json                    generated, the published surface
 schema/entry.schema.json      what an entry is
-models/<name>-<version>.yaml  one model at one version
+models/<name>/metadata.yaml         shared by every version, editable
+models/<name>/<name>-<version>.yaml one version and its variants, immutable
 hack/build-index.sh           regenerate index.json
 hack/validate.sh              CI
 hack/serve.sh                 serve it over HTTP, for local development
@@ -27,7 +28,7 @@ swiss catalog list --catalog http://127.0.0.1:8000
 
 ## Versions are immutable
 
-A model publishes versions, like a package: `models/qwen3.6-35b-a3b-1.2.0.yaml`,
+A model publishes versions, like a package: `models/qwen3.6-35b-a3b/qwen3.6-35b-a3b-1.2.0.yaml`,
 named the way helm names a chart archive. A deploy
 pins one or takes the latest, and records **the version and a sha256 of the entry
 file**. `index.json` carries that digest, and a consumer refuses an entry whose
@@ -82,9 +83,10 @@ the model: 1.9 TiB over two nodes is a 40-minute load, and a default
 
 ## Adding a model
 
-1. `models/<name>-<version>.yaml`, with `name:` and `version:` inside matching
-   the filename — see `models/qwen3.6-35b-a3b-1.0.0.yaml` for a single-node
-   model, `models/kimi-k2.5-1.0.0.yaml` for multi-node.
+1. `models/<name>/<name>-<version>.yaml`, with `name:` and `version:` inside
+   matching the directory and the filename — see `models/glm5.1/` for a
+   single-node model, `models/kimi-k2.5/` for multi-node. Add
+   `models/<name>/metadata.yaml` if the model is new.
 2. `./hack/build-index.sh`
 3. `./hack/validate.sh`
 4. Commit both the entry and `index.json`.
@@ -106,3 +108,48 @@ Needs `yq` and `jq`, plus `check-jsonschema` or `ajv` for validation.
   serves Qwen under the name `kimi` so callers do not change. That is a deploy
   decision wearing a catalog field; see the note in
   `../swiss/docs/swiss-design.md`.
+
+## Layout
+
+```
+models/<name>/
+  metadata.yaml              what the model IS: source.hf, displayName,
+                             description, family, tags, license
+  <name>-<version>.yaml      how it is SERVED: servedName, variants
+```
+
+| file | holds | mutable |
+| --- | --- | --- |
+| `metadata.yaml` | model identity and description, shared by every version | yes — inlined into `index.json` and never fetched by a consumer |
+| `<name>-<version>.yaml` | the serving config: engine image, flags, probes, hardware | no — consumers pin the version and verify its sha256 |
+
+`source.hf` is in metadata because a different repo id is a different model, not
+a new version of this one. Editing it cannot change an already-deployed release
+— that plan carries the resolved `model.localPath` — it changes the catalog ref,
+which the reconciliation view reports, and shows up in the next diff.
+
+A version file carrying its own `source:` is refused: the split is enforced, not
+a convention.
+
+## Accelerator vendors
+
+`requires.vendor` names the brand a variant is built for, defaulting to
+`nvidia`. It decides the extended resource the pod requests and the node label
+its product is published under — not merely which card matches.
+
+| vendor | resource | product label |
+| --- | --- | --- |
+| `nvidia` | `nvidia.com/gpu` | `nvidia.com/gpu.product` |
+| `ascend` | `huawei.com/Ascend910` | `accelerator/huawei-ascend910` |
+| `cambricon` | `cambricon.com/mlu` | `cambricon.com/mlu.product` |
+| `hygon` | `hygon.com/dcu` | `hygon.com/dcu.product` |
+| `amd` | `amd.com/gpu` | `amd.com/gpu.device-id` |
+
+The mapping lives in swiss, not here: a public catalog should not carry
+Kubernetes resource strings, and every site would otherwise repeat the same
+well-known table.
+
+One vendor per variant. A CANN build of an engine is a different image with
+different `extraArgs` than a CUDA build, so a model that runs on both publishes
+two variants — `sglang-tp8-b300` and `sglang-tp8-910b` — and the deploy form
+picks one. `gpuProduct` then narrows within the declared vendor.
