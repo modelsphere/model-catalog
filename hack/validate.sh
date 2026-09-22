@@ -2,11 +2,6 @@
 # Validate every model directory, then check index.json is not stale. This is
 # the whole of CI for this repo.
 #
-# Both schemas are closed at every level, so they do double duty: they check
-# shape, and they are what rejects a site-owned or deploy-owned key in a public
-# catalog (a namespace, a host path, a registry, replicaCount, anything under
-# scaler, modelRoute or cart). There is no separate ownership linter -- an extra
-# rule that could disagree with the schema is worse than no extra rule.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

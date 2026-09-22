@@ -10,9 +10,11 @@ deploy reproducible six months later.
 
 ```
 index.json                    generated, the published surface
-schema/entry.schema.json      what an entry is
+schema/metadata.schema.json   what a model is
+schema/version.schema.json    what a version and its variants are
 models/<name>/metadata.yaml         shared by every version, editable
 models/<name>/<name>-<version>.yaml one version and its variants, immutable
+docs/authoring.md             schema reference, and how to add a model
 hack/build-index.sh           regenerate index.json
 hack/validate.sh              CI
 hack/serve.sh                 serve it over HTTP, for local development
@@ -67,15 +69,9 @@ those keys are absent from the schema, not merely discouraged:
 | **site profile** | `model.localPath`, `cache.hostPath`, registry rewrite, `scaler.serverAddress`, `modelRoute.*.outputConfigMap`, namespace | the private charts repo, next to `deploys/` |
 | **deploy form** | `replicaCount`, `scaler.*`, scheduling, `modelRoute.*`, `cart.*`, `sloRequirement.*` | `swiss` flags, or the web UI |
 
-`schema/entry.schema.json` is closed (`additionalProperties: false`) at every
-level, so it is also the ownership check — there is no second linter that could
-disagree with it.
-
-Three keys are rejected inside `values` because they already have a spelling
-elsewhere in the same file, and two spellings drift: `image` (use the variant's
-`image`), `model.name` (use `servedName`), `model.gpus` (use `requires.gpus`).
-The charts take the same line with `nvidia.com/gpu`, refusing a second spelling
-rather than letting one quietly win.
+Both schemas are closed (`additionalProperties: false`) for the entry's own
+fields. `variants[].values` is the exception: it is chart values, any object,
+because restating the chart's schema here would be a second copy to keep in step.
 
 Probes are here, not in the deploy form, because cold-load time is a property of
 the model: 1.9 TiB over two nodes is a 40-minute load, and a default
