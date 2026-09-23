@@ -1,0 +1,11 @@
+apiVersion: catalog.swiss/v1
+name: mimo-v2.5
+displayName: MiMo-V2.5
+description: 'MiMo-V2.5, served with sglang on 8x H100 (TP8). 2 variants: the baseline, and a config tuned by LLM AutoTune.'
+family: mimo
+tags:
+  - chat
+  - reasoning
+  - tool-use
+source:
+  hf: XiaomiMiMo/MiMo-V2.5
