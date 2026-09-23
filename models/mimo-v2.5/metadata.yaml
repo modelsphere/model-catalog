@@ -1,11 +1,12 @@
 apiVersion: catalog.swiss/v1
 name: mimo-v2.5
 displayName: MiMo-V2.5
-description: 'MiMo-V2.5, served with sglang on 8x H100 (TP8). 2 variants: the baseline, and a config tuned by LLM AutoTune.'
+description: MiMo-V2.5 on 8 H100 GPUs. Configs use fp8 KV cache, EAGLE speculative decoding.
 family: mimo
 tags:
   - chat
   - reasoning
   - tool-use
+  - speculative-decoding
 source:
   hf: XiaomiMiMo/MiMo-V2.5
