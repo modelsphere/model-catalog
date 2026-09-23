@@ -198,7 +198,7 @@
           ]
         },
         "values": {
-          "description": "Chart values this variant sets. Any object: the shape is the chart's to define, and restating it here means two schemas to keep in step. Layer ownership is still enforced -- swiss refuses an entry that writes a site-owned or deploy-owned key when it loads one.",
+          "description": "Chart values this variant sets. Any object",
           "type": "object"
         }
       }
