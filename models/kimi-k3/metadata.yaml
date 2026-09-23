@@ -1,0 +1,13 @@
+apiVersion: catalog.swiss/v1
+name: kimi-k3
+displayName: Kimi K3
+description: Kimi K3 on a single eight-GPU B300 node -- TP8 with decode context parallel across the same eight cards, and an fp8 KV cache. DSPARK speculative decoding needs the Kimi-K3-DSpark draft weights present on every node it can land on, mounted beside the target model.
+family: kimi
+tags:
+  - chat
+  - reasoning
+  - tool-use
+  - long-context
+  - speculative-decoding
+source:
+  hf: moonshotai/Kimi-K3

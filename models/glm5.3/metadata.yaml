@@ -1,0 +1,13 @@
+apiVersion: catalog.swiss/v1
+name: glm5.3
+displayName: GLM 5.3 (NVFP4)
+description: GLM-5.3 quantised to NVFP4, served as "glm-5.3" on four B300 GPUs. EAGLE speculative decoding over a 150 GiB hierarchical KV cache. The FP4 kernels are Blackwell-only, so there is no A100 or H100 variant to fall back to.
+family: glm
+tags:
+  - chat
+  - reasoning
+  - tool-use
+  - fp4
+  - speculative-decoding
+source:
+  hf: zai-org/GLM-5.3-NVFP4

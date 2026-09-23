@@ -1,0 +1,11 @@
+apiVersion: catalog.swiss/v1
+name: modelforge-0.0.2
+displayName: Modelforge 0.0.2 (Qwen3.6-35B-A3B)
+description: The 260817-794782 modelforge build, on two GPUs. Served under the name "kimi" like the 0.0.1 build it replaces, so callers do not change between them -- a separate entry rather than a new version of `modelforge` because the weights are a different repo id.
+family: qwen
+tags:
+  - chat
+  - moe
+  - fallback
+source:
+  hf: modelforge/release_260817-794782
