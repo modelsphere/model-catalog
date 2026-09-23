@@ -1,6 +1,6 @@
 {
   "apiVersion": "catalog.swiss/v1",
-  "count": 8,
+  "count": 9,
   "models": [
     {
       "name": "glm5.1",
@@ -168,6 +168,64 @@
       ]
     },
     {
+      "name": "mimo-v2.5",
+      "displayName": "MiMo-V2.5",
+      "description": "MiMo-V2.5 on 8 H100 GPUs. Configs use fp8 KV cache, EAGLE speculative decoding.",
+      "family": "mimo",
+      "tags": [
+        "chat",
+        "reasoning",
+        "tool-use",
+        "speculative-decoding"
+      ],
+      "source": {
+        "hf": "XiaomiMiMo/MiMo-V2.5"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/mimo-v2.5/mimo-v2.5-1.0.0.yaml",
+          "digest": "sha256:b338ae41cf72182b4ebc31def3a6bbe907d7f76175938a23c286e9a7eeb67cab",
+          "variants": [
+            {
+              "id": "sglang-tp8-h100-baseline",
+              "engine": "sglang",
+              "description": "Baseline: TP8 on eight H100 GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            },
+            {
+              "id": "sglang-tp8-h100-optimized",
+              "engine": "sglang",
+              "default": true,
+              "description": "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node, fp8 KV cache, EAGLE speculative decoding. +121% on the tuning benchmark vs the baseline variant.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "modelforge",
       "displayName": "Modelforge (Qwen3.6-35B-A3B)",
       "description": "Qwen3.6-35B-A3B-793303 on two GPUs. Deployed as the fallback tier and served under the name \"kimi\", so callers do not change when they land on it.",
@@ -306,7 +364,7 @@
         {
           "version": "1.0.0",
           "path": "models/qwen3.6-35b-a3b/qwen3.6-35b-a3b-1.0.0.yaml",
-          "digest": "sha256:b7e0923f0d7825e58e6d4c66b346444807aae0dfe3860e0006dea57a63c5672c",
+          "digest": "sha256:c29c8ca02e33295a436debf518b88de60d358c08734f86b7598fe10f32128ece",
           "variants": [
             {
               "id": "sglang-tp2-h100",
