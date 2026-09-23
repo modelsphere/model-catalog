@@ -1,6 +1,6 @@
 {
   "apiVersion": "catalog.swiss/v1",
-  "count": 7,
+  "count": 8,
   "models": [
     {
       "name": "glm5.1",
@@ -281,6 +281,48 @@
                 "topology": "single-node",
                 "gpuProduct": [
                   "NVIDIA-A100-SXM4-80GB"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "qwen3.6-35b-a3b",
+      "displayName": "Qwen3.6 35B-A3B",
+      "description": "Stock Qwen3.6-35B-A3B on two H100 or H800 GPUs, served as \"qwen\". The upstream weights, not one of the modelforge builds derived from them — those are published separately and served under other names.",
+      "family": "qwen",
+      "tags": [
+        "chat",
+        "moe",
+        "tool-use"
+      ],
+      "source": {
+        "hf": "Qwen/Qwen3.6-35B-A3B"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/qwen3.6-35b-a3b/qwen3.6-35b-a3b-1.0.0.yaml",
+          "digest": "sha256:b7e0923f0d7825e58e6d4c66b346444807aae0dfe3860e0006dea57a63c5672c",
+          "variants": [
+            {
+              "id": "sglang-tp2-h100",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP2 on two H100 or H800 GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 2,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3",
+                  "NVIDIA-H800"
                 ]
               }
             }
