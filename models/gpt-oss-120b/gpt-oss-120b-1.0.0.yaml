@@ -76,7 +76,7 @@ variants:
         enabled: true
   - id: sglang-tp2-dp4-h100-optimized
     default: true
-    description: 'Tuned by LLM AutoTune: TP2 DP4 on eight H100 GPUs, single node, fp8 KV cache, EAGLE3 speculative decoding. +44% on the tuning benchmark vs the baseline variant.'
+    description: 'Tuned by LLM AutoTune: TP2 DP4 on eight H100 GPUs, single node, fp8 KV cache, EAGLE3 speculative decoding (lmsys/EAGLE3-gpt-oss-120b-bf16).  +44% on the tuning benchmark vs the baseline variant.'
     engine: sglang
     chart:
       name: sglang
