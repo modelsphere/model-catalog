@@ -1,0 +1,11 @@
+apiVersion: catalog.swiss/v1
+name: qwen3.8-flash-next
+displayName: Qwen3.8-Flash-Next
+description: Qwen3.8-Flash-Next on 8 H100 GPUs.
+family: qwen
+tags:
+  - chat
+  - reasoning
+  - tool-use
+source:
+  hf: Qwen/Qwen3.8-Flash-Next

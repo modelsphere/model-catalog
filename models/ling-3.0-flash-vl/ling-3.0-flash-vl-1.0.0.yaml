@@ -1,0 +1,153 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v1
+name: ling-3.0-flash-vl
+version: 1.0.0
+servedName: Ling-3.0-flash-VL
+variants:
+  - id: sglang-tp8-h100-baseline
+    description: 'Baseline: TP8 on eight H100 GPUs, single node.'
+    engine: sglang
+    chart:
+      name: sglang
+      version: 0.7.1
+    image:
+      repository: harbor.4pd.io/hardcore-tech/sglang
+      tag: dev-Ling-3.0-flash-VL
+    requires:
+      gpus: 8
+      topology: single-node
+      gpuProduct:
+        - NVIDIA-H100-80GB-HBM3
+    values:
+      model:
+        mountPath: /model
+        hostPathType: Directory
+        contextLength: ''
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - '*.safetensors'
+      extraArgs:
+        - --chat-template=/model/chat_template.jinja
+        - --enable-cache-report
+        - --reasoning-parser=ling3
+        - --stream-response-default-include-usage
+        - --tool-call-parser=ling3
+        - --tp-size=8
+        - --trust-remote-code
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        - name: NVIDIA_DISABLE_REQUIRE
+          value: '1'
+      volumes:
+        - name: dot-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+      volumeMounts:
+        - name: dot-cache
+          mountPath: /root/.cache
+        - name: dshm
+          mountPath: /dev/shm
+      resources:
+        requests:
+          ephemeral-storage: 16Gi
+        limits:
+          ephemeral-storage: 16Gi
+      progressDeadlineSeconds: 7200
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 180
+      terminationGracePeriodSeconds: 3600
+      lifecycle:
+        preStop:
+          drainSeconds: 600
+          pollIntervalSeconds: 5
+        forceShutdown: true
+        preStopKill: true
+      hangWatcher:
+        enabled: true
+  - id: sglang-tp8-h100-optimized
+    default: true
+    description: 'Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node. +15% on the tuning benchmark vs the baseline variant.'
+    engine: sglang
+    chart:
+      name: sglang
+      version: 0.7.1
+    image:
+      repository: harbor.4pd.io/hardcore-tech/sglang
+      tag: dev-Ling-3.0-flash-VL
+    requires:
+      gpus: 8
+      topology: single-node
+      gpuProduct:
+        - NVIDIA-H100-80GB-HBM3
+    values:
+      model:
+        mountPath: /model
+        hostPathType: Directory
+        contextLength: ''
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - '*.safetensors'
+      extraArgs:
+        - --chat-template=/model/chat_template.jinja
+        - --chunked-prefill-size=16384
+        - --enable-cache-report
+        - --max-prefill-tokens=32768
+        - --reasoning-parser=ling3
+        - --stream-response-default-include-usage
+        - --tool-call-parser=ling3
+        - --tp-size=8
+        - --trust-remote-code
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        - name: NVIDIA_DISABLE_REQUIRE
+          value: '1'
+      volumes:
+        - name: dot-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+      volumeMounts:
+        - name: dot-cache
+          mountPath: /root/.cache
+        - name: dshm
+          mountPath: /dev/shm
+      resources:
+        requests:
+          ephemeral-storage: 16Gi
+        limits:
+          ephemeral-storage: 16Gi
+      progressDeadlineSeconds: 7200
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 180
+      terminationGracePeriodSeconds: 3600
+      lifecycle:
+        preStop:
+          drainSeconds: 600
+          pollIntervalSeconds: 5
+        forceShutdown: true
+        preStopKill: true
+      hangWatcher:
+        enabled: true

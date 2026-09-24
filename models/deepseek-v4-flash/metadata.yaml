@@ -1,0 +1,10 @@
+apiVersion: catalog.swiss/v1
+name: deepseek-v4-flash
+displayName: DeepSeek-V4-Flash
+description: DeepSeek-V4-Flash on 8 H100 GPUs. Configs use EAGLE speculative decoding.
+family: deepseek
+tags:
+  - chat
+  - speculative-decoding
+source:
+  hf: deepseek-ai/DeepSeek-V4-Flash

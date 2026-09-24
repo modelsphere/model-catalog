@@ -1,0 +1,11 @@
+apiVersion: catalog.swiss/v1
+name: nex-n2.5-pro
+displayName: Nex-N2.5-Pro
+description: Nex-N2.5-Pro on 8 H100 GPUs. Configs use fp8 KV cache.
+family: nex
+tags:
+  - chat
+  - reasoning
+  - tool-use
+source:
+  hf: nex-agi/Nex-N2.5-Pro
