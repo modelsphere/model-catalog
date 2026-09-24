@@ -1,0 +1,11 @@
+apiVersion: catalog.swiss/v1
+name: gpt-oss-120b
+displayName: gpt-oss-120b
+description: gpt-oss-120b on 8 H100 GPUs. Configs use fp8 KV cache.
+family: gpt
+tags:
+  - chat
+  - reasoning
+  - tool-use
+source:
+  hf: openai-mirror/gpt-oss-120b
