@@ -38,7 +38,7 @@ for dir in models/*/; do
         displayName: $meta.displayName, description: $meta.description,
         family: $meta.family, tags: $meta.tags, deprecated: $meta.deprecated,
         source: { hf: $meta.source.hf, revision: $meta.source.revision, sizeGiB: $meta.source.sizeGiB },
-        variants: [.variants[] | {id, engine, default, description, chart, requires}]
+        variants: [.variants[] | {id, engine, default, description, link, chart, requires}]
       } | del(.. | nulls)'
   done
 done | jq -s '

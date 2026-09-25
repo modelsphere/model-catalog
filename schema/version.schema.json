@@ -61,6 +61,11 @@
           "type": "string",
           "maxLength": 512
         },
+        "link": {
+          "description": "Detailed link about this variant.",
+          "type": "string",
+          "format": "uri"
+        },
         "default": {
           "description": "Preselect this variant in the UI. At most one per entry; the first variant wins if none is marked.",
           "type": "boolean"
