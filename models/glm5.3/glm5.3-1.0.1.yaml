@@ -1,0 +1,105 @@
+apiVersion: catalog.swiss/v1
+name: glm5.3
+version: 1.0.1
+servedName: glm-5.3
+variants:
+  # --quantization=modelopt_fp4 and the EAGLE draft path are both properties of
+  # these weights, not of the node: the repo holds NVFP4 tensors, and an image
+  # or a card without the FP4 kernels cannot load them at all. Image and
+  # extraArgs move together.
+  - id: sglang-tp4-b300
+    default: true
+    engine: sglang
+    description: TP4 on four B300 GPUs. NVFP4 weights, EAGLE speculative decoding, hierarchical KV cache.
+    chart:
+      name: sglang
+      version: 0.7.8
+    image:
+      repository: harbor.4pd.io/hardcore-tech/sglang
+      tag: v0.5.19
+    requires:
+      gpus: 4
+      topology: single-node
+      gpuProduct:
+        - NVIDIA-B300-SXM6-AC
+    values:
+      model:
+        name: glm-5.3
+        localPath: /mnt/disk0/models/GLM-5.3-NVFP4
+        mountPath: /model
+        hostPathType: Directory
+        contextLength: ""
+
+      service:
+        type: ClusterIP
+        port: 8050
+
+      # The shared chart supplies the launcher, model path, served name, host, port
+      # and metrics flags. Model developers own the remaining engine arguments.
+      extraArgs:
+        - "--served-model-name=glm-5.3"
+        - "--quantization=modelopt_fp4"
+        - "--chunked-prefill-size=16384"
+        - "--max-prefill-tokens=16384"
+        - "--max-running-requests=32"
+        - "--cuda-graph-max-bs-decode=32"
+        - "--speculative-algorithm=EAGLE"
+        - "--speculative-num-steps=3"
+        - "--speculative-eagle-topk=1"
+        - "--speculative-num-draft-tokens=4"
+        - "--enable-hierarchical-cache"
+        - "--hicache-size=150"
+        - "--trust-remote-code"
+        - "--tp-size=4"
+        - "--mem-fraction-static=0.85"
+        - "--enable-cache-report"
+        - "--stream-response-default-include-usage"
+        - "--reasoning-parser=glm45"
+        - "--tool-call-parser=glm47"
+        - "--tokenizer-worker-num=4"
+
+      env:
+        - name: NVIDIA_DISABLE_REQUIRE
+          value: "1"
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        - name: TORCHINDUCTOR_COMPILE_THREADS
+          value: "8"
+
+      volumes:
+        - name: dot-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+
+      volumeMounts:
+        - name: dot-cache
+          mountPath: /root/.cache
+        - name: dshm
+          mountPath: /dev/shm
+
+      resources:
+        limits:
+          ephemeral-storage: 16Gi
+        requests:
+          ephemeral-storage: 16Gi
+
+      # GLM loading and long generations need a larger startup and termination budget.
+      progressDeadlineSeconds: 7200
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 180
+      terminationGracePeriodSeconds: 3600
+      lifecycle:
+        forceShutdown: true
+        preStop:
+          drainSeconds: 600
+          pollIntervalSeconds: 5
+        preStopKill: true
