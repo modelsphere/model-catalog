@@ -1,0 +1,392 @@
+{
+  "apiVersion": "catalog.swiss/v1",
+  "count": 9,
+  "models": [
+    {
+      "name": "glm5.1",
+      "displayName": "GLM 5.1 (Qwen3.6-35B-A3B)",
+      "description": "Qwen3.6-35B-A3B-793303-glm-5, served as \"glm-5\". Needs a merged MoE config directory on every node it can land on; SGLANG_MOE_CONFIG_DIR points at it.",
+      "family": "qwen",
+      "tags": [
+        "chat",
+        "moe",
+        "tool-use"
+      ],
+      "source": {
+        "hf": "modelforge/Qwen3.6-35B-A3B-793303-glm-5"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/glm5.1/glm5.1-1.0.0.yaml",
+          "digest": "sha256:f03cad9cf94eede2725f7b17860322f40245ee656fbe62ec4f420782254e36d7",
+          "variants": [
+            {
+              "id": "sglang-tp2",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP2 on two GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.0"
+              },
+              "requires": {
+                "gpus": 2,
+                "topology": "single-node"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "glm5.3",
+      "displayName": "GLM 5.3 (NVFP4)",
+      "description": "GLM-5.3 quantised to NVFP4, served as \"glm-5.3\" on four B300 GPUs. EAGLE speculative decoding over a 150 GiB hierarchical KV cache. The FP4 kernels are Blackwell-only, so there is no A100 or H100 variant to fall back to.",
+      "family": "glm",
+      "tags": [
+        "chat",
+        "reasoning",
+        "tool-use",
+        "fp4",
+        "speculative-decoding"
+      ],
+      "source": {
+        "hf": "zai-org/GLM-5.3-NVFP4"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/glm5.3/glm5.3-1.0.0.yaml",
+          "digest": "sha256:1296677c857314d885333a361f63b2a079798afeae1fb77c38a8f2d1d25b2fb9",
+          "variants": [
+            {
+              "id": "sglang-tp4-b300",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP4 on four B300 GPUs. NVFP4 weights, EAGLE speculative decoding, hierarchical KV cache.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 4,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-B300-SXM6-AC"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "kimi-k2.5",
+      "displayName": "Kimi K2.5",
+      "description": "Does not fit on one node. A two-pod LeaderWorkerSet group, TP8 inside each node and PP2 across the InfiniBand fabric between them. Needs the LWS controller, rdma-shared-dev-plugin and rdma-injector.",
+      "family": "kimi",
+      "tags": [
+        "chat",
+        "reasoning",
+        "long-context",
+        "multi-node"
+      ],
+      "source": {
+        "hf": "moonshotai/Kimi-K2.5"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/kimi-k2.5/kimi-k2.5-1.0.0.yaml",
+          "digest": "sha256:be25b1fb344b7080e56b7e686a957a0570a05065ab6f78e5dfbb6d84f9322706",
+          "variants": [
+            {
+              "id": "sglang-pp2-lws",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP8 per node, PP2 across two nodes over IB.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.0"
+              },
+              "requires": {
+                "gpus": 8,
+                "nodes": 2,
+                "topology": "lws",
+                "rdma": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "kimi-k3",
+      "displayName": "Kimi K3",
+      "description": "Kimi K3 on a single eight-GPU B300 node -- TP8 with decode context parallel across the same eight cards, and an fp8 KV cache. DSPARK speculative decoding needs the Kimi-K3-DSpark draft weights present on every node it can land on, mounted beside the target model.",
+      "family": "kimi",
+      "tags": [
+        "chat",
+        "reasoning",
+        "tool-use",
+        "long-context",
+        "speculative-decoding"
+      ],
+      "source": {
+        "hf": "moonshotai/Kimi-K3"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/kimi-k3/kimi-k3-1.0.0.yaml",
+          "digest": "sha256:42666567313e6220c73c28d0101a897455d7eb27a77c93209afac3b6ca06becb",
+          "variants": [
+            {
+              "id": "sglang-tp8-b300",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP8 with DCP8 on one eight-GPU B300 node, fp8 KV cache, DSPARK speculative decoding.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-B300-SXM6-AC"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mimo-v2.5",
+      "displayName": "MiMo-V2.5",
+      "description": "MiMo-V2.5 on 8 H100 GPUs. Configs use fp8 KV cache, EAGLE speculative decoding.",
+      "family": "mimo",
+      "tags": [
+        "chat",
+        "reasoning",
+        "tool-use",
+        "speculative-decoding"
+      ],
+      "source": {
+        "hf": "XiaomiMiMo/MiMo-V2.5"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/mimo-v2.5/mimo-v2.5-1.0.0.yaml",
+          "digest": "sha256:b338ae41cf72182b4ebc31def3a6bbe907d7f76175938a23c286e9a7eeb67cab",
+          "variants": [
+            {
+              "id": "sglang-tp8-h100-baseline",
+              "engine": "sglang",
+              "description": "Baseline: TP8 on eight H100 GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            },
+            {
+              "id": "sglang-tp8-h100-optimized",
+              "engine": "sglang",
+              "default": true,
+              "description": "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node, fp8 KV cache, EAGLE speculative decoding. +121% on the tuning benchmark vs the baseline variant.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "modelforge",
+      "displayName": "Modelforge (Qwen3.6-35B-A3B)",
+      "description": "Qwen3.6-35B-A3B-793303 on two GPUs. Deployed as the fallback tier and served under the name \"kimi\", so callers do not change when they land on it.",
+      "family": "qwen",
+      "tags": [
+        "chat",
+        "moe",
+        "fallback"
+      ],
+      "source": {
+        "hf": "modelforge/Qwen3.6-35B-A3B-793303"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/modelforge/modelforge-1.0.0.yaml",
+          "digest": "sha256:0c723effda1a2bd84a76f433fa12dd0dda0c4627ea44594f7db7d82a80df710f",
+          "variants": [
+            {
+              "id": "sglang-tp2",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP2 on two GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.0"
+              },
+              "requires": {
+                "gpus": 2,
+                "topology": "single-node"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "modelforge-0.0.2",
+      "displayName": "Modelforge 0.0.2 (Qwen3.6-35B-A3B)",
+      "description": "The 260817-794782 modelforge build, on two GPUs. Served under the name \"kimi\" like the 0.0.1 build it replaces, so callers do not change between them -- a separate entry rather than a new version of `modelforge` because the weights are a different repo id.",
+      "family": "qwen",
+      "tags": [
+        "chat",
+        "moe",
+        "fallback"
+      ],
+      "source": {
+        "hf": "modelforge/release_260817-794782"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/modelforge-0.0.2/modelforge-0.0.2-1.0.0.yaml",
+          "digest": "sha256:c6f13656a292e883a78b40447c60fa23eb24c63f522db13daca37f3d886f242e",
+          "variants": [
+            {
+              "id": "sglang-tp2-h100",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP2 on two H100 or H800 GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 2,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3",
+                  "NVIDIA-H800"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "qwen-distilled-kimi",
+      "displayName": "Qwen-distilled Kimi (Modelforge 0.3)",
+      "description": "The preserved-2900 modelforge build, a Qwen distillation of Kimi, served under its own name on A100. The pod asks for four GPUs but the engine is launched at TP2 -- that is what the release branch deploys, and two cards sit idle.",
+      "family": "qwen",
+      "tags": [
+        "chat",
+        "moe",
+        "distilled"
+      ],
+      "source": {
+        "hf": "modelforge/preserved-2900"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/qwen-distilled-kimi/qwen-distilled-kimi-1.0.0.yaml",
+          "digest": "sha256:252e34a39d196348676e583415a6b4064172e21b7308446b72c08f6610a43d44",
+          "variants": [
+            {
+              "id": "sglang-tp2-a100",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP2 on an A100 node, four GPUs requested.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.0"
+              },
+              "requires": {
+                "gpus": 4,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-A100-SXM4-80GB"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "qwen3.6-35b-a3b",
+      "displayName": "Qwen3.6 35B-A3B",
+      "description": "Stock Qwen3.6-35B-A3B on two H100 or H800 GPUs, served as \"qwen\". The upstream weights, not one of the modelforge builds derived from them — those are published separately and served under other names.",
+      "family": "qwen",
+      "tags": [
+        "chat",
+        "moe",
+        "tool-use"
+      ],
+      "source": {
+        "hf": "Qwen/Qwen3.6-35B-A3B"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/qwen3.6-35b-a3b/qwen3.6-35b-a3b-1.0.0.yaml",
+          "digest": "sha256:c29c8ca02e33295a436debf518b88de60d358c08734f86b7598fe10f32128ece",
+          "variants": [
+            {
+              "id": "sglang-tp2-h100",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP2 on two H100 or H800 GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 2,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3",
+                  "NVIDIA-H800"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
