@@ -1,6 +1,6 @@
 {
   "apiVersion": "catalog.swiss/v1",
-  "count": 9,
+  "count": 7,
   "models": [
     {
       "name": "glm5.1",
@@ -100,6 +100,63 @@
                 "topology": "single-node",
                 "gpuProduct": [
                   "NVIDIA-B300-SXM6-AC"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "gpt-oss-120b",
+      "displayName": "gpt-oss-120b",
+      "description": "gpt-oss-120b on 8 H100 GPUs. Configs use fp8 KV cache.",
+      "family": "gpt",
+      "tags": [
+        "chat",
+        "reasoning",
+        "tool-use"
+      ],
+      "source": {
+        "hf": "openai-mirror/gpt-oss-120b"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/gpt-oss-120b/gpt-oss-120b-1.0.0.yaml",
+          "digest": "sha256:3efe0bd6ccd6eeea9ff47a0b4a2263176bd5a8afbe1a105ec8925d803ff0c33b",
+          "variants": [
+            {
+              "id": "sglang-tp2-h100-baseline",
+              "engine": "sglang",
+              "description": "Baseline: TP2 on two H100 GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 2,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            },
+            {
+              "id": "sglang-tp2-dp4-h100-optimized",
+              "engine": "sglang",
+              "default": true,
+              "description": "Tuned by LLM AutoTune: TP2 DP4 on eight H100 GPUs, single node, fp8 KV cache, EAGLE3 speculative decoding (lmsys/EAGLE3-gpt-oss-120b-bf16).  +44% on the tuning benchmark vs the baseline variant.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
                 ]
               }
             }
@@ -281,127 +338,6 @@
                 "topology": "single-node",
                 "gpuProduct": [
                   "NVIDIA-H100-80GB-HBM3"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "modelforge",
-      "displayName": "Modelforge (Qwen3.6-35B-A3B)",
-      "description": "Qwen3.6-35B-A3B-793303 on two GPUs. Deployed as the fallback tier and served under the name \"kimi\", so callers do not change when they land on it.",
-      "family": "qwen",
-      "tags": [
-        "chat",
-        "moe",
-        "fallback"
-      ],
-      "source": {
-        "hf": "modelforge/Qwen3.6-35B-A3B-793303"
-      },
-      "latest": "1.0.0",
-      "versions": [
-        {
-          "version": "1.0.0",
-          "path": "models/modelforge/modelforge-1.0.0.yaml",
-          "digest": "sha256:0c723effda1a2bd84a76f433fa12dd0dda0c4627ea44594f7db7d82a80df710f",
-          "variants": [
-            {
-              "id": "sglang-tp2",
-              "engine": "sglang",
-              "default": true,
-              "description": "TP2 on two GPUs, single node.",
-              "chart": {
-                "name": "sglang",
-                "version": "0.7.0"
-              },
-              "requires": {
-                "gpus": 2,
-                "topology": "single-node"
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "modelforge-0.0.2",
-      "displayName": "Modelforge 0.0.2 (Qwen3.6-35B-A3B)",
-      "description": "The 260817-794782 modelforge build, on two GPUs. Served under the name \"kimi\" like the 0.0.1 build it replaces, so callers do not change between them -- a separate entry rather than a new version of `modelforge` because the weights are a different repo id.",
-      "family": "qwen",
-      "tags": [
-        "chat",
-        "moe",
-        "fallback"
-      ],
-      "source": {
-        "hf": "modelforge/release_260817-794782"
-      },
-      "latest": "1.0.0",
-      "versions": [
-        {
-          "version": "1.0.0",
-          "path": "models/modelforge-0.0.2/modelforge-0.0.2-1.0.0.yaml",
-          "digest": "sha256:c6f13656a292e883a78b40447c60fa23eb24c63f522db13daca37f3d886f242e",
-          "variants": [
-            {
-              "id": "sglang-tp2-h100",
-              "engine": "sglang",
-              "default": true,
-              "description": "TP2 on two H100 or H800 GPUs, single node.",
-              "chart": {
-                "name": "sglang",
-                "version": "0.7.1"
-              },
-              "requires": {
-                "gpus": 2,
-                "topology": "single-node",
-                "gpuProduct": [
-                  "NVIDIA-H100-80GB-HBM3",
-                  "NVIDIA-H800"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "qwen-distilled-kimi",
-      "displayName": "Qwen-distilled Kimi (Modelforge 0.3)",
-      "description": "The preserved-2900 modelforge build, a Qwen distillation of Kimi, served under its own name on A100. The pod asks for four GPUs but the engine is launched at TP2 -- that is what the release branch deploys, and two cards sit idle.",
-      "family": "qwen",
-      "tags": [
-        "chat",
-        "moe",
-        "distilled"
-      ],
-      "source": {
-        "hf": "modelforge/preserved-2900"
-      },
-      "latest": "1.0.0",
-      "versions": [
-        {
-          "version": "1.0.0",
-          "path": "models/qwen-distilled-kimi/qwen-distilled-kimi-1.0.0.yaml",
-          "digest": "sha256:252e34a39d196348676e583415a6b4064172e21b7308446b72c08f6610a43d44",
-          "variants": [
-            {
-              "id": "sglang-tp2-a100",
-              "engine": "sglang",
-              "default": true,
-              "description": "TP2 on an A100 node, four GPUs requested.",
-              "chart": {
-                "name": "sglang",
-                "version": "0.7.0"
-              },
-              "requires": {
-                "gpus": 4,
-                "topology": "single-node",
-                "gpuProduct": [
-                  "NVIDIA-A100-SXM4-80GB"
                 ]
               }
             }
