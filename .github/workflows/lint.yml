@@ -1,7 +1,4 @@
-# index.json is the generated published surface. PRs must not edit it — change
-# models/ (and schemas) in the PR; regenerate index.json on the default branch.
-# See hack/build-index.sh.
-name: protect-index-json
+name: lints
 
 on:
   pull_request:
@@ -14,7 +11,7 @@ jobs:
     name: index.json must not change
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -32,3 +29,14 @@ jobs:
             exit 1
           fi
           echo "ok: index.json unchanged in this PR"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install schema checker
+        run: npm ci
+
+      - name: Validate model schemas
+        run: npm run validate:schema

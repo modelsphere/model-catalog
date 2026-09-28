@@ -1,0 +1,28 @@
+{
+  "name": "model-catalog",
+  "version": "1.0.0",
+  "description": "Public model catalog for [Swiss](../swiss/docs/swiss-design.md). One entry per model, describing **how that model should be served** — and nothing about where.",
+  "homepage": "https://github.com/modelsphere/model-catalog#readme",
+  "bugs": {
+    "url": "https://github.com/modelsphere/model-catalog/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/modelsphere/model-catalog.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "./hack/validate.sh",
+    "validate:schema": "node hack/validate-schema.js",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "husky": "^9.1.7",
+    "yaml": "^2.8.1"
+  }
+}

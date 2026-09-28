@@ -92,7 +92,7 @@ artifact rather than something built on demand. It carries no build timestamp:
 a committed generated file has to produce an empty diff when nothing changed, or
 the staleness check in `validate.sh` cannot tell fresh from stale.
 
-Needs `yq` and `jq`, plus `check-jsonschema` or `ajv` for validation.
+Needs `yq` and `jq`, plus `check-jsonschema` or `npm install` (`hack/validate-schema.js`). `npm install` installs a pre-commit hook that runs the Node schema check.
 
 ## Not settled
 
