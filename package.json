@@ -17,7 +17,8 @@
   "scripts": {
     "test": "./hack/validate.sh",
     "validate:schema": "node hack/validate-schema.js",
-    "prepare": "husky"
+    "prepare": "husky",
+    "build:site": "node hack/build-site.js"
   },
   "devDependencies": {
     "ajv": "^8.20.0",
