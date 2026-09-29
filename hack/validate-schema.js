@@ -133,9 +133,10 @@ for (const check of checks) {
 }
 
 // What the schema cannot see: a tuning pair must name a published version of
-// its model, two different variants of that version, and a report that exists.
-// swiss does not check it -- tuning is display only, and a mistake in it must
-// not stop a catalog loading for deploys -- so it is caught here instead.
+// its model, two different variants of that version, and a report that exists;
+// and a variant named as tuned must have its result recorded. swiss does not
+// check any of it -- tuning is display only, and a mistake in it must not stop
+// a catalog loading for deploys -- so it is caught here instead.
 for (const meta of modelFiles((file) => file === "metadata.yaml")) {
   let tuning
   try {
@@ -143,7 +144,9 @@ for (const meta of modelFiles((file) => file === "metadata.yaml")) {
   } catch {
     continue // a parse error is already reported above
   }
-  if (!Array.isArray(tuning)) continue
+  // Not a list is a schema error, reported above; a model with none still
+  // gets the recorded-result check below.
+  if (!Array.isArray(tuning)) tuning = []
 
   const dir = path.dirname(meta)
   const published = new Map()
@@ -158,6 +161,27 @@ for (const meta of modelFiles((file) => file === "metadata.yaml")) {
   }
 
   const lines = []
+
+  // A variant whose id names it optimized (the naming convention: an
+  // "optimized" segment, as in sglang-tp8-h100-optimized) must be recorded as
+  // the optimized side of some tuning entry, or the sites show the model as
+  // untuned. Any version's entry will do: a tuned variant carried into a later
+  // version unchanged is shown with the number it was measured with.
+  const recorded = new Set(tuning.map((t) => t?.optimized))
+  const missing = new Map()
+  for (const [version, ids] of published) {
+    for (const id of ids) {
+      if (typeof id !== "string" || !/(^|-)optimi[sz]ed(-|$)/.test(id) || recorded.has(id)) continue
+      missing.set(id, [...(missing.get(id) ?? []), version])
+    }
+  }
+  for (const [id, versions] of missing) {
+    lines.push(
+      `variant ${JSON.stringify(id)} (${versions.sort().join(", ")}) is named optimized but has no tuning entry; ` +
+        `add one to tuning with optimized: ${id}, its baseline, and the uplift`
+    )
+  }
+
   tuning.forEach((t, i) => {
     if (!t || typeof t !== "object") return
     const at = `tuning[${i}]`

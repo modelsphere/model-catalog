@@ -252,8 +252,10 @@ workloads, list them all under `workloads` and the site shows the rest beside it
 `tuning` lives in `metadata.yaml` rather than the version file because nothing
 composes from it: re-measuring is an edit, not a new version.
 `npm run validate:schema` checks that the version is published, both ids are
-variants of it, and the report exists. The site reads this field only; variant
-ids and descriptions are not parsed for it.
+variants of it, and the report exists, and it fails when a variant named
+`…-optimized` has no `tuning` entry, so a tuned pair cannot be left
+unrecorded. The site reads this field only; variant ids and descriptions are
+not parsed for it.
 
 `tuning` is not in `index.json` yet. swissd refuses an index with a field it
 does not know, so `build-index.sh` starts writing it only once every swissd
