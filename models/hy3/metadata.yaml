@@ -1,0 +1,13 @@
+apiVersion: catalog.swiss/v1
+name: hy3
+displayName: Hy3
+description: Hy3 on 8 H100 GPUs. Configs use NEXTN speculative decoding.
+family: hunyuan
+tags:
+  - chat
+  - moe
+  - reasoning
+  - tool-use
+  - speculative-decoding
+source:
+  hf: tencent/Hy3-FP8

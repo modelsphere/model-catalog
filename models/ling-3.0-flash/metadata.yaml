@@ -1,0 +1,12 @@
+apiVersion: catalog.swiss/v1
+name: ling-3.0-flash
+displayName: Ling-3.0-flash
+description: Ling-3.0-flash on 8 H100 GPUs.
+family: ling
+tags:
+  - chat
+  - moe
+  - reasoning
+  - tool-use
+source:
+  hf: inclusionAI/Ling-3.0-flash
