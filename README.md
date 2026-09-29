@@ -1,12 +1,83 @@
 # swiss-catalog
 
-Public model catalog for [Swiss](../swiss/docs/swiss-design.md). One entry per model,
-describing **how that model should be served** — and nothing about where.
+![GitHub License](https://img.shields.io/github/license/:user/modelsphere%2Fmodel-catalog)
 
-A consumer (`swiss`, `swissd`) fetches `index.json` to list models, then one
-`entry.yaml` when a model is opened, always **pinned to a commit SHA**. A catalog
-that moves under a deploy is a supply-chain surface, and the SHA is what makes a
-deploy reproducible six months later.
+
+The models [Swiss](https://github.com/modelsphere/swiss) can deploy, and **how to serve
+each one**: engine, image, flags, the GPUs it needs, and a tuned variant where
+we have one. Nothing here says *where* a model runs; that belongs to each site's
+private profile.
+
+**Browse the catalog: <https://modelsphere.github.io/model-catalog/>**
+
+## Get started
+
+| You want to… | Start here |
+| --- | --- |
+| Find a model and see what hardware it needs | [Browse the catalog](#browse-the-catalog) |
+| Try a model with `swiss` | [Use the catalog with swiss](#use-the-catalog-with-swiss) |
+| Add a model, or publish a new version | [Add a model](#add-a-model) |
+| Understand why the catalog is shaped this way | [Versions are immutable](#versions-are-immutable) and the sections after it |
+
+### Browse the catalog
+
+<https://modelsphere.github.io/model-catalog/> lists every model in this repo
+and is rebuilt on each push to `master`. For each model it shows:
+
+- its variants, and the GPUs each one needs (`8 × H100`, `8 × GPU × 2 nodes`)
+- which variant is the default
+- how much faster the tuned variant is than the baseline, and the perf report
+  behind that number
+
+You can search, filter by family, engine, hardware or tag, sort by uplift, and
+switch between a table and cards. Filters are kept in the URL, so a view can be
+shared. For example:
+[every model with a tuned variant, biggest uplift first](https://modelsphere.github.io/model-catalog/?cmp=1&sort=uplift).
+
+### Use the catalog with swiss
+
+`swiss` and `swissd` read the catalog through `index.json`, pinned to a commit
+SHA so a deploy can be reproduced months later. To point them at this checkout
+(needs `yq`, `jq` and `python3`):
+
+```sh
+./hack/serve.sh                                      # http://127.0.0.1:8000
+swiss catalog list --catalog http://127.0.0.1:8000
+swiss plan --catalog http://127.0.0.1:8000 --model glm5.1
+```
+
+`swiss plan` renders a real deploy, so it also needs a site profile (namespace,
+model paths, registry mirror). That lives outside this repo.
+
+### Add a model
+
+You need Node.js. Start from the closest existing model:
+
+```sh
+npm install                          # schema checker, plus a pre-commit hook that runs it
+cp -r models/glm5.1 models/my-model  # or models/kimi-k2.5 for a multi-node model
+```
+
+1. In `models/my-model/`, rename the version file to `my-model-1.0.0.yaml`, and
+   set `name: my-model` in it and in `metadata.yaml`.
+2. Edit `metadata.yaml` for what the model *is* (Hugging Face repo, display
+   name, description, tags), and the version file for how it is *served*
+   (image, engine flags, GPUs).
+3. Check it, and preview the catalog page:
+
+   ```sh
+   npm run validate:schema   # the same check CI runs
+   npm run build:site        # then open site/index.html
+   ```
+
+4. Open a pull request. Leave `index.json` alone: CI rejects a PR that changes
+   it, and it is regenerated on `master` after merge.
+
+A published version never changes. To fix one, add `my-model-1.0.1.yaml`
+instead of editing it. Every field is described in
+[docs/authoring.md](docs/authoring.md).
+
+## Development
 
 ```
 index.json                    generated, the published surface
@@ -16,17 +87,13 @@ models/<name>/metadata.yaml         shared by every version, editable
 models/<name>/<name>-<version>.yaml one version and its variants, immutable
 docs/authoring.md             schema reference, and how to add a model
 hack/build-index.sh           regenerate index.json
+hack/build-site.js            build the GitHub Pages site into site/
 hack/validate.sh              CI
 hack/serve.sh                 serve it over HTTP, for local development
 ```
 
-A published catalog is a static site. `./hack/serve.sh` is the smallest thing
-that behaves like one -- it rebuilds the index, then serves the tree:
-
-```sh
-./hack/serve.sh                 # http://127.0.0.1:8000
-swiss catalog list --catalog http://127.0.0.1:8000
-```
+A published catalog is a static site, and `./hack/serve.sh` is the smallest
+thing that behaves like one: it rebuilds the index, then serves the tree.
 
 ## Versions are immutable
 
@@ -79,16 +146,14 @@ the model: 1.9 TiB over two nodes is a 40-minute load, and a default
 
 ## Adding a model
 
-1. `models/<name>/<name>-<version>.yaml`, with `name:` and `version:` inside
-   matching the directory and the filename — see `models/glm5.1/` for a
-   single-node model, `models/kimi-k2.5/` for multi-node. Add
-   `models/<name>/metadata.yaml` if the model is new.
-2. `./hack/build-index.sh`
-3. `./hack/validate.sh`
-4. Commit both the entry and `index.json`.
+The steps are under [Get started](#add-a-model), and every field is described
+in [docs/authoring.md](docs/authoring.md). The name and version inside a version
+file must match its directory and filename.
 
 `index.json` is generated but committed, so what consumers fetch is the reviewed
-artifact rather than something built on demand. It carries no build timestamp:
+artifact rather than something built on demand. Pull requests change `models/`
+only; `index.json` is regenerated with `./hack/build-index.sh` on `master`
+after merge, and CI rejects a PR that touches it. It carries no build timestamp:
 a committed generated file has to produce an empty diff when nothing changed, or
 the staleness check in `validate.sh` cannot tell fresh from stale.
 
@@ -152,14 +217,20 @@ picks one. `gpuProduct` then narrows within the declared vendor.
 
 ## GitHub Pages
 
-A human-facing static site is built from `models/` (not from committed `index.json`)
-and deployed by `.github/workflows/pages.yml`:
+The [catalog site](#usage) is built from `models/` (not from committed
+`index.json`) by `hack/build-site.js`, and deployed by
+`.github/workflows/pages.yml` on every push to `master`. Pull requests build it
+without deploying.
 
 ```sh
 npm ci
-npm run build:site   # writes site/ — table, optimized-vs-baseline, perf HTML
+npm run build:site   # writes site/; open site/index.html to preview
 ```
 
-The site copies every `models/<name>/*.html` perf report into the Pages artifact
-and links it from the model table. Machine consumers still use `index.json`.
+Every `models/<name>/*.html` perf report is copied into the site and linked from
+its model. A baseline/optimized pair is recognised from the variant ids
+(`…-baseline`, `…-optimized`) or descriptions (starting `Baseline:`, or
+`Tuned by …`), and the uplift is the `+N%` in the optimized variant's
+description. Keep that wording when adding a tuned pair, or the site shows the
+pair without a number.
 
