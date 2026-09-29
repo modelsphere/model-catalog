@@ -177,6 +177,10 @@ for (const meta of modelFiles((file) => file === "metadata.yaml")) {
     if (typeof t.report === "string" && !fs.existsSync(path.join(dir, t.report))) {
       lines.push(`${at}.report: no file ${JSON.stringify(t.report)} beside metadata.yaml`)
     }
+    const names = Array.isArray(t.workloads) ? t.workloads.map((w) => w?.name) : []
+    for (const name of new Set(names.filter((n, j) => names.indexOf(n) !== j))) {
+      lines.push(`${at}.workloads: ${JSON.stringify(name)} is listed twice`)
+    }
   })
   if (lines.length > 0) {
     failed = true

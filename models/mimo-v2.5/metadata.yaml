@@ -15,3 +15,4 @@ tuning:
     baseline: sglang-tp8-h100-baseline
     optimized: sglang-tp8-h100-optimized
     uplift: 121
+    report: mimo-v2.5-h100-report.html

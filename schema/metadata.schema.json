@@ -84,8 +84,33 @@
             "pattern": "^[a-z0-9][a-z0-9-]*$"
           },
           "uplift": {
-            "description": "Percent gained over the baseline on the tuning benchmark: 44 means +44%.",
+            "description": "The headline result: percent gained over the baseline on the tuning benchmark, 44 meaning +44%. When the benchmark ran several workloads, the one to lead with; all of them go in `workloads`.",
             "type": "number"
+          },
+          "workloads": {
+            "description": "Per-workload results, when the benchmark ran more than one.",
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "uplift"
+              ],
+              "properties": {
+                "name": {
+                  "description": "The workload, as the report names it, such as \"50k + 1.5k\" (input + output tokens).",
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "uplift": {
+                  "description": "Percent gained over the baseline on this workload.",
+                  "type": "number"
+                }
+              }
+            }
           },
           "report": {
             "description": "File name of the measurement beside this metadata.yaml, such as the AutoTune HTML report.",

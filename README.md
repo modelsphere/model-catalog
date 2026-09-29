@@ -238,11 +238,18 @@ tuning:
   - version: 1.0.0                       # a published version
     baseline: sglang-tp8-h100-baseline   # variant ids in that version
     optimized: sglang-tp8-h100-optimized
-    uplift: 51                           # % over the baseline on the tuning benchmark
-    report: deepseek-v4-flash-h100-report.html   # optional, beside metadata.yaml
+    uplift: 58.0                         # headline: % over the baseline
+    workloads:                           # optional: every workload measured
+      - name: 50k + 1.5k
+        uplift: 58.0
+      - name: 8k + 1k
+        uplift: 23.4
+    report: deepseek-v4-flash-0731-h100-report.html   # optional, beside metadata.yaml
 ```
 
-It lives in `metadata.yaml` rather than the version file because nothing
+`uplift` is the number the site leads with; when the benchmark ran several
+workloads, list them all under `workloads` and the site shows the rest beside it.
+`tuning` lives in `metadata.yaml` rather than the version file because nothing
 composes from it: re-measuring is an edit, not a new version.
 `npm run validate:schema` checks that the version is published, both ids are
 variants of it, and the report exists. The site reads this field only; variant

@@ -9,3 +9,14 @@ tags:
   - tool-use
 source:
   hf: Qwen/Qwen3.6-35B-A3B
+tuning:
+  - version: 1.1.0
+    baseline: sglang-tp8-h100-baseline
+    optimized: sglang-tp8-h100-optimized
+    uplift: 4.3
+    workloads:
+      - name: 50k + 1.5k
+        uplift: 4.3
+      - name: 8k + 1k
+        uplift: 10.0
+    report: qwen3.6-35b-a3b-h100-report.html

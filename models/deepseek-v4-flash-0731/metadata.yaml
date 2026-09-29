@@ -10,3 +10,14 @@ tags:
   - speculative-decoding
 source:
   hf: deepseek-ai/DeepSeek-V4-Flash-0731
+tuning:
+  - version: 1.0.0
+    baseline: sglang-tp8-h100-baseline
+    optimized: sglang-tp8-h100-optimized
+    uplift: 58.0
+    workloads:
+      - name: 50k + 1.5k
+        uplift: 58.0
+      - name: 8k + 1k
+        uplift: 23.4
+    report: deepseek-v4-flash-0731-h100-report.html

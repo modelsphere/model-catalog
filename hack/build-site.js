@@ -244,7 +244,55 @@ function comparisonFor(name, tuning, version) {
     upliftLabel: pct == null ? null : formatUplift(pct),
     version: String(t.version),
     report: t.report ? `models/${name}/${t.report}` : null,
+    workloads: Array.isArray(t.workloads)
+      ? t.workloads.map((w) => ({ name: String(w.name), upliftPct: w.uplift, upliftLabel: formatUplift(w.uplift) }))
+      : [],
   };
+}
+
+// What an uplift number means, for tooltips. Workload names are the report's:
+// input + output tokens per request.
+const UPLIFT_HELP =
+  "Throughput of the tuned variant over its baseline, from the tuning benchmark. " +
+  "Workloads are input + output tokens per request, e.g. 50k + 1.5k.";
+
+// The workload the headline number was measured on: the first whose number is
+// the headline. Absent when the benchmark recorded no workloads.
+function headlineWorkload(c) {
+  return c.workloads.find((w) => w.upliftPct === c.upliftPct);
+}
+
+function otherWorkloads(c) {
+  const head = headlineWorkload(c);
+  return c.workloads.filter((w) => w !== head);
+}
+
+// A workload as a literal: `50k + 1.5k` tokens.
+function workloadName(w) {
+  return `<code class="wl-name">${escapeHtml(w.name)}</code> tokens`;
+}
+
+// One result: +23.4% at `8k + 1k` tokens.
+function workloadResult(w) {
+  return `<span class="wl"><span class="wl-pct">${escapeHtml(w.upliftLabel)}</span> at ${workloadName(w)}</span>`;
+}
+
+// The table's uplift cell: one row per workload, workload left and uplift
+// right, so the numbers line up. The headline keeps the badge; the others use
+// the same box unfilled, so their digits align with it. "Tokens" is said once,
+// in the column header.
+//   50k + 1.5k  [+64.2%]
+//      8k + 1k    +7.6%
+function upliftCell(c, latest) {
+  const head = headlineWorkload(c);
+  const rows = [
+    `<span class="wl-label">${head ? escapeHtml(head.name) : ""}</span>${upliftBadge(c, "uplift uplift-sm")}`,
+    ...otherWorkloads(c).map(
+      (w) => `<span class="wl-label">${escapeHtml(w.name)}</span><span class="uplift uplift-sm uplift-quiet">${escapeHtml(w.upliftLabel)}</span>`
+    ),
+  ];
+  if (c.version !== latest) rows.push(`<span class="wl-ver">measured on v${escapeHtml(c.version)}</span>`);
+  return `<div class="wl-grid">${rows.join("")}</div>`;
 }
 
 // Per-model facts the page filters, sorts and summarizes on. Embedded in the
@@ -582,8 +630,34 @@ function renderOptions(values, allLabel) {
 
 // --- pieces shared by the card and table views ---
 
+// Tag colors. The tags in use get a fixed hue; any other tag gets one picked
+// from its name, so a new tag is colored and stays the same color. swiss's web
+// (web/src/lib/catalog.ts) keeps the same table.
+const TAG_HUES = {
+  chat: "blue",
+  reasoning: "violet",
+  "tool-use": "teal",
+  moe: "orange",
+  "speculative-decoding": "pink",
+  "long-context": "amber",
+  "multi-node": "indigo",
+  vision: "green",
+  fp4: "cyan",
+  fallback: "slate",
+};
+const HUES = ["blue", "violet", "teal", "orange", "pink", "amber", "indigo", "green", "cyan", "slate"];
+
+function tagHue(tag) {
+  if (TAG_HUES[tag]) return TAG_HUES[tag];
+  let h = 0;
+  for (const ch of tag) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return HUES[h % HUES.length];
+}
+
 function chip(filter, value) {
-  return `<button type="button" class="chip" data-filter="${filter}" data-value="${escapeHtml(
+  // Family chips stay neutral, so a family never reads as a tag.
+  const cls = filter === "tag" ? `chip hue-${tagHue(value)}` : "chip";
+  return `<button type="button" class="${cls}" data-filter="${filter}" data-value="${escapeHtml(
     value
   )}" title="Filter by ${filter}: ${escapeHtml(value)}">${escapeHtml(value)}</button>`;
 }
@@ -616,7 +690,10 @@ function variantLine(v, cls, withHardware = true) {
 }
 
 function upliftBadge(c, cls) {
-  const title = escapeHtml(`${c.optimizedId} vs ${c.baselineId}, measured on v${c.version}`);
+  const results = c.workloads.map((w) => `${w.upliftLabel} at ${w.name} tokens`).join(", ");
+  const title = escapeHtml(
+    `${c.optimizedId} vs ${c.baselineId}, measured on v${c.version}${results ? `: ${results}` : ""}. ${UPLIFT_HELP}`
+  );
   const label = c.upliftLabel ? escapeHtml(c.upliftLabel) : "optimized";
   return `<span class="${cls}" title="${title}">${label}</span>`;
 }
@@ -681,6 +758,13 @@ function renderCard(m, i) {
     </div>
     <div class="model-body">
       <div class="model-info">
+        ${
+          m.comparison && m.comparison.workloads.length
+            ? `<p class="workloads" title="${escapeHtml(UPLIFT_HELP)}">${m.comparison.workloads
+                .map(workloadResult)
+                .join(` <span class="wl-sep">·</span> `)}</p>`
+            : ""
+        }
         ${m.description ? `<p class="desc clamp" title="${escapeHtml(m.description)}">${escapeHtml(m.description)}</p>` : ""}
         ${m.tags.length ? `<div class="chips">${m.tags.map((t) => chip("tag", t)).join("")}</div>` : ""}
       </div>
@@ -707,10 +791,7 @@ function renderRow(m, i) {
         <td class="t-variants">${orderedVariants(m).map((v) => variantLine(v, "t-variant")).join("")}</td>
         <td class="num">${
           m.comparison
-            ? upliftBadge(m.comparison, "uplift uplift-sm") +
-              (m.comparison.version !== m.latest
-                ? `<div class="t-meta">v${escapeHtml(m.comparison.version)}</div>`
-                : "")
+            ? upliftCell(m.comparison, m.latest)
             : none
         }</td>
         <td>${links.length ? `<div class="t-links">${links.join("")}</div>` : none}</td>
@@ -722,9 +803,13 @@ function renderIndex(catalog) {
   const hasDeprecated = facets.some((f) => f.deprecated);
   // Keep "</script>" in descriptions from closing the data block.
   const dataJson = JSON.stringify(facets).replace(/</g, "\\u003c");
-  const sortTh = (col, label, cls) =>
-    `<th scope="col" data-sort-col="${col}"${cls ? ` class="${cls}"` : ""}>` +
-    `<button type="button" class="sort-btn" data-sort="${col}">${label}<span class="sort-ind" aria-hidden="true"></span></button></th>`;
+  const sortTh = (col, label, cls, title, sub) =>
+    `<th scope="col" data-sort-col="${col}"${cls ? ` class="${cls}"` : ""}${
+      title ? ` title="${escapeHtml(title)}"` : ""
+    }>` +
+    `<button type="button" class="sort-btn" data-sort="${col}">${label}<span class="sort-ind" aria-hidden="true"></span></button>` +
+    (sub ? `<span class="th-sub">${escapeHtml(sub)}</span>` : "") +
+    `</th>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -808,7 +893,7 @@ ${catalog.models.map(renderCard).join("\n")}
             ${sortTh("family", "Family")}
             <th scope="col" class="t-tags">Tags</th>
             <th scope="col">Variants (latest)</th>
-            ${sortTh("uplift", "Uplift", "num")}
+            ${sortTh("uplift", "Uplift vs baseline", "num", UPLIFT_HELP, "per workload · in + out tokens")}
             <th scope="col">Links</th>
           </tr>
         </thead>
@@ -856,6 +941,16 @@ const DARK_TOKENS = `
   --bad: #ff8080;
   --bad-soft: rgba(255, 128, 128, 0.13);
   --shadow: none;
+  --hue-blue: #93c5fd;
+  --hue-violet: #c4b5fd;
+  --hue-teal: #5eead4;
+  --hue-orange: #fdba74;
+  --hue-pink: #f9a8d4;
+  --hue-amber: #fcd34d;
+  --hue-indigo: #a5b4fc;
+  --hue-green: #86efac;
+  --hue-cyan: #67e8f9;
+  --hue-slate: #cbd5e1;
 `;
 
 const CSS = `:root {
@@ -879,6 +974,16 @@ const CSS = `:root {
   --bad: #b93434;
   --bad-soft: rgba(185, 52, 52, 0.1);
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.05);
+  --hue-blue: #1d4ed8;
+  --hue-violet: #6d28d9;
+  --hue-teal: #0f766e;
+  --hue-orange: #c2410c;
+  --hue-pink: #be185d;
+  --hue-amber: #a16207;
+  --hue-indigo: #4338ca;
+  --hue-green: #15803d;
+  --hue-cyan: #0e7490;
+  --hue-slate: #475569;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 }
@@ -1091,6 +1196,25 @@ h1 { font-size: clamp(1.6rem, 3vw, 2.1rem); line-height: 1.15; letter-spacing: -
   white-space: nowrap;
 }
 .chip:hover { color: var(--text); border-color: var(--line-strong); }
+.chip[class*="hue-"] {
+  color: var(--hue);
+  background: var(--panel-2);
+  background: color-mix(in srgb, var(--hue) 12%, transparent);
+}
+.chip[class*="hue-"]:hover {
+  color: var(--hue);
+  border-color: color-mix(in srgb, var(--hue) 45%, transparent);
+}
+.hue-blue { --hue: var(--hue-blue); }
+.hue-violet { --hue: var(--hue-violet); }
+.hue-teal { --hue: var(--hue-teal); }
+.hue-orange { --hue: var(--hue-orange); }
+.hue-pink { --hue: var(--hue-pink); }
+.hue-amber { --hue: var(--hue-amber); }
+.hue-indigo { --hue: var(--hue-indigo); }
+.hue-green { --hue: var(--hue-green); }
+.hue-cyan { --hue: var(--hue-cyan); }
+.hue-slate { --hue: var(--hue-slate); }
 .variants { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; }
 .variant { padding: 0.6rem 0.8rem; }
 .variant + .variant { border-top: 1px solid var(--line); }
@@ -1222,11 +1346,42 @@ th[aria-sort="descending"] .sort-ind::after { content: "↓"; }
 .t-variant + .t-variant { margin-top: 0.35rem; }
 .t-variant .variant-id { font-size: 0.82rem; }
 .uplift-sm { font-size: 0.86rem; padding: 0.02rem 0.45rem; border-radius: 6px; }
+/* Same box as the badge, unfilled, so a column of results lines up. */
+.uplift-quiet { background: transparent; font-weight: 600; }
+.wl-grid {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  column-gap: 0.6rem;
+  row-gap: 0.2rem;
+}
+/* Values hug the right edge, so a badge fits its number and the digits align. */
+.wl-grid > .uplift { justify-self: end; }
+.wl-label { font-family: var(--mono); font-size: 0.76rem; color: var(--muted); text-align: left; white-space: nowrap; }
+.wl-ver { grid-column: 1 / -1; font-size: 0.76rem; color: var(--muted); text-align: right; }
+.th-sub { display: block; font-size: 0.68rem; font-weight: 400; color: var(--faint); margin-top: 0.1rem; }
 .t-links { display: grid; gap: 0.2rem; justify-items: start; }
 .t-link { display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
 .t-link svg { width: 14px; height: 14px; flex-shrink: 0; }
 .none { color: var(--faint); }
-footer { padding-top: 2.5rem; padding-bottom: 3rem; font-size: 0.84rem; color: var(--faint); }
+/* footer.wrap, so .wrap's padding shorthand does not zero these. */
+footer.wrap { padding-top: 2.5rem; padding-bottom: 3rem; font-size: 0.84rem; color: var(--faint); }
+.nowrap { white-space: nowrap; }
+.workloads { margin: 0 0 0.5rem; font-size: 0.82rem; color: var(--muted); line-height: 1.9; }
+/* Result literals: the number and the workload set in mono, the words between plain. */
+.wl { white-space: nowrap; }
+.wl-pct { font-family: var(--mono); font-weight: 600; color: var(--ok); }
+.wl-name {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 0.3em;
+}
+/* Spaces around the dot are where the line may wrap. */
+.wl-sep { color: var(--faint); }
 footer p { margin: 0; }
 @media (max-width: 560px) {
   .site-header { padding-top: 1.5rem; }
