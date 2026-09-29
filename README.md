@@ -149,3 +149,17 @@ One vendor per variant. A CANN build of an engine is a different image with
 different `extraArgs` than a CUDA build, so a model that runs on both publishes
 two variants — `sglang-tp8-b300` and `sglang-tp8-910b` — and the deploy form
 picks one. `gpuProduct` then narrows within the declared vendor.
+
+## GitHub Pages
+
+A human-facing static site is built from `models/` (not from committed `index.json`)
+and deployed by `.github/workflows/pages.yml`:
+
+```sh
+npm ci
+npm run build:site   # writes site/ — table, optimized-vs-baseline, perf HTML
+```
+
+The site copies every `models/<name>/*.html` perf report into the Pages artifact
+and links it from the model table. Machine consumers still use `index.json`.
+
