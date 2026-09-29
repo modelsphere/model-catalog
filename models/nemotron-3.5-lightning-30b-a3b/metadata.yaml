@@ -1,0 +1,12 @@
+apiVersion: catalog.swiss/v1
+name: nemotron-3.5-lightning-30b-a3b
+displayName: Nemotron-3.5-Lightning-30B-A3B
+description: Nemotron-3.5-Lightning-30B-A3B on 1 or 8 H100 GPUs.
+family: nemotron
+tags:
+  - chat
+  - moe
+  - reasoning
+  - tool-use
+source:
+  hf: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16

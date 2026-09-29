@@ -1,0 +1,11 @@
+apiVersion: catalog.swiss/v1
+name: laguna-s-2.1
+displayName: Laguna-S-2.1
+description: Laguna-S-2.1 on 4 or 8 H100 GPUs. Configs use fp8 KV cache.
+family: laguna
+tags:
+  - chat
+  - reasoning
+  - tool-use
+source:
+  hf: poolside/Laguna-S-2.1

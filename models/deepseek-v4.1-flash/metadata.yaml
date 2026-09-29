@@ -1,0 +1,11 @@
+apiVersion: catalog.swiss/v1
+name: deepseek-v4.1-flash
+displayName: DeepSeek-V4.1-Flash
+description: DeepSeek-V4.1-Flash on 8 H100 GPUs.
+family: deepseek
+tags:
+  - chat
+  - reasoning
+  - tool-use
+source:
+  hf: deepseek-ai/DeepSeek-V4.1-Flash
