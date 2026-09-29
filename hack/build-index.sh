@@ -37,11 +37,12 @@ for dir in models/*/; do
         name, version, path: $path, digest: $digest,
         displayName: $meta.displayName, description: $meta.description,
         family: $meta.family, tags: $meta.tags, deprecated: $meta.deprecated,
+        tuning: $meta.tuning,
         source: { hf: $meta.source.hf, revision: $meta.source.revision, sizeGiB: $meta.source.sizeGiB },
         variants: [.variants[] | {id, engine, default, description, link, chart, requires}]
       } | del(.. | nulls)'
   done
-done | jq -s '
+done | jq -s --argjson site "$(yq -o=json '.site' catalog.yaml)" '
   [ group_by(.name)[]
     | sort_by(.version | split(".") | map(tonumber? // 0)) as $vs
     | ($vs | last) as $newest
@@ -49,12 +50,14 @@ done | jq -s '
         name: $newest.name,
         displayName: $newest.displayName, description: $newest.description,
         family: $newest.family, tags: $newest.tags, deprecated: $newest.deprecated,
+        tuning: $newest.tuning,
         source: $newest.source,
         latest: $newest.version,
         versions: [ $vs | reverse | .[] | {version, path, digest, variants} ]
       }
     | del(.. | nulls) ]
-  | { apiVersion: "catalog.swiss/v1", count: length, models: . }
+  | { apiVersion: "catalog.swiss/v1", site: $site, count: length, models: . }
+  | del(.site | nulls)
 ' > index.json
 
 echo "index.json: $(jq -r '.count' index.json) models, $(jq -r '[.models[].versions | length] | add' index.json) versions"

@@ -26,6 +26,11 @@ function modelFiles(match) {
 
 const checks = [
   {
+    schema: "schema/catalog.schema.json",
+    files: fs.existsSync(path.join(root, "catalog.yaml")) ? [path.join(root, "catalog.yaml")] : [],
+    missing: "catalog.yaml: missing -- it names where the site is published",
+  },
+  {
     schema: "schema/metadata.schema.json",
     files: modelFiles((file) => file === "metadata.yaml"),
   },
@@ -99,7 +104,7 @@ addFormats(ajv)
 let failed = false
 for (const check of checks) {
   if (check.files.length === 0) {
-    console.error(`${check.schema}: no files`)
+    console.error(check.missing ?? `${check.schema}: no files`)
     failed = true
     continue
   }

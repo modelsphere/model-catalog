@@ -65,7 +65,8 @@
         "required": [
           "version",
           "baseline",
-          "optimized"
+          "optimized",
+          "report"
         ],
         "properties": {
           "version": {
@@ -113,7 +114,7 @@
             }
           },
           "report": {
-            "description": "File name of the measurement beside this metadata.yaml, such as the AutoTune HTML report.",
+            "description": "File name of the measurement beside this metadata.yaml, such as the AutoTune HTML report. Required: it is the tuned variant's link, served at <site>models/<name>/<report> with the site from catalog.yaml.",
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
           }

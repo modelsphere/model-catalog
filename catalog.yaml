@@ -1,0 +1,11 @@
+# Settings for the catalog as a whole, published in index.json. What belongs to
+# one model lives in models/<name>/metadata.yaml.
+apiVersion: catalog.swiss/v1
+
+# Where this catalog's site is published: .github/workflows/pages.yml deploys
+# hack/build-site.js's output here, perf reports included, at
+# <site>models/<name>/<report>. A consumer builds a tuned variant's report link
+# from this and the model's tuning[].report. No variant carries the link
+# itself: a version file is immutable once published, and would have to name
+# a page that does not exist until the site is deployed.
+site: https://modelsphere.github.io/model-catalog/

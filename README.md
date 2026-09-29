@@ -82,6 +82,7 @@ add `my-model-1.0.1.yaml` instead of editing it. Every field is described in
 
 ```
 index.json                    generated, the published surface
+catalog.yaml                  catalog-wide settings: where the site is published
 schema/metadata.schema.json   what a model is
 schema/version.schema.json    what a version and its variants are
 models/<name>/metadata.yaml         shared by every version, editable
@@ -244,7 +245,7 @@ tuning:
         uplift: 58.0
       - name: 8k + 1k
         uplift: 23.4
-    report: deepseek-v4-flash-0731-h100-report.html   # optional, beside metadata.yaml
+    report: deepseek-v4-flash-0731-h100-report.html   # beside metadata.yaml
 ```
 
 `uplift` is the number the site leads with; when the benchmark ran several
@@ -257,7 +258,14 @@ variants of it, and the report exists, and it fails when a variant named
 unrecorded. The site reads this field only; variant ids and descriptions are
 not parsed for it.
 
-`tuning` is not in `index.json` yet. swissd refuses an index with a field it
-does not know, so `build-index.sh` starts writing it only once every swissd
-reads it.
+Every entry names its `report`, and that is the tuned variant's link: the site
+serves it at `<site>models/<name>/<report>`, where `site` comes from
+`catalog.yaml`. `index.json` carries both `site` and each model's `tuning`, so a
+consumer such as swiss builds the link itself. No variant carries it: a version
+file is immutable once published, and would have to name a page that does not
+exist until the site is deployed.
+
+swissd refuses an index with a field it does not know. A field added to
+`index.json` -- `site` and `tuning` among them -- has to be understood by every
+swissd reading this catalog before `index.json` is regenerated with it.
 
