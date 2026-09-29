@@ -1,0 +1,11 @@
+apiVersion: catalog.swiss/v1
+name: glm-5.3-flash
+displayName: GLM-5.3-Flash
+description: GLM-5.3-Flash TP8 on eight H100 GPUs
+family: glm
+tags:
+  - chat
+  - reasoning
+  - tool-use
+source:
+  hf: zai-org/GLM-5.3-Flash
