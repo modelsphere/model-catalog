@@ -132,4 +132,56 @@ for (const check of checks) {
   }
 }
 
+// What the schema cannot see: a tuning pair must name a published version of
+// its model, two different variants of that version, and a report that exists.
+// swiss does not check it -- tuning is display only, and a mistake in it must
+// not stop a catalog loading for deploys -- so it is caught here instead.
+for (const meta of modelFiles((file) => file === "metadata.yaml")) {
+  let tuning
+  try {
+    tuning = YAML.parse(fs.readFileSync(meta, "utf8"))?.tuning
+  } catch {
+    continue // a parse error is already reported above
+  }
+  if (!Array.isArray(tuning)) continue
+
+  const dir = path.dirname(meta)
+  const published = new Map()
+  for (const file of fs.readdirSync(dir)) {
+    if (!file.endsWith(".yaml") || !file.includes("-")) continue
+    try {
+      const doc = YAML.parse(fs.readFileSync(path.join(dir, file), "utf8"))
+      if (doc?.version) published.set(String(doc.version), new Set((doc.variants ?? []).map((v) => v?.id)))
+    } catch {
+      // reported by the schema check above
+    }
+  }
+
+  const lines = []
+  tuning.forEach((t, i) => {
+    if (!t || typeof t !== "object") return
+    const at = `tuning[${i}]`
+    const ids = published.get(String(t.version))
+    if (!ids) {
+      lines.push(`${at}.version: ${JSON.stringify(t.version)} is not a published version of this model`)
+    } else {
+      for (const key of ["baseline", "optimized"]) {
+        if (t[key] !== undefined && !ids.has(t[key])) {
+          lines.push(`${at}.${key}: version ${t.version} has no variant ${JSON.stringify(t[key])}`)
+        }
+      }
+    }
+    if (t.baseline !== undefined && t.baseline === t.optimized) {
+      lines.push(`${at}: baseline and optimized are the same variant`)
+    }
+    if (typeof t.report === "string" && !fs.existsSync(path.join(dir, t.report))) {
+      lines.push(`${at}.report: no file ${JSON.stringify(t.report)} beside metadata.yaml`)
+    }
+  })
+  if (lines.length > 0) {
+    failed = true
+    report(path.relative(root, meta), lines)
+  }
+}
+
 process.exit(failed ? 1 : 0)

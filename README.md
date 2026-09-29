@@ -1,6 +1,6 @@
 # swiss-catalog
 
-![GitHub License](https://img.shields.io/github/license/:user/modelsphere%2Fmodel-catalog)
+![GitHub License](https://img.shields.io/github/license/:modelsphere/model-catalog)
 
 
 The models [Swiss](https://github.com/modelsphere/swiss) can deploy, and **how to serve
@@ -73,8 +73,9 @@ cp -r models/glm5.1 models/my-model  # or models/kimi-k2.5 for a multi-node mode
 4. Open a pull request. Leave `index.json` alone: CI rejects a PR that changes
    it, and it is regenerated on `master` after merge.
 
-A published version never changes. To fix one, add `my-model-1.0.1.yaml`
-instead of editing it. Every field is described in
+If you tuned it, record the result as `tuning` in `metadata.yaml`; see
+[GitHub Pages](#github-pages). A published version never changes. To fix one,
+add `my-model-1.0.1.yaml` instead of editing it. Every field is described in
 [docs/authoring.md](docs/authoring.md).
 
 ## Development
@@ -175,7 +176,8 @@ Needs `yq` and `jq`, plus `check-jsonschema` or `npm install` (`hack/validate-sc
 ```
 models/<name>/
   metadata.yaml              what the model IS: source.hf, displayName,
-                             description, family, tags, license
+                             description, family, tags, license, and
+                             measured tuning results
   <name>-<version>.yaml      how it is SERVED: servedName, variants
 ```
 
@@ -217,7 +219,7 @@ picks one. `gpuProduct` then narrows within the declared vendor.
 
 ## GitHub Pages
 
-The [catalog site](#usage) is built from `models/` (not from committed
+The [catalog site](#browse-the-catalog) is built from `models/` (not from committed
 `index.json`) by `hack/build-site.js`, and deployed by
 `.github/workflows/pages.yml` on every push to `master`. Pull requests build it
 without deploying.
@@ -228,9 +230,25 @@ npm run build:site   # writes site/; open site/index.html to preview
 ```
 
 Every `models/<name>/*.html` perf report is copied into the site and linked from
-its model. A baseline/optimized pair is recognised from the variant ids
-(`…-baseline`, `…-optimized`) or descriptions (starting `Baseline:`, or
-`Tuned by …`), and the uplift is the `+N%` in the optimized variant's
-description. Keep that wording when adding a tuned pair, or the site shows the
-pair without a number.
+its model. A tuned pair, and how much faster it is, is declared in the model's
+`metadata.yaml`:
+
+```yaml
+tuning:
+  - version: 1.0.0                       # a published version
+    baseline: sglang-tp8-h100-baseline   # variant ids in that version
+    optimized: sglang-tp8-h100-optimized
+    uplift: 51                           # % over the baseline on the tuning benchmark
+    report: deepseek-v4-flash-h100-report.html   # optional, beside metadata.yaml
+```
+
+It lives in `metadata.yaml` rather than the version file because nothing
+composes from it: re-measuring is an edit, not a new version.
+`npm run validate:schema` checks that the version is published, both ids are
+variants of it, and the report exists. The site reads this field only; variant
+ids and descriptions are not parsed for it.
+
+`tuning` is not in `index.json` yet. swissd refuses an index with a field it
+does not know, so `build-index.sh` starts writing it only once every swissd
+reads it.
 

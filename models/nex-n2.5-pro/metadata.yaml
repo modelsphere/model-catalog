@@ -9,3 +9,9 @@ tags:
   - tool-use
 source:
   hf: nex-agi/Nex-N2.5-Pro
+tuning:
+  - version: 1.0.0
+    baseline: sglang-tp8-h100-baseline
+    optimized: sglang-tp8-h100-optimized
+    uplift: 24
+    report: nex-n2.5-pro-h100-report.html

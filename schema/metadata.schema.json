@@ -56,6 +56,45 @@
         "string"
       ]
     },
+    "tuning": {
+      "description": "Measured tuning results: a tuned variant against a baseline, both in one published version, on the tuning benchmark. Display only -- nothing composes from it -- so a re-measurement is an edit here, not a new version. hack/validate-schema.js checks that the version is published, that both ids are variants of it, and that the report sits beside this file.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "baseline",
+          "optimized"
+        ],
+        "properties": {
+          "version": {
+            "description": "The published version both variants belong to.",
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+          },
+          "baseline": {
+            "description": "Id of the variant measured as the baseline.",
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "optimized": {
+            "description": "Id of the tuned variant.",
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "uplift": {
+            "description": "Percent gained over the baseline on the tuning benchmark: 44 means +44%.",
+            "type": "number"
+          },
+          "report": {
+            "description": "File name of the measurement beside this metadata.yaml, such as the AutoTune HTML report.",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          }
+        }
+      }
+    },
     "source": {
       "description": "Model identity, never a location. The chart mounts weights from model.localPath on the host, which is a fact about a cluster -- the site profile derives that path from `hf`, and preflight checks it exists. Shared by every version: a different repo id is a different model, not a new version of this one.",
       "type": "object",

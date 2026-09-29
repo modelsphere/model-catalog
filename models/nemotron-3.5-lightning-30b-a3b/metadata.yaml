@@ -10,3 +10,9 @@ tags:
   - tool-use
 source:
   hf: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16
+tuning:
+  - version: 1.0.0
+    baseline: sglang-tp1-h100-baseline
+    optimized: sglang-tp1-dp8-h100-optimized
+    uplift: 27
+    report: nemotron-3.5-lightning-30b-a3b-h100-report.html

@@ -9,3 +9,9 @@ tags:
   - tool-use
 source:
   hf: zai-org/GLM-5.3-Flash
+tuning:
+  - version: 1.0.0
+    baseline: sglang-tp8-h100-baseline
+    optimized: sglang-tp8-h100-optimized
+    uplift: 5
+    report: glm-5.3-flash-h100-report.html

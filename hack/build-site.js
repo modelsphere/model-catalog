@@ -8,9 +8,9 @@
  *   assets/site.css
  *   models/<name>/*.html  — perf reports copied from the repo
  *
- * Optimized-vs-baseline is inferred from variant ids / descriptions; uplift
- * percentages are parsed from the optimized variant's description when present.
- * Perf HTML is discovered as models/<name>/*.html (and variants[].link when set).
+ * Optimized-vs-baseline pairs and their uplift come from `tuning` in each
+ * model's metadata.yaml. Perf HTML is discovered as models/<name>/*.html (and
+ * variants[].link when set).
  */
 "use strict";
 
@@ -92,18 +92,15 @@ function hardwareShort(req) {
   return s;
 }
 
-function classifyVariant(v) {
-  const id = (v.id || "").toLowerCase();
-  const desc = (v.description || "").toLowerCase();
-  const isOptimized =
-    id.includes("optimized") ||
-    id.includes("optimised") ||
-    /\b(optimized|optimised|tuned by)\b/.test(desc);
-  // Optimized descriptions mention "vs the baseline variant", so only a
-  // leading "Baseline" (or the id) marks a baseline, and optimized wins.
-  const isBaseline =
-    !isOptimized && (id.includes("baseline") || /^\s*baseline\b/.test(desc));
-  return { isBaseline, isOptimized };
+// A variant's role, by id, from the model's recorded tuning. swiss's web
+// (web/src/lib/catalog.ts) reads the same field by the same rules.
+function variantRole(id, tuning) {
+  const isOptimized = tuning.some((t) => t.optimized === id);
+  return { isOptimized, isBaseline: !isOptimized && tuning.some((t) => t.baseline === id) };
+}
+
+function formatUplift(pct) {
+  return `${pct < 0 ? "" : "+"}${Math.round(pct * 10) / 10}%`;
 }
 
 // variants[].link is only schema-checked as a URI, which admits javascript:.
@@ -113,16 +110,6 @@ function safeLink(link) {
 
 function encodePath(p) {
   return p.split("/").map(encodeURIComponent).join("/");
-}
-
-function parseUplift(description) {
-  if (!description) return null;
-  // "+121% on the tuning benchmark vs the baseline"
-  // "+44% on the tuning benchmark"
-  // "+44.2%"
-  const m = description.match(/\+(\d+(?:\.\d+)?)\s*%/);
-  if (!m) return null;
-  return { pct: Number(m[1]), raw: `+${m[1]}%` };
 }
 
 function escapeHtml(s) {
@@ -144,6 +131,7 @@ function loadCatalog() {
       process.exit(1);
     }
     const meta = readYaml(metaPath);
+    const tuning = Array.isArray(meta.tuning) ? meta.tuning : [];
     const reports = fs
       .readdirSync(dir)
       .filter((f) => f.endsWith(".html"))
@@ -162,7 +150,7 @@ function loadCatalog() {
       // Schema: the first variant is the default when none is marked.
       const defaultIdx = Math.max(0, raw.findIndex((v) => v.default));
       const variants = raw.map((v, i) => {
-        const { isBaseline, isOptimized } = classifyVariant(v);
+        const { isBaseline, isOptimized } = variantRole(v.id, tuning);
         return {
           id: v.id,
           engine: v.engine,
@@ -175,7 +163,6 @@ function loadCatalog() {
           hardwareShort: hardwareShort(v.requires),
           isBaseline,
           isOptimized,
-          uplift: isOptimized ? parseUplift(v.description) : null,
         };
       });
       versions.push({
@@ -191,7 +178,7 @@ function loadCatalog() {
       process.exit(1);
     }
     const latest = versions[versions.length - 1];
-    const comparison = summarizeComparison(latest.variants);
+    const comparison = comparisonFor(name, tuning, latest);
 
     models.push({
       name: meta.name || name,
@@ -222,7 +209,6 @@ function loadCatalog() {
             hardwareShort: x.hardwareShort,
             isBaseline: x.isBaseline,
             isOptimized: x.isOptimized,
-            uplift: x.uplift,
           })),
         })),
       reports,
@@ -237,29 +223,27 @@ function loadCatalog() {
   };
 }
 
-function summarizeComparison(variants) {
-  const baselines = variants.filter((v) => v.isBaseline);
-  const optimizeds = variants.filter((v) => v.isOptimized);
-  if (baselines.length === 0 || optimizeds.length === 0) {
-    return null;
-  }
-  const base = baselines[0];
-  // Prefer the default optimized, else first optimized.
-  const opt =
-    optimizeds.find((v) => v.default) || optimizeds[0];
-  const uplift = opt.uplift;
+// The pair shown for a version. A recorded pair must name variants that
+// version has; among those, one measured on it wins, then one whose tuned
+// variant is the default. The number may have been measured on an earlier
+// version whose variants were carried forward, so the version travels with it.
+function comparisonFor(name, tuning, version) {
+  const ids = new Set(version.variants.map((v) => v.id));
+  const fits = tuning.filter((t) => ids.has(t.baseline) && ids.has(t.optimized));
+  const def = version.variants.find((v) => v.default);
+  const t =
+    fits.find((x) => String(x.version) === String(version.version)) ||
+    fits.find((x) => def && x.optimized === def.id) ||
+    fits[0];
+  if (!t) return null;
+  const pct = typeof t.uplift === "number" ? t.uplift : null;
   return {
-    baselineId: base.id,
-    optimizedId: opt.id,
-    baselineRequires: base.requiresSummary,
-    optimizedRequires: opt.requiresSummary,
-    upliftPct: uplift ? uplift.pct : null,
-    upliftLabel: uplift ? uplift.raw : null,
-    summary: uplift
-      ? `Optimized ${uplift.raw} vs baseline`
-      : "Optimized variant present (no % in description)",
-    baselineDescription: base.description,
-    optimizedDescription: opt.description,
+    baselineId: t.baseline,
+    optimizedId: t.optimized,
+    upliftPct: pct,
+    upliftLabel: pct == null ? null : formatUplift(pct),
+    version: String(t.version),
+    report: t.report ? `models/${name}/${t.report}` : null,
   };
 }
 
@@ -632,7 +616,7 @@ function variantLine(v, cls, withHardware = true) {
 }
 
 function upliftBadge(c, cls) {
-  const title = escapeHtml(`${c.optimizedId} vs ${c.baselineId}`);
+  const title = escapeHtml(`${c.optimizedId} vs ${c.baselineId}, measured on v${c.version}`);
   const label = c.upliftLabel ? escapeHtml(c.upliftLabel) : "optimized";
   return `<span class="${cls}" title="${title}">${label}</span>`;
 }
@@ -677,7 +661,9 @@ function renderCard(m, i) {
     })
     .join("");
   const uplift = m.comparison
-    ? `<div class="uplift-box">${upliftBadge(m.comparison, "uplift")}<div class="uplift-sub">vs baseline</div></div>`
+    ? `<div class="uplift-box">${upliftBadge(m.comparison, "uplift")}<div class="uplift-sub">vs baseline${
+        m.comparison.version !== m.latest ? ` · v${escapeHtml(m.comparison.version)}` : ""
+      }</div></div>`
     : "";
   const links = modelLinks(m, "btn", "Perf report");
 
@@ -719,7 +705,14 @@ function renderRow(m, i) {
         <td>${m.family ? chip("family", m.family) : none}</td>
         <td class="t-tags">${m.tags.length ? `<div class="chips">${m.tags.map((t) => chip("tag", t)).join("")}</div>` : none}</td>
         <td class="t-variants">${orderedVariants(m).map((v) => variantLine(v, "t-variant")).join("")}</td>
-        <td class="num">${m.comparison ? upliftBadge(m.comparison, "uplift uplift-sm") : none}</td>
+        <td class="num">${
+          m.comparison
+            ? upliftBadge(m.comparison, "uplift uplift-sm") +
+              (m.comparison.version !== m.latest
+                ? `<div class="t-meta">v${escapeHtml(m.comparison.version)}</div>`
+                : "")
+            : none
+        }</td>
         <td>${links.length ? `<div class="t-links">${links.join("")}</div>` : none}</td>
       </tr>`;
 }

@@ -9,3 +9,9 @@ tags:
   - tool-use
 source:
   hf: openai-mirror/gpt-oss-120b
+tuning:
+  - version: 1.0.0
+    baseline: sglang-tp2-h100-baseline
+    optimized: sglang-tp2-dp4-h100-optimized
+    uplift: 44
+    report: gpt-oss-120b-h100-report.html

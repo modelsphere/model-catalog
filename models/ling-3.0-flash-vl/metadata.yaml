@@ -10,3 +10,9 @@ tags:
   - vision
 source:
   hf: inclusionAI/Ling-3.0-flash-VL
+tuning:
+  - version: 1.0.0
+    baseline: sglang-tp8-h100-baseline
+    optimized: sglang-tp8-h100-optimized
+    uplift: 15
+    report: ling-3.0-flash-vl-h100-report.html

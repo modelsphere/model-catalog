@@ -8,3 +8,9 @@ tags:
   - speculative-decoding
 source:
   hf: deepseek-ai/DeepSeek-V4-Flash
+tuning:
+  - version: 1.0.0
+    baseline: sglang-tp8-h100-baseline
+    optimized: sglang-tp8-h100-optimized
+    uplift: 51
+    report: deepseek-v4-flash-h100-report.html

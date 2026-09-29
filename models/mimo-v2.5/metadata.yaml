@@ -10,3 +10,8 @@ tags:
   - speculative-decoding
 source:
   hf: XiaomiMiMo/MiMo-V2.5
+tuning:
+  - version: 1.0.0
+    baseline: sglang-tp8-h100-baseline
+    optimized: sglang-tp8-h100-optimized
+    uplift: 121
