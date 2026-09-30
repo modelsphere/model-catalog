@@ -1,6 +1,6 @@
 apiVersion: catalog.swiss/v1
 name: kimi-k3
-version: 1.0.0
+version: 1.0.2
 servedName: kimi-k3
 variants:
   # Fits on one node, unlike K2.5: TP8 across the eight cards of a single B300,
