@@ -36,9 +36,25 @@ shared. For example:
 
 ### Use the catalog with swiss
 
-`swiss` and `swissd` read the catalog through `index.json`, pinned to a commit
-SHA so a deploy can be reproduced months later. To point them at this checkout
-(needs `yq`, `jq` and `python3`):
+`swiss` and `swissd` read the catalog through `index.json`. The published
+catalog is the site itself, <https://modelsphere.github.io/model-catalog/>:
+
+```sh
+swiss catalog list --catalog https://modelsphere.github.io/model-catalog/
+```
+
+or, in a swissd site profile:
+
+```yaml
+catalogs:
+  - name: public
+    url: https://modelsphere.github.io/model-catalog/
+    default: true
+```
+
+A deploy records the model version and the sha256 of its file, so it can be
+reproduced months later: a published version never changes. To point swiss at
+this checkout instead (needs `yq`, `jq` and `python3`):
 
 ```sh
 ./hack/serve.sh                                      # http://127.0.0.1:8000
@@ -220,10 +236,17 @@ picks one. `gpuProduct` then narrows within the declared vendor.
 
 ## GitHub Pages
 
-The [catalog site](#browse-the-catalog) is built from `models/` (not from committed
-`index.json`) by `hack/build-site.js`, and deployed by
-`.github/workflows/pages.yml` on every push to `master`. Pull requests build it
-without deploying.
+The [catalog site](#browse-the-catalog) is built by `hack/build-site.js` and
+deployed by `.github/workflows/pages.yml` on every push to `master`. Pull
+requests build it without deploying. It is two things at one URL:
+
+- **the page**, built from `models/`, so it shows a model as soon as it merges;
+- **the catalog** swiss reads: the committed `index.json`, byte for byte, and
+  every version file it names, at the same paths. Each file is checked against
+  the digest `index.json` published, so an edited or deleted published version
+  fails the build rather than being served. A model merged since `index.json`
+  was last regenerated is on the page but not yet in the catalog; the deploy
+  warns until `./hack/build-index.sh` is run on `master` and committed.
 
 ```sh
 npm ci

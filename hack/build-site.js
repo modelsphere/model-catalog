@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 /**
- * Build a static GitHub Pages site from models/ (not from committed index.json).
+ * Build the GitHub Pages site: the page is built from models/, and the catalog
+ * itself is published beside it from the committed index.json, so the site's
+ * URL is a catalog location swiss can read.
  *
  * Output: site/
  *   index.html
  *   catalog.json          — derived catalog for the page
  *   assets/site.css
  *   models/<name>/*.html  — perf reports copied from the repo
+ *   index.json            — the committed index, byte for byte
+ *   models/<name>/*.yaml  — every version file it names, digest-checked
  *
  * Optimized-vs-baseline pairs and their uplift come from `tuning` in each
  * model's metadata.yaml. Perf HTML is discovered as models/<name>/*.html (and
@@ -14,6 +18,7 @@
  */
 "use strict";
 
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const yaml = require("yaml");
@@ -906,7 +911,7 @@ ${catalog.models.map(renderRow).join("\n")}
   <p id="empty" class="empty" hidden>No models match these filters.</p>
 </main>
 <footer class="wrap">
-  <p>Generated from <code>models/</code> by <code>hack/build-site.js</code>.</p>
+  <p>Generated from <code>models/</code> by <code>hack/build-site.js</code>. This site is also the catalog swiss reads: <a href="index.json">index.json</a>.</p>
 </footer>
 <script type="application/json" id="catalog-data">${dataJson}</script>
 <script src="assets/site.js"></script>
@@ -1418,6 +1423,48 @@ function copyReports(catalog) {
   }
 }
 
+// The catalog itself, published beside the page: index.json and every version
+// file it names, at the paths it names, so the site's URL is a catalog location
+// -- swiss fetches entries relative to index.json.
+//
+// What is published is the committed index.json, byte for byte: it is the
+// reviewed artifact, and swiss's catalog ref is computed from its bytes. A
+// version file added since it was last regenerated is simply not published
+// yet. Every file it does name is checked against its digest first, so the
+// site never serves an entry swiss would refuse -- an edited published version
+// or a deleted one fails the build instead.
+function publishCatalog() {
+  const raw = fs.readFileSync(path.join(root, "index.json"));
+  const index = JSON.parse(raw);
+  let files = 0;
+  for (const m of index.models) {
+    for (const v of m.versions) {
+      const rel = path.posix.normalize(v.path);
+      if (!rel.startsWith("models/") || rel.includes("..")) {
+        throw new Error(`index.json: ${m.name} ${v.version}: path ${v.path} is outside models/`);
+      }
+      const src = path.join(root, rel);
+      if (!fs.existsSync(src)) {
+        throw new Error(
+          `index.json: ${m.name} ${v.version} names ${rel}, which is not in the repo -- a published version was deleted; deprecate the model instead`
+        );
+      }
+      const body = fs.readFileSync(src);
+      const digest = "sha256:" + crypto.createHash("sha256").update(body).digest("hex");
+      if (digest !== v.digest) {
+        throw new Error(
+          `${rel}: its digest is ${digest}, but index.json published ${v.digest} -- a published version was edited; publish a new version instead`
+        );
+      }
+      mkdirp(path.dirname(path.join(outDir, rel)));
+      fs.writeFileSync(path.join(outDir, rel), body);
+      files++;
+    }
+  }
+  fs.writeFileSync(path.join(outDir, "index.json"), raw);
+  return { models: index.models.length, files };
+}
+
 function main() {
   const catalog = loadCatalog();
   rmrf(outDir);
@@ -1429,10 +1476,18 @@ function main() {
   // Helpful for project Pages paths / local preview.
   fs.writeFileSync(path.join(outDir, ".nojekyll"), "");
   copyReports(catalog);
+  let published;
+  try {
+    published = publishCatalog();
+  } catch (err) {
+    console.error(err.message);
+    process.exit(1);
+  }
   console.log(
     `site/: ${catalog.count} models, ` +
       `${catalog.models.filter((m) => m.comparison).length} optimized-vs-baseline, ` +
-      `${catalog.models.reduce((n, m) => n + m.reports.length, 0)} perf HTML`
+      `${catalog.models.reduce((n, m) => n + m.reports.length, 0)} perf HTML; ` +
+      `catalog: ${published.models} models, ${published.files} version files`
   );
 }
 
