@@ -1,6 +1,7 @@
 {
   "apiVersion": "catalog.swiss/v1",
-  "count": 15,
+  "site": "https://modelsphere.github.io/model-catalog/",
+  "count": 18,
   "models": [
     {
       "name": "deepseek-v4-flash",
@@ -10,6 +11,15 @@
       "tags": [
         "chat",
         "speculative-decoding"
+      ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp8-h100-baseline",
+          "optimized": "sglang-tp8-h100-optimized",
+          "uplift": 51,
+          "report": "deepseek-v4-flash-h100-report.html"
+        }
       ],
       "source": {
         "hf": "deepseek-ai/DeepSeek-V4-Flash"
@@ -59,6 +69,83 @@
       ]
     },
     {
+      "name": "deepseek-v4-flash-0731",
+      "displayName": "DeepSeek-V4-Flash-0731",
+      "description": "DeepSeek-V4-Flash-0731 on 8 H100 GPUs. Configs use DSPARK speculative decoding.",
+      "family": "deepseek",
+      "tags": [
+        "chat",
+        "reasoning",
+        "tool-use",
+        "speculative-decoding"
+      ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp8-h100-baseline",
+          "optimized": "sglang-tp8-h100-optimized",
+          "uplift": 58.0,
+          "workloads": [
+            {
+              "name": "50k + 1.5k",
+              "uplift": 58.0
+            },
+            {
+              "name": "8k + 1k",
+              "uplift": 23.4
+            }
+          ],
+          "report": "deepseek-v4-flash-0731-h100-report.html"
+        }
+      ],
+      "source": {
+        "hf": "deepseek-ai/DeepSeek-V4-Flash-0731"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/deepseek-v4-flash-0731/deepseek-v4-flash-0731-1.0.0.yaml",
+          "digest": "sha256:77b486d41c01c19f739712babf9e02ef903864d6d39c0e5e16524e4305bddbc3",
+          "variants": [
+            {
+              "id": "sglang-tp8-h100-baseline",
+              "engine": "sglang",
+              "description": "Baseline: TP8 on eight H100 GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            },
+            {
+              "id": "sglang-tp8-h100-optimized",
+              "engine": "sglang",
+              "default": true,
+              "description": "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node, DSPARK speculative decoding. Normalized throughput within the SLO vs the baseline variant: +58.0% (50k + 1.5k), +23.4% (8k + 1k).",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "deepseek-v4.1-flash",
       "displayName": "DeepSeek-V4.1-Flash",
       "description": "DeepSeek-V4.1-Flash on 8 H100 GPUs.",
@@ -67,6 +154,15 @@
         "chat",
         "reasoning",
         "tool-use"
+      ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp8-h100-baseline",
+          "optimized": "sglang-tp8-h100-optimized",
+          "uplift": 89,
+          "report": "deepseek-v4.1-flash-h100-report.html"
+        }
       ],
       "source": {
         "hf": "deepseek-ai/DeepSeek-V4.1-Flash"
@@ -124,6 +220,15 @@
         "chat",
         "reasoning",
         "tool-use"
+      ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp8-h100-baseline",
+          "optimized": "sglang-tp8-h100-optimized",
+          "uplift": 5,
+          "report": "glm-5.3-flash-h100-report.html"
+        }
       ],
       "source": {
         "hf": "zai-org/GLM-5.3-Flash"
@@ -287,6 +392,15 @@
         "reasoning",
         "tool-use"
       ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp2-h100-baseline",
+          "optimized": "sglang-tp2-dp4-h100-optimized",
+          "uplift": 44,
+          "report": "gpt-oss-120b-h100-report.html"
+        }
+      ],
       "source": {
         "hf": "openai-mirror/gpt-oss-120b"
       },
@@ -318,6 +432,84 @@
               "engine": "sglang",
               "default": true,
               "description": "Tuned by LLM AutoTune: TP2 DP4 on eight H100 GPUs, single node, fp8 KV cache, EAGLE3 speculative decoding (lmsys/EAGLE3-gpt-oss-120b-bf16).  +44% on the tuning benchmark vs the baseline variant.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "hy3",
+      "displayName": "Hy3",
+      "description": "Hy3 on 8 H100 GPUs. Configs use NEXTN speculative decoding.",
+      "family": "hunyuan",
+      "tags": [
+        "chat",
+        "moe",
+        "reasoning",
+        "tool-use",
+        "speculative-decoding"
+      ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp8-h100-baseline",
+          "optimized": "sglang-tp8-h100-optimized",
+          "uplift": 64.2,
+          "workloads": [
+            {
+              "name": "50k + 1.5k",
+              "uplift": 64.2
+            },
+            {
+              "name": "8k + 1k",
+              "uplift": 7.6
+            }
+          ],
+          "report": "hy3-h100-report.html"
+        }
+      ],
+      "source": {
+        "hf": "tencent/Hy3-FP8"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/hy3/hy3-1.0.0.yaml",
+          "digest": "sha256:83ac8e83d3270db7c12be181e719d3e7529e544ebd89dcb96169f4acf8102418",
+          "variants": [
+            {
+              "id": "sglang-tp8-h100-baseline",
+              "engine": "sglang",
+              "description": "Baseline: TP8 on eight H100 GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            },
+            {
+              "id": "sglang-tp8-h100-optimized",
+              "engine": "sglang",
+              "default": true,
+              "description": "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node, NEXTN speculative decoding. Normalized throughput within the SLO vs the baseline variant: +64.2% (50k + 1.5k), +7.6% (8k + 1k).",
               "chart": {
                 "name": "sglang",
                 "version": "0.7.1"
@@ -390,8 +582,47 @@
       "source": {
         "hf": "moonshotai/Kimi-K3"
       },
-      "latest": "1.0.1",
+      "latest": "1.0.2",
       "versions": [
+        {
+          "version": "1.0.2",
+          "path": "models/kimi-k3/kimi-k3-1.0.2.yaml",
+          "digest": "sha256:5eb03ebfe62064ebafb228d780ea6bb0c4f0096227131782e2d739cd615f4e54",
+          "variants": [
+            {
+              "id": "sglang-tp8-b300",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP8 with DCP8 on one eight-GPU B300 node, fp8 KV cache, DSPARK speculative decoding.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.9"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-B300-SXM6-AC"
+                ]
+              }
+            },
+            {
+              "id": "vllm-tp8-b300",
+              "engine": "vllm",
+              "chart": {
+                "name": "vllm",
+                "version": "0.4.6"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-B300-SXM6-AC"
+                ]
+              }
+            }
+          ]
+        },
         {
           "version": "1.0.1",
           "path": "models/kimi-k3/kimi-k3-1.0.1.yaml",
@@ -467,6 +698,15 @@
         "reasoning",
         "tool-use"
       ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp4-h100-baseline",
+          "optimized": "sglang-tp8-h100-optimized",
+          "uplift": 26,
+          "report": "laguna-s-2.1-h100-report.html"
+        }
+      ],
       "source": {
         "hf": "poolside/Laguna-S-2.1"
       },
@@ -515,6 +755,83 @@
       ]
     },
     {
+      "name": "ling-3.0-flash",
+      "displayName": "Ling-3.0-flash",
+      "description": "Ling-3.0-flash on 8 H100 GPUs.",
+      "family": "ling",
+      "tags": [
+        "chat",
+        "moe",
+        "reasoning",
+        "tool-use"
+      ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp8-h100-baseline",
+          "optimized": "sglang-tp8-h100-optimized",
+          "uplift": 15.5,
+          "workloads": [
+            {
+              "name": "50k + 1.5k",
+              "uplift": 15.5
+            },
+            {
+              "name": "8k + 1k",
+              "uplift": 21.3
+            }
+          ],
+          "report": "ling-3.0-flash-h100-report.html"
+        }
+      ],
+      "source": {
+        "hf": "inclusionAI/Ling-3.0-flash"
+      },
+      "latest": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "models/ling-3.0-flash/ling-3.0-flash-1.0.0.yaml",
+          "digest": "sha256:ef38501e5e3c46e5d0896f835784719d6371991b22b928283b63e522d9e49ee4",
+          "variants": [
+            {
+              "id": "sglang-tp8-h100-baseline",
+              "engine": "sglang",
+              "description": "Baseline: TP8 on eight H100 GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            },
+            {
+              "id": "sglang-tp8-h100-optimized",
+              "engine": "sglang",
+              "default": true,
+              "description": "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +15.5% (50k + 1.5k), +21.3% (8k + 1k).",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "ling-3.0-flash-vl",
       "displayName": "Ling-3.0-flash-VL",
       "description": "Ling-3.0-flash-VL on 8 H100 GPUs.",
@@ -524,6 +841,15 @@
         "reasoning",
         "tool-use",
         "vision"
+      ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp8-h100-baseline",
+          "optimized": "sglang-tp8-h100-optimized",
+          "uplift": 15,
+          "report": "ling-3.0-flash-vl-h100-report.html"
+        }
       ],
       "source": {
         "hf": "inclusionAI/Ling-3.0-flash-VL"
@@ -583,6 +909,15 @@
         "tool-use",
         "speculative-decoding"
       ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp8-h100-baseline",
+          "optimized": "sglang-tp8-h100-optimized",
+          "uplift": 121,
+          "report": "mimo-v2.5-h100-report.html"
+        }
+      ],
       "source": {
         "hf": "XiaomiMiMo/MiMo-V2.5"
       },
@@ -641,6 +976,15 @@
         "reasoning",
         "tool-use"
       ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp1-h100-baseline",
+          "optimized": "sglang-tp1-dp8-h100-optimized",
+          "uplift": 27,
+          "report": "nemotron-3.5-lightning-30b-a3b-h100-report.html"
+        }
+      ],
       "source": {
         "hf": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16"
       },
@@ -698,6 +1042,15 @@
         "reasoning",
         "tool-use"
       ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp8-h100-baseline",
+          "optimized": "sglang-tp8-h100-optimized",
+          "uplift": 24,
+          "report": "nex-n2.5-pro-h100-report.html"
+        }
+      ],
       "source": {
         "hf": "nex-agi/Nex-N2.5-Pro"
       },
@@ -748,18 +1101,94 @@
     {
       "name": "qwen3.6-35b-a3b",
       "displayName": "Qwen3.6 35B-A3B",
-      "description": "Stock Qwen3.6-35B-A3B on two H100 or H800 GPUs, served as \"qwen\". The upstream weights, not one of the modelforge builds derived from them — those are published separately and served under other names.",
+      "description": "Stock Qwen3.6-35B-A3B on two H100 or H800 GPUs or eight H100 GPUs, served as \"qwen\". The upstream weights, not one of the modelforge builds derived from them — those are published separately and served under other names.",
       "family": "qwen",
       "tags": [
         "chat",
         "moe",
         "tool-use"
       ],
+      "tuning": [
+        {
+          "version": "1.1.0",
+          "baseline": "sglang-tp8-h100-baseline",
+          "optimized": "sglang-tp8-h100-optimized",
+          "uplift": 4.3,
+          "workloads": [
+            {
+              "name": "50k + 1.5k",
+              "uplift": 4.3
+            },
+            {
+              "name": "8k + 1k",
+              "uplift": 10.0
+            }
+          ],
+          "report": "qwen3.6-35b-a3b-h100-report.html"
+        }
+      ],
       "source": {
         "hf": "Qwen/Qwen3.6-35B-A3B"
       },
-      "latest": "1.0.0",
+      "latest": "1.1.0",
       "versions": [
+        {
+          "version": "1.1.0",
+          "path": "models/qwen3.6-35b-a3b/qwen3.6-35b-a3b-1.1.0.yaml",
+          "digest": "sha256:7b22ebd5c02c93296f6afa07d1956a527d13a95f6dd667193f465fca24d59990",
+          "variants": [
+            {
+              "id": "sglang-tp2-h100",
+              "engine": "sglang",
+              "default": true,
+              "description": "TP2 on two H100 or H800 GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 2,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3",
+                  "NVIDIA-H800"
+                ]
+              }
+            },
+            {
+              "id": "sglang-tp8-h100-baseline",
+              "engine": "sglang",
+              "description": "Baseline: TP8 on eight H100 GPUs, single node.",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            },
+            {
+              "id": "sglang-tp8-h100-optimized",
+              "engine": "sglang",
+              "description": "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +4.3% (50k + 1.5k), +10.0% (8k + 1k).",
+              "chart": {
+                "name": "sglang",
+                "version": "0.7.1"
+              },
+              "requires": {
+                "gpus": 8,
+                "topology": "single-node",
+                "gpuProduct": [
+                  "NVIDIA-H100-80GB-HBM3"
+                ]
+              }
+            }
+          ]
+        },
         {
           "version": "1.0.0",
           "path": "models/qwen3.6-35b-a3b/qwen3.6-35b-a3b-1.0.0.yaml",
@@ -796,6 +1225,15 @@
         "chat",
         "reasoning",
         "tool-use"
+      ],
+      "tuning": [
+        {
+          "version": "1.0.0",
+          "baseline": "sglang-tp8-h100-baseline",
+          "optimized": "sglang-tp8-h100-optimized",
+          "uplift": 6,
+          "report": "qwen3.8-flash-next-h100-report.html"
+        }
       ],
       "source": {
         "hf": "Qwen/Qwen3.8-Flash-Next"
