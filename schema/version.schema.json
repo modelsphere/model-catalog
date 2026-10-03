@@ -92,8 +92,9 @@
               ]
             },
             "version": {
+              "description": "One chart version, or a range of them in helm's constraint syntax. A bare version pins exactly: 0.7.1 is 0.7.1 and nothing else. A range lets a chart fix reach this model version without publishing a new one: >=0.7.1, ^0.7.1 (0.7.x from 0.7.1), >=0.7.1 <0.9.0. A deploy records the one version the range resolved to, so the deploy itself stays pinned. Prereleases match only a range that names one.",
               "type": "string",
-              "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+              "pattern": "^(v?(\\d+|[xX*])(\\.(\\d+|[xX*])){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?\\s+-\\s+v?(\\d+|[xX*])(\\.(\\d+|[xX*])){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?|(=|!=|>=?|<=?|~>?|\\^)?\\s*v?(\\d+|[xX*])(\\.(\\d+|[xX*])){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?)((\\s*,\\s*|\\s+)(v?(\\d+|[xX*])(\\.(\\d+|[xX*])){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?\\s+-\\s+v?(\\d+|[xX*])(\\.(\\d+|[xX*])){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?|(=|!=|>=?|<=?|~>?|\\^)?\\s*v?(\\d+|[xX*])(\\.(\\d+|[xX*])){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?))*(\\s*\\|\\|\\s*(v?(\\d+|[xX*])(\\.(\\d+|[xX*])){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?\\s+-\\s+v?(\\d+|[xX*])(\\.(\\d+|[xX*])){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?|(=|!=|>=?|<=?|~>?|\\^)?\\s*v?(\\d+|[xX*])(\\.(\\d+|[xX*])){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?)((\\s*,\\s*|\\s+)(v?(\\d+|[xX*])(\\.(\\d+|[xX*])){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?\\s+-\\s+v?(\\d+|[xX*])(\\.(\\d+|[xX*])){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?|(=|!=|>=?|<=?|~>?|\\^)?\\s*v?(\\d+|[xX*])(\\.(\\d+|[xX*])){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?))*)*$"
             }
           }
         },

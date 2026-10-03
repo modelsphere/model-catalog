@@ -9,7 +9,7 @@ variants:
     engine: sglang
     chart:
       name: sglang
-      version: 0.7.1
+      version: ">=0.7.1"
     image:
       repository: harbor.4pd.io/hardcore-tech/sglang
       tag: dev-Ling-3.0-flash-VL
@@ -82,7 +82,7 @@ variants:
     engine: sglang
     chart:
       name: sglang
-      version: 0.7.1
+      version: ">=0.7.1"
     image:
       repository: harbor.4pd.io/hardcore-tech/sglang
       tag: dev-Ling-3.0-flash-VL
