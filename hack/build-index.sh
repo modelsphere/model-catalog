@@ -43,16 +43,26 @@ for dir in models/*/; do
       } | del(.. | nulls)'
   done
 done | jq -s --argjson site "$(yq -o=json '.site' catalog.yaml)" '
+  # Semver precedence as a sort key: a prerelease sorts below its release, and
+  # its identifiers compare numerically or lexically -- jq orders numbers before
+  # strings and a shorter array before a longer one, which is semver'"'"'s rule.
+  def semver:
+    capture("^(?<maj>[0-9]+)\\.(?<min>[0-9]+)\\.(?<pat>[0-9]+)(-(?<pre>[0-9A-Za-z.-]+))?$")
+    | [(.maj | tonumber), (.min | tonumber), (.pat | tonumber)]
+      + (if .pre == null then [1] else [0] + (.pre | split(".") | map(tonumber? // .)) end);
   [ group_by(.name)[]
-    | sort_by(.version | split(".") | map(tonumber? // 0)) as $vs
+    | sort_by(.version | semver) as $vs
     | ($vs | last) as $newest
+    # latest is what a deploy naming no version gets, so never a prerelease
+    # while a release exists; a model with only prereleases gets its newest.
+    | (([$vs[] | select(.version | test("-") | not)] | last) // $newest) as $latest
     | {
         name: $newest.name,
         displayName: $newest.displayName, description: $newest.description,
         family: $newest.family, tags: $newest.tags, deprecated: $newest.deprecated,
         tuning: $newest.tuning,
         source: $newest.source,
-        latest: $newest.version,
+        latest: $latest.version,
         versions: [ $vs | reverse | .[] | {version, path, digest, variants} ]
       }
     | del(.. | nulls) ]
