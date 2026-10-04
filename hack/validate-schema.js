@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Schema-check this catalog. Paths are fixed: the script is not shared.
+// Schema-check this catalog.
 "use strict"
 
 const fs = require("fs")
@@ -9,20 +9,12 @@ const path = require("path")
 const Ajv2020 = require("ajv/dist/2020")
 const addFormats = require("ajv-formats")
 const YAML = require("yaml")
+const {root, modelsDir, modelNames, versionFiles} = require("./lib/catalog")
 
-const root = path.join(__dirname, "..")
-
-function modelFiles(match) {
-  const out = []
-  for (const name of fs.readdirSync(path.join(root, "models"))) {
-    const dir = path.join(root, "models", name)
-    if (!fs.statSync(dir).isDirectory()) continue
-    for (const file of fs.readdirSync(dir)) {
-      if (match(file)) out.push(path.join(dir, file))
-    }
-  }
-  return out.sort()
-}
+const metadataFiles = modelNames()
+  .map((name) => path.join(modelsDir, name, "metadata.yaml"))
+  .filter((file) => fs.existsSync(file))
+const versionFilePaths = modelNames().flatMap((name) => versionFiles(name).map((rel) => path.join(root, rel)))
 
 const checks = [
   {
@@ -32,12 +24,11 @@ const checks = [
   },
   {
     schema: "schema/metadata.schema.json",
-    files: modelFiles((file) => file === "metadata.yaml"),
+    files: metadataFiles,
   },
   {
     schema: "schema/version.schema.json",
-    // Same set as models/*/*-*.yaml: version files, not metadata.yaml.
-    files: modelFiles((file) => file.endsWith(".yaml") && file.includes("-")),
+    files: versionFilePaths,
   },
 ]
 
@@ -74,6 +65,10 @@ function detail(err) {
     case "format":
       return `must be a ${params.format}${got}`
     case "pattern":
+      // The chart.version pattern is a generated grammar nobody reads.
+      if (err.instancePath.endsWith("/chart/version")) {
+        return `must be a chart version or a range, e.g. 0.7.1, ">=0.7.1", "^0.7.1"${got}`
+      }
       return `must match /${params.pattern}/${got}`
     case "type":
       return `must be ${[].concat(params.type).join(" or ")}${got}`
@@ -142,7 +137,7 @@ for (const check of checks) {
 // and a variant named as tuned must have its result recorded. swiss does not
 // check any of it -- tuning is display only, and a mistake in it must not stop
 // a catalog loading for deploys -- so it is caught here instead.
-for (const meta of modelFiles((file) => file === "metadata.yaml")) {
+for (const meta of metadataFiles) {
   let tuning
   try {
     tuning = YAML.parse(fs.readFileSync(meta, "utf8"))?.tuning
@@ -155,10 +150,9 @@ for (const meta of modelFiles((file) => file === "metadata.yaml")) {
 
   const dir = path.dirname(meta)
   const published = new Map()
-  for (const file of fs.readdirSync(dir)) {
-    if (!file.endsWith(".yaml") || !file.includes("-")) continue
+  for (const rel of versionFiles(path.basename(dir))) {
     try {
-      const doc = YAML.parse(fs.readFileSync(path.join(dir, file), "utf8"))
+      const doc = YAML.parse(fs.readFileSync(path.join(root, rel), "utf8"))
       if (doc?.version) published.set(String(doc.version), new Set((doc.variants ?? []).map((v) => v?.id)))
     } catch {
       // reported by the schema check above

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Validate every model directory, then check index.json is not stale. This is
-# the whole of CI for this repo.
+# Validate every model directory, and that the index builds. Local: CI runs
+# validate:schema and test:lib, and the Pages build guards published versions.
 #
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -8,22 +8,8 @@ cd "$(dirname "$0")/.."
 metas=(models/*/metadata.yaml)
 versions=(models/*/*-*.yaml)
 
-schema_check() {
-  local schema="$1"; shift
-  if command -v check-jsonschema >/dev/null; then
-    check-jsonschema --schemafile "$schema" "$@"
-  elif command -v ajv >/dev/null; then
-    local tmp; tmp="$(mktemp -d)"
-    for f in "$@"; do yq -o=json "$f" > "$tmp/$(echo "$f" | tr / _).json"; done
-    ajv validate -s "$schema" --spec=draft2020 -d "$tmp/*.json"
-  else
-    echo "need check-jsonschema (pipx install check-jsonschema) or ajv (npm i -g ajv-cli)" >&2
-    exit 1
-  fi
-}
-
-schema_check schema/metadata.schema.json "${metas[@]}"
-schema_check schema/version.schema.json "${versions[@]}"
+# Every schema, plus the cross-file tuning checks: the same check CI runs.
+node hack/validate-schema.js
 
 for meta in "${metas[@]}"; do
   dir="$(dirname "$meta")"
@@ -62,12 +48,8 @@ for dir in models/*/; do
   [ "$count" -gt 0 ] || { echo "$dir: no version files" >&2; exit 1; }
 done
 
-./hack/build-index.sh >/dev/null
-if ! git diff --quiet -- index.json; then
-  echo "index.json is stale -- run ./hack/build-index.sh and commit" >&2
-  git --no-pager diff --stat -- index.json
-  exit 1
-fi
+# The index has to build; it is not committed, so there is nothing to compare.
+node hack/build-index.js >/dev/null
 
 # A published version is immutable: consumers pin it and verify its digest. A
 # change to one already committed is a rewritten release, and the digest is how a

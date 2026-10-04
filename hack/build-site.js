@@ -1,16 +1,15 @@
 #!/usr/bin/env node
 /**
- * Build the GitHub Pages site: the page is built from models/, and the catalog
- * itself is published beside it from the committed index.json, so the site's
- * URL is a catalog location swiss can read.
+ * Build the GitHub Pages site: the page and the catalog swiss reads, both from
+ * models/, so the site's URL is a catalog location.
  *
  * Output: site/
  *   index.html
  *   catalog.json          — derived catalog for the page
  *   assets/site.css
  *   models/<name>/*.html  — perf reports copied from the repo
- *   index.json            — the committed index, byte for byte
- *   models/<name>/*.yaml  — every version file it names, digest-checked
+ *   index.json            — the index, built from models/
+ *   models/<name>/*.yaml  — every version file it names
  *
  * Optimized-vs-baseline pairs and their uplift come from `tuning` in each
  * model's metadata.yaml. Perf HTML is discovered as models/<name>/*.html (and
@@ -18,13 +17,20 @@
  */
 "use strict";
 
-const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const yaml = require("yaml");
+const {
+  root,
+  modelsDir,
+  readYaml,
+  modelNames,
+  versionFiles,
+  compareVersions,
+  latestOf,
+  buildIndex,
+  serializeIndex,
+} = require("./lib/catalog");
 
-const root = path.resolve(__dirname, "..");
-const modelsDir = path.join(root, "models");
 const outDir = path.join(root, "site");
 
 function rmrf(p) {
@@ -33,35 +39,6 @@ function rmrf(p) {
 
 function mkdirp(p) {
   fs.mkdirSync(p, { recursive: true });
-}
-
-function readYaml(p) {
-  return yaml.parse(fs.readFileSync(p, "utf8"));
-}
-
-function semverKey(v) {
-  // Split on the first "-" only: prerelease identifiers may contain dashes.
-  const s = String(v);
-  const dash = s.indexOf("-");
-  const core = dash === -1 ? s : s.slice(0, dash);
-  const pre = dash === -1 ? "" : s.slice(dash + 1);
-  const nums = core.split(".").map((x) => {
-    const n = Number(x);
-    return Number.isFinite(n) ? n : 0;
-  });
-  while (nums.length < 3) nums.push(0);
-  return { nums, pre: pre || "" };
-}
-
-function cmpVersion(a, b) {
-  const A = semverKey(a);
-  const B = semverKey(b);
-  for (let i = 0; i < 3; i++) {
-    if (A.nums[i] !== B.nums[i]) return A.nums[i] - B.nums[i];
-  }
-  if (!A.pre && B.pre) return 1;
-  if (A.pre && !B.pre) return -1;
-  return A.pre.localeCompare(B.pre);
 }
 
 function requiresSummary(req) {
@@ -127,9 +104,8 @@ function escapeHtml(s) {
 
 function loadCatalog() {
   const models = [];
-  for (const name of fs.readdirSync(modelsDir).sort()) {
+  for (const name of modelNames()) {
     const dir = path.join(modelsDir, name);
-    if (!fs.statSync(dir).isDirectory()) continue;
     const metaPath = path.join(dir, "metadata.yaml");
     if (!fs.existsSync(metaPath)) {
       console.error(`${dir}: missing metadata.yaml`);
@@ -148,9 +124,8 @@ function loadCatalog() {
       }));
 
     const versions = [];
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.endsWith(".yaml") || f === "metadata.yaml") continue;
-      const doc = readYaml(path.join(dir, f));
+    for (const rel of versionFiles(name)) {
+      const doc = readYaml(path.join(root, rel));
       const raw = doc.variants || [];
       // Schema: the first variant is the default when none is marked.
       const defaultIdx = Math.max(0, raw.findIndex((v) => v.default));
@@ -172,17 +147,18 @@ function loadCatalog() {
       });
       versions.push({
         version: doc.version,
-        path: `models/${name}/${f}`,
+        path: rel,
         servedName: doc.servedName || null,
         variants,
       });
     }
-    versions.sort((a, b) => cmpVersion(a.version, b.version));
+    versions.sort((a, b) => compareVersions(a.version, b.version));
     if (versions.length === 0) {
       console.error(`${dir}: no version files`);
       process.exit(1);
     }
-    const latest = versions[versions.length - 1];
+    const newest = latestOf(versions.map((v) => v.version));
+    const latest = versions.find((v) => v.version === newest);
     const comparison = comparisonFor(name, tuning, latest);
 
     models.push({
@@ -1424,48 +1400,66 @@ function copyReports(catalog) {
 }
 
 // The catalog itself, published beside the page: index.json and every version
-// file it names, at the paths it names, so the site's URL is a catalog location
-// -- swiss fetches entries relative to index.json.
+// file it names, at the paths it names -- swiss fetches entries relative to
+// index.json.
 //
-// What is published is the committed index.json, byte for byte: it is the
-// reviewed artifact, and swiss's catalog ref is computed from its bytes. A
-// version file added since it was last regenerated is simply not published
-// yet. Every file it does name is checked against its digest first, so the
-// site never serves an entry swiss would refuse -- an edited published version
-// or a deleted one fails the build instead.
-function publishCatalog() {
-  const raw = fs.readFileSync(path.join(root, "index.json"));
-  const index = JSON.parse(raw);
+// A published version is immutable: a deploy recorded its digest. The index
+// live at catalog.yaml's site is what consumers hold, so it is the baseline: a
+// version it lists must still be here, byte for byte. REWRITES says what to do
+// when one is not:
+//
+//   refuse  fail the build (the default)
+//   warn    report it and build anyway (pull requests: the live site is master's)
+//   allow   publish it: a deliberate in-place edit, deployed by hand
+//
+// PUBLISHED_INDEX points the baseline elsewhere: a URL, a file, or "none".
+async function publishedIndex() {
+  const from = process.env.PUBLISHED_INDEX || new URL("index.json", readYaml(path.join(root, "catalog.yaml")).site).href;
+  if (from === "none") return null;
+  if (!/^https?:\/\//.test(from)) return JSON.parse(fs.readFileSync(from, "utf8"));
+  const res = await fetch(from);
+  if (res.status === 404) return null; // nothing published yet
+  if (!res.ok) {
+    throw new Error(`${from}: ${res.status} -- cannot check published versions are unchanged; PUBLISHED_INDEX=none skips the check`);
+  }
+  return res.json();
+}
+
+function rewritesOf(published, index) {
+  const now = new Map(index.models.flatMap((m) => m.versions.map((v) => [v.path, v.digest])));
+  const out = [];
+  for (const m of published?.models ?? []) {
+    for (const v of m.versions) {
+      if (!now.has(v.path)) out.push(`${v.path}: published, now deleted -- deprecate the model instead`);
+      else if (now.get(v.path) !== v.digest) out.push(`${v.path}: published, now edited -- publish a new version instead`);
+    }
+  }
+  return out;
+}
+
+async function publishCatalog() {
+  const index = buildIndex();
+  const mode = process.env.REWRITES || "refuse";
+  if (!["refuse", "warn", "allow"].includes(mode)) throw new Error(`REWRITES=${mode}: want refuse, warn or allow`);
+  const rewrites = rewritesOf(await publishedIndex(), index);
+  if (rewrites.length && mode !== "allow") {
+    const text = rewrites.join("\n");
+    if (mode === "refuse") throw new Error(`${text}\n(REWRITES=allow publishes them: a deliberate in-place edit)`);
+    console.warn(`${text}\n(warn only: a deploy refuses these unless run with REWRITES=allow)`);
+  }
   let files = 0;
   for (const m of index.models) {
     for (const v of m.versions) {
-      const rel = path.posix.normalize(v.path);
-      if (!rel.startsWith("models/") || rel.includes("..")) {
-        throw new Error(`index.json: ${m.name} ${v.version}: path ${v.path} is outside models/`);
-      }
-      const src = path.join(root, rel);
-      if (!fs.existsSync(src)) {
-        throw new Error(
-          `index.json: ${m.name} ${v.version} names ${rel}, which is not in the repo -- a published version was deleted; deprecate the model instead`
-        );
-      }
-      const body = fs.readFileSync(src);
-      const digest = "sha256:" + crypto.createHash("sha256").update(body).digest("hex");
-      if (digest !== v.digest) {
-        throw new Error(
-          `${rel}: its digest is ${digest}, but index.json published ${v.digest} -- a published version was edited; publish a new version instead`
-        );
-      }
-      mkdirp(path.dirname(path.join(outDir, rel)));
-      fs.writeFileSync(path.join(outDir, rel), body);
+      mkdirp(path.dirname(path.join(outDir, v.path)));
+      fs.copyFileSync(path.join(root, v.path), path.join(outDir, v.path));
       files++;
     }
   }
-  fs.writeFileSync(path.join(outDir, "index.json"), raw);
-  return { models: index.models.length, files };
+  fs.writeFileSync(path.join(outDir, "index.json"), serializeIndex(index));
+  return { models: index.models.length, files, rewrites: mode === "allow" ? rewrites.length : 0 };
 }
 
-function main() {
+async function main() {
   const catalog = loadCatalog();
   rmrf(outDir);
   mkdirp(path.join(outDir, "assets"));
@@ -1478,7 +1472,7 @@ function main() {
   copyReports(catalog);
   let published;
   try {
-    published = publishCatalog();
+    published = await publishCatalog();
   } catch (err) {
     console.error(err.message);
     process.exit(1);
@@ -1487,7 +1481,8 @@ function main() {
     `site/: ${catalog.count} models, ` +
       `${catalog.models.filter((m) => m.comparison).length} optimized-vs-baseline, ` +
       `${catalog.models.reduce((n, m) => n + m.reports.length, 0)} perf HTML; ` +
-      `catalog: ${published.models} models, ${published.files} version files`
+      `catalog: ${published.models} models, ${published.files} version files` +
+      (published.rewrites ? `, ${published.rewrites} rewritten in place (REWRITES=allow)` : "")
   );
 }
 

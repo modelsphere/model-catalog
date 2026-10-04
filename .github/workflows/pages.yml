@@ -5,6 +5,11 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+    inputs:
+      allow_rewrites:
+        description: Publish published versions edited in place (a deliberate rewrite)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -29,22 +34,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # index.json is regenerated on master after a merge, so a push can land
-      # before it is. The site then still publishes the committed index, which
-      # stays consistent -- models added since are just not in it yet -- and
-      # this says so rather than failing the deploy. Not on pull requests,
-      # where index.json is stale by rule.
-      - name: Check index.json is current
-        if: github.event_name != 'pull_request'
-        run: |
-          ./hack/build-index.sh >/dev/null
-          if ! git diff --quiet -- index.json; then
-            echo "::warning title=index.json is stale::models/ has changed since index.json was generated, so the published catalog does not include it yet. Run ./hack/build-index.sh on master and commit index.json."
-          fi
-          git checkout -- index.json
-
+      # index.json is built here, from models/, and checked against the one live
+      # on the site: a published version must not change (hack/build-site.js).
       - name: Build Pages site and catalog
         run: npm run build:site
+        env:
+          REWRITES: ${{ github.event_name == 'pull_request' && 'warn' || (inputs.allow_rewrites && 'allow' || 'refuse') }}
 
       - name: Upload Pages artifact
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
