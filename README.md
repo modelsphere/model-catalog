@@ -132,6 +132,23 @@ editing `1.2.0` — a rewritten version silently changes what every existing dep
 would recompose to, which is exactly what the digest exists to catch.
 `hack/validate.sh` refuses a commit that edits an already-published file.
 
+## Chart versions
+
+`variants[].chart.version` is one chart version or a range, in helm's constraint
+syntax. A range is how a chart fix reaches a published model version without
+publishing a new one.
+
+| `chart.version` | means |
+| --- | --- |
+| `0.7.1` | exactly 0.7.1 |
+| `">=0.7.1"` | 0.7.1 or newer (quoted: a bare `>` starts a YAML block scalar) |
+| `"^0.7.1"` | 0.7.x from 0.7.1; in 0.x, a minor bump is the breaking one |
+| `">=0.7.1 <0.9.0"` | both |
+
+A deploy still pins: swissd records the one version the range resolved to (the
+newest in range, or one the operator picks) and an upgrade keeps it until asked
+to move. Prereleases match only a range that names one.
+
 ## What belongs here
 
 A model, and the variants it can be served as. A **variant** is a hardware and
