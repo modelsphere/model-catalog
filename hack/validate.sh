@@ -62,9 +62,9 @@ for dir in models/*/; do
   [ "$count" -gt 0 ] || { echo "$dir: no version files" >&2; exit 1; }
 done
 
-./hack/build-index.sh >/dev/null
+node hack/build-index.js >/dev/null
 if ! git diff --quiet -- index.json; then
-  echo "index.json is stale -- run ./hack/build-index.sh and commit" >&2
+  echo "index.json is stale -- run npm run build:index and commit" >&2
   git --no-pager diff --stat -- index.json
   exit 1
 fi

@@ -54,7 +54,7 @@ catalogs:
 
 A deploy records the model version and the sha256 of its file, so it can be
 reproduced months later: a published version never changes. To point swiss at
-this checkout instead (needs `yq`, `jq` and `python3`):
+this checkout instead (needs `npm install` and `python3`):
 
 ```sh
 ./hack/serve.sh                                      # http://127.0.0.1:8000
@@ -104,7 +104,8 @@ schema/version.schema.json    what a version and its variants are
 models/<name>/metadata.yaml         shared by every version, editable
 models/<name>/<name>-<version>.yaml one version and its variants, immutable
 docs/authoring.md             schema reference, and how to add a model
-hack/build-index.sh           regenerate index.json
+hack/build-index.js           regenerate index.json (npm run build:index)
+hack/lib/catalog.js           what every step reads the catalog through
 hack/build-site.js            build the GitHub Pages site into site/
 hack/validate.sh              CI
 hack/serve.sh                 serve it over HTTP, for local development
@@ -187,12 +188,12 @@ file must match its directory and filename.
 
 `index.json` is generated but committed, so what consumers fetch is the reviewed
 artifact rather than something built on demand. Pull requests change `models/`
-only; `index.json` is regenerated with `./hack/build-index.sh` on `master`
+only; `index.json` is regenerated with `npm run build:index` on `master`
 after merge, and CI rejects a PR that touches it. It carries no build timestamp:
 a committed generated file has to produce an empty diff when nothing changed, or
 the staleness check in `validate.sh` cannot tell fresh from stale.
 
-Needs `yq` and `jq`, plus `check-jsonschema` or `npm install` (`hack/validate-schema.js`). `npm install` installs a pre-commit hook that runs the Node schema check.
+Needs `npm install` (the index build and `hack/validate-schema.js`), plus `yq` for `validate.sh`'s cross-file checks. `npm install` installs a pre-commit hook that runs the Node schema check.
 
 ## Not settled
 
@@ -263,7 +264,7 @@ requests build it without deploying. It is two things at one URL:
   the digest `index.json` published, so an edited or deleted published version
   fails the build rather than being served. A model merged since `index.json`
   was last regenerated is on the page but not yet in the catalog; the deploy
-  warns until `./hack/build-index.sh` is run on `master` and committed.
+  warns until `npm run build:index` is run on `master` and committed.
 
 ```sh
 npm ci

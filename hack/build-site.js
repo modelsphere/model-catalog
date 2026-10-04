@@ -18,13 +18,19 @@
  */
 "use strict";
 
-const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const yaml = require("yaml");
+const {
+  root,
+  modelsDir,
+  readYaml,
+  modelNames,
+  versionFiles,
+  digest,
+  compareVersions,
+  latestOf,
+} = require("./lib/catalog");
 
-const root = path.resolve(__dirname, "..");
-const modelsDir = path.join(root, "models");
 const outDir = path.join(root, "site");
 
 function rmrf(p) {
@@ -33,35 +39,6 @@ function rmrf(p) {
 
 function mkdirp(p) {
   fs.mkdirSync(p, { recursive: true });
-}
-
-function readYaml(p) {
-  return yaml.parse(fs.readFileSync(p, "utf8"));
-}
-
-function semverKey(v) {
-  // Split on the first "-" only: prerelease identifiers may contain dashes.
-  const s = String(v);
-  const dash = s.indexOf("-");
-  const core = dash === -1 ? s : s.slice(0, dash);
-  const pre = dash === -1 ? "" : s.slice(dash + 1);
-  const nums = core.split(".").map((x) => {
-    const n = Number(x);
-    return Number.isFinite(n) ? n : 0;
-  });
-  while (nums.length < 3) nums.push(0);
-  return { nums, pre: pre || "" };
-}
-
-function cmpVersion(a, b) {
-  const A = semverKey(a);
-  const B = semverKey(b);
-  for (let i = 0; i < 3; i++) {
-    if (A.nums[i] !== B.nums[i]) return A.nums[i] - B.nums[i];
-  }
-  if (!A.pre && B.pre) return 1;
-  if (A.pre && !B.pre) return -1;
-  return A.pre.localeCompare(B.pre);
 }
 
 function requiresSummary(req) {
@@ -127,9 +104,8 @@ function escapeHtml(s) {
 
 function loadCatalog() {
   const models = [];
-  for (const name of fs.readdirSync(modelsDir).sort()) {
+  for (const name of modelNames()) {
     const dir = path.join(modelsDir, name);
-    if (!fs.statSync(dir).isDirectory()) continue;
     const metaPath = path.join(dir, "metadata.yaml");
     if (!fs.existsSync(metaPath)) {
       console.error(`${dir}: missing metadata.yaml`);
@@ -148,9 +124,8 @@ function loadCatalog() {
       }));
 
     const versions = [];
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.endsWith(".yaml") || f === "metadata.yaml") continue;
-      const doc = readYaml(path.join(dir, f));
+    for (const rel of versionFiles(name)) {
+      const doc = readYaml(path.join(root, rel));
       const raw = doc.variants || [];
       // Schema: the first variant is the default when none is marked.
       const defaultIdx = Math.max(0, raw.findIndex((v) => v.default));
@@ -172,17 +147,18 @@ function loadCatalog() {
       });
       versions.push({
         version: doc.version,
-        path: `models/${name}/${f}`,
+        path: rel,
         servedName: doc.servedName || null,
         variants,
       });
     }
-    versions.sort((a, b) => cmpVersion(a.version, b.version));
+    versions.sort((a, b) => compareVersions(a.version, b.version));
     if (versions.length === 0) {
       console.error(`${dir}: no version files`);
       process.exit(1);
     }
-    const latest = versions[versions.length - 1];
+    const newest = latestOf(versions.map((v) => v.version));
+    const latest = versions.find((v) => v.version === newest);
     const comparison = comparisonFor(name, tuning, latest);
 
     models.push({
@@ -1450,10 +1426,10 @@ function publishCatalog() {
         );
       }
       const body = fs.readFileSync(src);
-      const digest = "sha256:" + crypto.createHash("sha256").update(body).digest("hex");
-      if (digest !== v.digest) {
+      const got = digest(body);
+      if (got !== v.digest) {
         throw new Error(
-          `${rel}: its digest is ${digest}, but index.json published ${v.digest} -- a published version was edited; publish a new version instead`
+          `${rel}: its digest is ${got}, but index.json published ${v.digest} -- a published version was edited; publish a new version instead`
         );
       }
       mkdirp(path.dirname(path.join(outDir, rel)));

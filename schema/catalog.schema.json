@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://swiss.catalog/schema/catalog.schema.json",
   "title": "Swiss catalog settings",
-  "description": "catalog.yaml: settings for the catalog as a whole, published in index.json by hack/build-index.sh.",
+  "description": "catalog.yaml: settings for the catalog as a whole, published in index.json by hack/build-index.js.",
   "type": "object",
   "additionalProperties": false,
   "required": [

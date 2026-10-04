@@ -37,9 +37,9 @@ jobs:
       - name: Check index.json is current
         if: github.event_name != 'pull_request'
         run: |
-          ./hack/build-index.sh >/dev/null
+          npm run -s build:index >/dev/null
           if ! git diff --quiet -- index.json; then
-            echo "::warning title=index.json is stale::models/ has changed since index.json was generated, so the published catalog does not include it yet. Run ./hack/build-index.sh on master and commit index.json."
+            echo "::warning title=index.json is stale::models/ has changed since index.json was generated, so the published catalog does not include it yet. Run npm run build:index on master and commit index.json."
           fi
           git checkout -- index.json
 

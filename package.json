@@ -17,6 +17,8 @@
   "scripts": {
     "test": "./hack/validate.sh",
     "validate:schema": "node hack/validate-schema.js",
+    "build:index": "node hack/build-index.js",
+    "test:lib": "node --test 'hack/lib/*.test.js'",
     "prepare": "husky",
     "build:site": "node hack/build-site.js"
   },

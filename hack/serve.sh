@@ -10,6 +10,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 port="${1:-8000}"
-./hack/build-index.sh >/dev/null   # never serve a stale index
+node hack/build-index.js >/dev/null   # never serve a stale index
 
 exec python3 -m http.server "$port" --bind 0.0.0.0
