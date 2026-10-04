@@ -171,3 +171,5 @@ cscope.po.out
 
 
 # End of https://www.toptal.com/developers/gitignore/api/tags
+# Built from models/ by hack/build-index.js; the Pages build publishes it.
+/index.json

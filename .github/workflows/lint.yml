@@ -7,28 +7,11 @@ permissions:
   contents: read
 
 jobs:
-  index-json-must-not-change:
-    name: index.json must not change
+  validate:
+    name: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Fail if the PR touches index.json
-        run: |
-          set -euo pipefail
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          changed="$(git diff --name-only "$base"..."$head" -- index.json || true)"
-          if [ -n "$changed" ]; then
-            echo "PRs must not change index.json (generated published surface at repo root)." >&2
-            echo "Changed files matching the guard:" >&2
-            printf '%s\n' "$changed" >&2
-            echo "Edit models/ (or schema/) in the PR; regenerate index.json on the default branch with npm run build:index." >&2
-            exit 1
-          fi
-          echo "ok: index.json unchanged in this PR"
 
       - uses: actions/setup-node@v7
         with:

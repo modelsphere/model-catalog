@@ -86,8 +86,8 @@ cp -r models/glm5.1 models/my-model  # or models/kimi-k2.5 for a multi-node mode
    npm run build:site        # then open site/index.html
    ```
 
-4. Open a pull request. Leave `index.json` alone: CI rejects a PR that changes
-   it, and it is regenerated on `master` after merge.
+4. Open a pull request. `index.json` is not committed: the Pages build makes it
+   from `models/` when the change reaches `master`.
 
 If you tuned it, record the result as `tuning` in `metadata.yaml`; see
 [GitHub Pages](#github-pages). A published version never changes. To fix one,
@@ -97,7 +97,7 @@ add `my-model-1.0.1.yaml` instead of editing it. Every field is described in
 ## Development
 
 ```
-index.json                    generated, the published surface
+index.json                    generated, not committed: the published surface
 catalog.yaml                  catalog-wide settings: where the site is published
 schema/metadata.schema.json   what a model is
 schema/version.schema.json    what a version and its variants are
@@ -186,14 +186,13 @@ The steps are under [Get started](#add-a-model), and every field is described
 in [docs/authoring.md](docs/authoring.md). The name and version inside a version
 file must match its directory and filename.
 
-`index.json` is generated but committed, so what consumers fetch is the reviewed
-artifact rather than something built on demand. Pull requests change `models/`
-only; `index.json` is regenerated with `npm run build:index` on `master`
-after merge, and CI rejects a PR that touches it. It carries no build timestamp:
-a committed generated file has to produce an empty diff when nothing changed, or
-the staleness check in `validate.sh` cannot tell fresh from stale.
+`index.json` is not committed. It is a function of `models/` and
+`catalog.yaml`, which are what review covers, and the Pages build makes it on
+every deploy (`npm run build:index` makes the same file locally). It carries no
+build timestamp, so the same tree always gives the same bytes -- and the same
+catalog ref in swiss.
 
-Needs `npm install` (the index build and `hack/validate-schema.js`), plus `yq` for `validate.sh`'s cross-file checks. `npm install` installs a pre-commit hook that runs the Node schema check.
+Needs `npm install`, plus `yq` for `validate.sh`'s naming and layout checks. `npm install` installs a pre-commit hook that runs the Node schema check.
 
 ## Not settled
 
@@ -259,12 +258,21 @@ deployed by `.github/workflows/pages.yml` on every push to `master`. Pull
 requests build it without deploying. It is two things at one URL:
 
 - **the page**, built from `models/`, so it shows a model as soon as it merges;
-- **the catalog** swiss reads: the committed `index.json`, byte for byte, and
-  every version file it names, at the same paths. Each file is checked against
-  the digest `index.json` published, so an edited or deleted published version
-  fails the build rather than being served. A model merged since `index.json`
-  was last regenerated is on the page but not yet in the catalog; the deploy
-  warns until `npm run build:index` is run on `master` and committed.
+- **the catalog** swiss reads: `index.json`, built from `models/`, and every
+  version file it names, at the same paths.
+
+A published version must not change: deploys pinned its digest. So the build
+compares against the `index.json` live on the site, and a version listed there
+that is now edited or deleted is handled by `REWRITES`:
+
+| `REWRITES` | when | does |
+| --- | --- | --- |
+| `refuse` | a push to `master` | fails the deploy |
+| `warn` | a pull request | reports it; the live site is `master`'s, not the PR's base |
+| `allow` | **Run workflow** with *allow rewrites* | publishes it: a deliberate in-place edit |
+
+`PUBLISHED_INDEX` points the comparison at another URL or file, or `none` to
+skip it (an offline build).
 
 ```sh
 npm ci
@@ -308,5 +316,5 @@ exist until the site is deployed.
 
 swissd refuses an index with a field it does not know. A field added to
 `index.json` -- `site` and `tuning` among them -- has to be understood by every
-swissd reading this catalog before `index.json` is regenerated with it.
+swissd reading this catalog before it merges: the next deploy publishes it.
 
