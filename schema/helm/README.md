@@ -1,8 +1,9 @@
 # Helm validation schemas
 
 `npm run validate:helm` checks every variant in selected model version YAMLs.
-It downloads **released** charts from the official repository, lets Helm merge
-the chart defaults with `variant.values`, runs `helm lint --strict` and
+By default it downloads the **latest stable released** chart for each engine
+from the official repository, lets Helm merge the chart defaults with
+`variant.values`, runs `helm lint --strict` and
 `helm template`, then runs `kubeconform -strict`. It never ignores missing
 schemas. It does not build dependencies: the dependency charts in the released
 package are the ones being checked.
@@ -18,6 +19,7 @@ npm ci
 npm run helm:install
 npm run validate:helm -- --base origin/master
 npm run validate:helm -- --all
+npm run validate:helm -- --all --chart-mode declared
 npm run validate:helm -- models/glm5.3/glm5.3-1.0.1.yaml
 npm run test:helm
 npm run test:helm:integration
@@ -36,16 +38,34 @@ Only absent `values.modelRoute.nginx.outputConfigMap` is supplied with
 are preserved. No feature is disabled to make validation pass. Missing `values`
 means chart defaults plus that route placeholder.
 
-The repository index is fetched once per invocation. Helm resolves the declared
-version constraint, and each resolved chart package is downloaded once and
-checked against the index's SHA-256 digest. Every variant records the declared
-constraint, resolved version and digest. Version ranges check the currently
-selected release; they do not guarantee all past or future matching releases.
+The repository index is freshly fetched once per invocation. The default
+`--chart-mode latest` (also explicitly used in CI) selects the newest stable
+release of `sglang >=0.8.0` or `vllm >=0.5.0` in that snapshot. Prereleases are
+excluded. Future stable releases, including new minor or major versions, are
+automatically selected on subsequent runs. All selected variants of the same
+engine use the same release, even when their YAML pins an older chart or imposes
+an upper bound. The latest selection is never reused across invocations.
+
+Helm separately resolves the YAML declaration and checks that its selected
+release meets the configured minimum. A missing, invalid or obsolete declared
+release still fails the check. The YAML declaration continues to control
+deployment; latest-mode validation checks forward compatibility and does not
+change that declaration. `--chart-mode declared` renders the actual release
+selected by the YAML constraint, for deployment compatibility and reproduction.
+No matching latest release or a failed latest download causes a failure, with
+no fallback to the declared chart.
+
+Each selected package is downloaded once and checked against the repository
+index's SHA-256 digest. Every variant records the validation mode, original
+declaration, resolved declaration version, validation chart version, selection
+constraint and package digest. This checks the selected release at run time;
+it does not guarantee all historical or future releases are compatible.
 
 The default artifact directory is `artifacts/helm-validation/`; override it with
 `--output DIR`. `summary.json` identifies files, variants, actual chart versions,
-stage results and per-variant artifact directories. Each invocation has a fresh
-`run-*` directory with extracted values, rendered manifests, tool logs, downloaded
+mode, resolved declaration versions, stage results and per-variant artifact
+directories. Each invocation has a fresh `run-*` directory with extracted values,
+rendered manifests, tool logs, downloaded
 charts, a schema cache and isolated Helm settings. CI uploads these artifacts
 even on failure. Helm and kubeconform errors retain field paths.
 
@@ -96,6 +116,7 @@ npm run helm:update-schemas
 npm run test:helm
 npm run test:helm:integration
 npm run validate:helm -- --all
+npm run validate:helm -- --all --chart-mode declared
 ```
 
 Review generated changes together with provenance. Changes to conversion rules
@@ -103,13 +124,15 @@ must regenerate the schemas; bump the converter version when changing an
 already deployed conversion contract. Tool updates must also update archive
 checksums in `config.json`.
 
-The acceptance suite checks GLM's fixed and ranged chart declarations, a fixed
-vLLM release, both Gemma variants, an LWS deployment, default values, misspelled
+The acceptance suite runs both latest and declared modes. It checks GLM's fixed
+and ranged chart declarations, a fixed vLLM release, both Gemma variants, an LWS
+deployment, default values, misspelled
 fields, incorrect types, invalid Kubernetes nesting, invalid CRD fields, template errors, no matching
 release, legacy chart rejection, and unknown/mismatched GVKs. Rendered custom
 resources must use the canonical Modelsphere groups. Unit tests additionally
-cover selection, download failures, a missing chart values schema, empty renders and failure
-propagation.
+cover selection, future stable releases beyond fixed pins, prerelease exclusion,
+package reuse, missing latest releases, download failures, a missing chart values
+schema, empty renders and failure propagation.
 
 ## Rollout and limits
 

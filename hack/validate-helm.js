@@ -5,18 +5,18 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const YAML = require("yaml");
-const {root} = require("./lib/catalog");
+const {root, compareVersions, isPrerelease} = require("./lib/catalog");
 const {command, selectFiles, variantValues, kubeconformArgs, parseVersions} = require("./lib/helm-validation");
 const config = require("../schema/helm/config.json");
 
 function options(args) {
-  const opts = {files: [], output: path.join(root, "artifacts/helm-validation")};
+  const opts = {files: [], chartMode: "latest", output: path.join(root, "artifacts/helm-validation")};
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--all") opts.all = true;
-    else if (["--base", "--output"].includes(arg)) {
+    else if (["--base", "--output", "--chart-mode"].includes(arg)) {
       if (!args[i + 1] || args[i + 1].startsWith("--")) throw new Error(`${arg}: missing argument`);
-      opts[arg.slice(2)] = args[++i];
+      opts[arg === "--chart-mode" ? "chartMode" : arg.slice(2)] = args[++i];
     } else if (arg.startsWith("-")) throw new Error(`unknown option ${arg}`);
     else opts.files.push(arg);
   }
@@ -24,6 +24,7 @@ function options(args) {
     throw new Error("choose one of --all, --base REF, or explicit files");
   }
   opts.output = path.resolve(root, opts.output);
+  if (!["latest", "declared"].includes(opts.chartMode)) throw new Error("--chart-mode must be latest or declared");
   return opts;
 }
 
@@ -32,7 +33,8 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
   fs.mkdirSync(opts.output, {recursive: true});
   // Each invocation has isolated Helm settings and a fresh repository snapshot.
   const runDir = fs.mkdtempSync(path.join(opts.output, "run-"));
-  const summary = {config, files: [], results: []};
+  const chartMode = opts.chartMode ?? "latest";
+  const summary = {config, chartMode, files: [], results: []};
   const writeSummary = () => {
     const body = JSON.stringify(summary, null, 2) + "\n";
     fs.writeFileSync(path.join(opts.output, "summary.json"), body);
@@ -59,6 +61,7 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
     return result.stdout;
   };
   try {
+    if (!["latest", "declared"].includes(chartMode)) throw new Error("chartMode must be latest or declared");
     const selection = selectFiles(root, opts);
     Object.assign(summary, selection, {runDirectory: path.relative(root, runDir)});
     log(`Selection: ${selection.reason}${selection.mergeBase ? ` (${selection.mergeBase})` : ""}`);
@@ -66,7 +69,7 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
       log("No model version configuration changes (无版本配置变更).");
       return true;
     }
-    log(`Validating ${selection.files.length} version files; Kubernetes ${config.kubernetesVersion}.`);
+    log(`Validating ${selection.files.length} version files; chart mode ${chartMode}; Kubernetes ${config.kubernetesVersion}.`);
     for (const [name, args] of [["helm", ["version", "--short"]], ["kubeconform", ["-v"]]]) {
       const version = requireSuccess(invoke(bin(name), args, runDir, `${name}-version`), "tools").trim();
       if (!new RegExp(`^v${config[`${name}Version`].replaceAll(".", "\\.")}(?:\\+|$)`).test(version)) {
@@ -82,9 +85,23 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
     requireSuccess(invoke(bin("helm"), ["repo", "add", "catalog", config.chartRepository], runDir, "chart-repository"), "chart-repository");
     const index = YAML.parse(fs.readFileSync(path.join(env.HELM_CACHE_HOME, "repository/catalog-index.yaml"), "utf8"));
     const requests = new Map();
+    const resolutions = new Map();
     const packages = new Map();
     const chartDir = path.join(runDir, "charts");
     fs.mkdirSync(chartDir);
+    function resolveChart(name, constraint, dir, stage, stableOnly = false) {
+      const key = JSON.stringify([name, constraint, stableOnly]);
+      if (!resolutions.has(key)) {
+        const search = invoke(bin("helm"), ["search", "repo", `catalog/${name}`, "--versions", "--version", constraint, "--output", "json"], dir, stage);
+        // Helm searches descriptions as well as names. Retain its version order
+        // and require an exact name; latest checks never select prereleases.
+        const matches = JSON.parse(requireSuccess(search, stage)).filter((m) =>
+          m.name === `catalog/${name}` && (!stableOnly || !isPrerelease(m.version)));
+        if (!matches.length) throw new Error(`chart.version: no published ${name} matches ${JSON.stringify(constraint)}${stableOnly ? " (stable releases only)" : ""}`);
+        resolutions.set(key, matches[0].version);
+      }
+      return resolutions.get(key);
+    }
     function chartFor(chart, dir) {
       const requestKey = JSON.stringify(chart);
       if (requests.has(requestKey)) {
@@ -93,12 +110,17 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
         return cached;
       }
       try {
-        const search = invoke(bin("helm"), ["search", "repo", `catalog/${chart.name}`, "--versions", "--version", chart.version, "--output", "json"], dir, "chart-resolution");
-        // Helm searches descriptions as well as names. Restrict its results to
-        // the exact declared chart, retaining Helm's version precedence.
-        const matches = JSON.parse(requireSuccess(search, "chart-resolution")).filter((m) => m.name === `catalog/${chart.name}`);
-        if (!matches.length) throw new Error(`chart.version: no published ${chart.name} matches ${JSON.stringify(chart.version)}`);
-        const actualVersion = matches[0].version;
+        const minimum = config.minimumChartVersions[chart.name];
+        if (!minimum) throw new Error(`chart.name: unsupported chart ${chart.name}`);
+        // Keep deployment declarations resolvable even when rendering against
+        // latest. A missing or obsolete declared release must still fail CI.
+        const declaredVersion = resolveChart(chart.name, chart.version, dir, "declared-chart-resolution");
+        if (compareVersions(declaredVersion, minimum) < 0) {
+          throw new Error(`chart.version: ${chart.name} ${declaredVersion} is below the required minimum ${minimum}`);
+        }
+        const selectionConstraint = chartMode === "latest" ? `>=${minimum}` : chart.version;
+        const actualVersion = chartMode === "latest" ?
+          resolveChart(chart.name, selectionConstraint, dir, "latest-chart-resolution", true) : declaredVersion;
         const key = `${chart.name}@${actualVersion}`;
         if (!packages.has(key)) {
           requireSuccess(invoke(bin("helm"), ["pull", `catalog/${chart.name}`, "--version", actualVersion, "--destination", chartDir], dir, "chart-download"), "chart-download");
@@ -112,7 +134,7 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
           if (metadata.name !== chart.name || metadata.version !== actualVersion) throw new Error(`${key}: package metadata mismatch`);
           packages.set(key, {archive, name: chart.name, actualVersion, digest: `sha256:${digest}`});
         }
-        const pkg = packages.get(key);
+        const pkg = {...packages.get(key), declaredVersion, selectionConstraint};
         requests.set(requestKey, pkg);
         return pkg;
       } catch (err) {
@@ -145,8 +167,9 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
           fs.writeFileSync(valuesFile, YAML.stringify(values));
           stage = "chart";
           const pkg = chartFor(variant.chart, dir);
-          record.chart = {name: pkg.name, version: pkg.actualVersion, digest: pkg.digest};
-          log(`${label}: chart ${pkg.name}@${pkg.actualVersion} ${pkg.digest}`);
+          record.chart = {name: pkg.name, version: pkg.actualVersion, digest: pkg.digest,
+            mode: chartMode, declaredVersion: pkg.declaredVersion, selectionConstraint: pkg.selectionConstraint};
+          log(`${label}: declared ${pkg.name} ${variant.chart.version} -> ${pkg.declaredVersion}; validating ${chartMode} chart ${pkg.name}@${pkg.actualVersion} ${pkg.digest}`);
           fs.writeFileSync(path.join(dir, "chart.json"), JSON.stringify(record.chart, null, 2) + "\n");
           const shared = ["--values", valuesFile, "--kube-version", config.kubernetesVersion];
           // Run both stages even when lint fails: template can expose separate failures.

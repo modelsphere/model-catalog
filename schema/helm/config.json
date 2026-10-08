@@ -3,6 +3,10 @@
   "kubeconformVersion": "0.8.0",
   "kubernetesVersion": "1.36.3",
   "chartRepository": "https://modelsphere.github.io/helm-charts/",
+  "minimumChartVersions": {
+    "sglang": "0.8.0",
+    "vllm": "0.5.0"
+  },
   "kubernetesSchemaCommit": "39a87cd29966bc0b3434e8cfbc2061782c8cb69a",
   "converterVersion": "catalog-crd-schema-v1",
   "toolChecksums": {
