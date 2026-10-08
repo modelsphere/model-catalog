@@ -1,0 +1,12 @@
+apiVersion: catalog.swiss/v1
+name: glm5.2
+displayName: GLM-5.2
+description: GLM-5.2 quantized to NVFP4 with modelopt. Does not fit on one eight-GPU RTX 6000D node -- a two-pod LeaderWorkerSet group, TP8 inside each node and PP2 across the RoCE fabric between them.
+family: glm
+tags:
+  - chat
+  - reasoning
+  - tool-use
+  - vision
+source:
+  hf: nvidia/GLM-5.2-NVFP4

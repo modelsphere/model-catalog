@@ -1,0 +1,196 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v1
+name: deepseek-v4-flash
+version: 1.0.1
+servedName: deepseek-v4-flash
+variants:
+  - id: sglang-tp8-h100-baseline
+    description: 'Baseline: TP8 on eight H100 GPUs, single node.'
+    engine: sglang
+    chart:
+      name: sglang
+      version: ">=0.7.1"
+    image:
+      repository: harbor.4pd.io/hardcore-tech/sglang
+      tag: dev-dsv41
+    requires:
+      gpus: 8
+      topology: single-node
+      gpuProduct:
+        - NVIDIA-H100-80GB-HBM3
+    values:
+      model:
+        hostPathType: Directory
+        contextLength: ''
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - '*.safetensors'
+      extraArgs:
+        - --enable-cache-report
+        - --moe-runner-backend=marlin
+        - --stream-response-default-include-usage
+        - --tp-size=8
+        - --trust-remote-code
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        - name: NVIDIA_DISABLE_REQUIRE
+          value: '1'
+      volumes:
+        - name: dot-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+      volumeMounts:
+        - name: dot-cache
+          mountPath: /root/.cache
+        - name: dshm
+          mountPath: /dev/shm
+      resources:
+        requests:
+          ephemeral-storage: 16Gi
+        limits:
+          ephemeral-storage: 16Gi
+      progressDeadlineSeconds: 7200
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 180
+      terminationGracePeriodSeconds: 3600
+      lifecycle:
+        preStop:
+          drainSeconds: 600
+          pollIntervalSeconds: 5
+        forceShutdown: true
+        preStopKill: true
+      hangWatcher:
+        enabled: true
+  - id: sglang-tp8-h100-optimized
+    default: true
+    description: 'Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node, EAGLE speculative decoding. +51% on the tuning benchmark vs the baseline variant.'
+    engine: sglang
+    chart:
+      name: sglang
+      version: ">=0.7.1"
+    image:
+      repository: harbor.4pd.io/hardcore-tech/sglang
+      tag: dev-dsv41
+    requires:
+      gpus: 8
+      topology: single-node
+      gpuProduct:
+        - NVIDIA-H100-80GB-HBM3
+    values:
+      model:
+        hostPathType: Directory
+        contextLength: ''
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - '*.safetensors'
+      extraArgs:
+        - --enable-cache-report
+        - --moe-runner-backend=marlin
+        - --speculative-algorithm=EAGLE
+        - --speculative-eagle-topk=1
+        - --speculative-num-draft-tokens=4
+        - --speculative-num-steps=3
+        - --stream-response-default-include-usage
+        - --tp-size=8
+        - --trust-remote-code
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        - name: NVIDIA_DISABLE_REQUIRE
+          value: '1'
+      volumes:
+        - name: dot-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+      volumeMounts:
+        - name: dot-cache
+          mountPath: /root/.cache
+        - name: dshm
+          mountPath: /dev/shm
+      resources:
+        requests:
+          ephemeral-storage: 16Gi
+        limits:
+          ephemeral-storage: 16Gi
+      progressDeadlineSeconds: 7200
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 180
+      terminationGracePeriodSeconds: 3600
+      lifecycle:
+        preStop:
+          drainSeconds: 600
+          pollIntervalSeconds: 5
+        forceShutdown: true
+        preStopKill: true
+      hangWatcher:
+        enabled: true
+
+  - id: vllm-tp8-6000d
+    engine: vllm
+    description: TP8 on one eight-GPU RTX 6000D node. Single-node, so no RDMA and no host networking.
+    chart:
+      name: vllm
+      version: ">=0.7.6"
+    image:
+      repository: vllm/vllm-openai
+      tag: v0.30.0
+    requires:
+      gpus: 8
+      topology: single-node
+      gpuProduct:
+        - NVIDIA-RTX-6000D
+    values:
+      model:
+        localPath: /data/models/DeepSeek-V4-Flash
+        mountPath: /models
+        contextLength: ""
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - "*.safetensors"
+      extraArgs:
+        - --tensor-parallel-size=8
+        - --gpu-memory-utilization=0.90
+        - --block-size=256
+        - --max-num-batched-tokens=8192
+        - --max-num-seqs=48
+        - --enable-prefix-caching
+        - --trust-remote-code
+        - --enable-prompt-tokens-details
+        - --allowed-media-domains=none.invalid
+        - --enable-auto-tool-choice
+        - --tool-call-parser=deepseek_v4
+        - --reasoning-parser=deepseek_v4
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        - name: NCCL_DEBUG
+          value: WARN
+      service:
+        port: 8050
+      hangWatcher:
+        enabled: true

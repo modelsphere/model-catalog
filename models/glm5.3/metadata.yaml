@@ -10,4 +10,4 @@ tags:
   - fp4
   - speculative-decoding
 source:
-  hf: zai-org/GLM-5.3-NVFP4
+  hf: nvidia/GLM-5.3-NVFP4
