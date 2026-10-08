@@ -51,8 +51,8 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
   const env = {...process.env, HELM_CONFIG_HOME: path.join(runDir, "helm/config"),
     HELM_CACHE_HOME: path.join(runDir, "helm/cache"), HELM_DATA_HOME: path.join(runDir, "helm/data"),
     HELM_PLUGINS: path.join(runDir, "helm/plugins")};
-  const invoke = (tool, args, dir, stage) => {
-    const result = runCommand(tool, args, {cwd: root, env});
+  const invoke = (tool, args, dir, stage, options = {}) => {
+    const result = runCommand(tool, args, {cwd: root, env, ...options});
     fs.writeFileSync(path.join(dir, `${stage}.log`), result.log);
     return result;
   };
@@ -83,7 +83,9 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
     // CRD schemas are not committed: build them from the lock for this run,
     // which must not rewrite it.
     const schemaDir = path.join(runDir, "crds");
-    requireSuccess(invoke(process.execPath, [path.join(__dirname, "build-crds.js"), "--locked", schemaDir], runDir, "crds"), "crds");
+    // Several downloads, each allowed minutes: outlast them rather than kill the build.
+    requireSuccess(invoke(process.execPath, [path.join(__dirname, "build-crds.js"), "--locked", schemaDir], runDir, "crds",
+      {timeout: 30 * 60 * 1000}), "crds");
     const schemaCache = path.join(runDir, "schema-cache");
     fs.mkdirSync(schemaCache);
     requireSuccess(invoke(bin("helm"), ["repo", "add", "catalog", config.chartRepository], runDir, "chart-repository"), "chart-repository");

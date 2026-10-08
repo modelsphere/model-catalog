@@ -15,9 +15,10 @@ function useEnvProxy() {
   }
 }
 
+// Covers the whole body: the helm archive is ~20 MB, slow through some proxies.
 async function download(url) {
   useEnvProxy();
-  const response = await fetch(url, {signal: AbortSignal.timeout(60000)});
+  const response = await fetch(url, {signal: AbortSignal.timeout(5 * 60 * 1000)});
   if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
   return Buffer.from(await response.arrayBuffer());
 }

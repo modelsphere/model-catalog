@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
+// Install the pinned helm and kubeconform into .cache/helm-validation/bin,
+// refusing an archive whose sha256 differs from config.json.
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -9,32 +11,29 @@ const {root} = require("./lib/catalog");
 const {download} = require("./lib/download");
 const config = require("../schema/crds/config.json");
 
+// Each tool's release archive, and the binary's path inside it.
+const tools = {
+  helm: (version, platform) => [`https://get.helm.sh/helm-v${version}-${platform}.tar.gz`, `${platform}/helm`],
+  kubeconform: (version, platform) =>
+    [`https://github.com/yannh/kubeconform/releases/download/v${version}/kubeconform-${platform}.tar.gz`, "kubeconform"],
+};
+
 async function main() {
   const platform = `${process.platform}-${{x64: "amd64", arm64: "arm64"}[process.arch]}`;
   const sums = config.toolChecksums[platform];
   if (!sums) throw new Error(`unsupported platform: ${platform}`);
   const output = path.join(root, ".cache/helm-validation/bin");
   fs.mkdirSync(output, {recursive: true});
-  for (const name of ["helm", "kubeconform"]) {
+  for (const [name, release] of Object.entries(tools)) {
     const version = config[`${name}Version`];
-    const archive = name === "helm" ? `helm-v${version}-${platform}.tar.gz` : `kubeconform-${platform}.tar.gz`;
-    const url = name === "helm" ? `https://get.helm.sh/${archive}` :
-      `https://github.com/yannh/kubeconform/releases/download/v${version}/${archive}`;
-    const bytes = await download(url);
-    if (crypto.createHash("sha256").update(bytes).digest("hex") !== sums[name]) {
-      throw new Error(`${archive}: checksum mismatch`);
-    }
-    const temp = fs.mkdtempSync(path.join(output, ".install-"));
-    try {
-      const archivePath = path.join(temp, archive);
-      fs.writeFileSync(archivePath, bytes);
-      const member = name === "helm" ? `${platform}/helm` : "kubeconform";
-      execFileSync("tar", ["-xzf", archivePath, "-C", temp, member]);
-      fs.copyFileSync(path.join(temp, member), path.join(output, name));
-      fs.chmodSync(path.join(output, name), 0o755);
-    } finally {
-      fs.rmSync(temp, {recursive: true, force: true});
-    }
+    const [url, member] = release(version, platform);
+    const archive = await download(url);
+    if (crypto.createHash("sha256").update(archive).digest("hex") !== sums[name]) throw new Error(`${url}: checksum mismatch`);
+    const binary = execFileSync("tar", ["-xzOf", "-", member], {input: archive, maxBuffer: 512 * 1024 * 1024});
+    // Rename over the old binary: writing into one that is running fails.
+    const target = path.join(output, name);
+    fs.writeFileSync(`${target}.new`, binary, {mode: 0o755});
+    fs.renameSync(`${target}.new`, target);
     console.log(`Installed ${name} ${version} (${platform}, sha256:${sums[name]})`);
   }
 }
