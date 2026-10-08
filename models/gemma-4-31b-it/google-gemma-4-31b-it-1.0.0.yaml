@@ -76,7 +76,7 @@ variants:
         enabled: true
   - id: sglang-tp4-h100-optimized
     default: true
-    description: 'Tuned by LLM AutoTune: TP4 on four H100 GPUs, single node, NEXTN speculative decoding. Normalized throughput within the SLO vs the baseline variant: +101.9% (50k + 1.5k), -4.6% (8k + 1k).'
+    description: 'Tuned by LLM AutoTune: TP4 on four H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +32.4% (50k + 1.5k), +1.6% (8k + 1k).'
     engine: sglang
     chart:
       name: sglang
@@ -105,24 +105,16 @@ variants:
         - --max-prefill-tokens=16384
         - --mem-fraction-static=0.85
         - --reasoning-parser=gemma4
-        - --speculative-algorithm=NEXTN
-        - --speculative-draft-model-path=/model-assistant
-        - --speculative-eagle-topk=1
-        - --speculative-num-draft-tokens=6
-        - --speculative-num-steps=5
         - --stream-response-default-include-usage
         - --tool-call-parser=gemma4
         - --tp-size=4
+        - --triton-attention-num-kv-splits=16
       env:
         - name: NVIDIA_DISABLE_REQUIRE
           value: '1'
         - name: PYTORCH_ALLOC_CONF
           value: expandable_segments:True
       volumes:
-        - name: draft-model
-          hostPath:
-            path: /mnt/disk0/models/google/gemma-4-31B-it-assistant
-            type: Directory
         - name: dot-cache
           emptyDir:
             sizeLimit: 10Gi
@@ -131,9 +123,6 @@ variants:
             medium: Memory
             sizeLimit: 32Gi
       volumeMounts:
-        - name: draft-model
-          mountPath: /model-assistant
-          readOnly: true
         - name: dot-cache
           mountPath: /root/.cache
         - name: dshm
