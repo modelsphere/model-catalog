@@ -1,0 +1,22 @@
+apiVersion: catalog.swiss/v1
+name: qwen3.8-27b-fp8
+displayName: Qwen3.8-27B-FP8
+description: Qwen3.8-27B-FP8 on 1 H100 GPU or 2 H100 GPUs.
+family: qwen
+tags:
+  - chat
+  - reasoning
+  - tool-use
+source:
+  hf: Qwen/Qwen3.8-27B
+tuning:
+  - version: 1.0.0
+    baseline: sglang-tp1-h100-baseline
+    optimized: sglang-tp2-h100-optimized
+    uplift: 30.1
+    workloads:
+      - name: 50k + 1.5k
+        uplift: 30.1
+      - name: 8k + 1k
+        uplift: 12.1
+    report: qwen3.8-27b-fp8-h100-report.html
