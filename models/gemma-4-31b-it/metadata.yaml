@@ -1,0 +1,12 @@
+apiVersion: catalog.swiss/v1
+name: google-gemma-4-31b-it
+displayName: google/gemma-4-31B-it
+description: google/gemma-4-31B-it on 4 H100 GPUs. Configs use NEXTN speculative decoding.
+family: google
+tags:
+  - chat
+  - reasoning
+  - tool-use
+  - speculative-decoding
+source:
+  hf: google/gemma-4-31B-it
