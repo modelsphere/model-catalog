@@ -1,0 +1,151 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v1
+name: google-gemma-4-31b-it
+version: 1.0.0
+servedName: google/gemma-4-31B-it
+variants:
+  - id: sglang-tp4-h100-baseline
+    description: 'Baseline: TP4 on four H100 GPUs, single node.'
+    engine: sglang
+    chart:
+      name: sglang
+      version: ">=0.7.1"
+    image:
+      repository: harbor.4pd.io/hardcore-tech/sglang
+      tag: v0.5.19-cu129
+    requires:
+      gpus: 4
+      topology: single-node
+      gpuProduct:
+        - NVIDIA-H100-80GB-HBM3
+    values:
+      model:
+        hostPathType: Directory
+        contextLength: ''
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - '*.safetensors'
+      extraArgs:
+        - --enable-cache-report
+        - --mem-fraction-static=0.85
+        - --reasoning-parser=gemma4
+        - --stream-response-default-include-usage
+        - --tool-call-parser=gemma4
+        - --tp-size=4
+      env:
+        - name: NVIDIA_DISABLE_REQUIRE
+          value: '1'
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+      volumes:
+        - name: dot-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+      volumeMounts:
+        - name: dot-cache
+          mountPath: /root/.cache
+        - name: dshm
+          mountPath: /dev/shm
+      resources:
+        requests:
+          ephemeral-storage: 16Gi
+        limits:
+          ephemeral-storage: 16Gi
+      progressDeadlineSeconds: 7200
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 180
+      terminationGracePeriodSeconds: 3600
+      lifecycle:
+        preStop:
+          drainSeconds: 600
+          pollIntervalSeconds: 5
+        forceShutdown: true
+        preStopKill: true
+      hangWatcher:
+        enabled: true
+  - id: sglang-tp4-h100-optimized
+    default: true
+    description: 'Tuned by LLM AutoTune: TP4 on four H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +32.4% (50k + 1.5k), +1.6% (8k + 1k).'
+    engine: sglang
+    chart:
+      name: sglang
+      version: ">=0.7.1"
+    image:
+      repository: harbor.4pd.io/hardcore-tech/sglang
+      tag: v0.5.19-cu129
+      digest: sha256:b7a3051b9e15939a5afc74de3564a72fd5b0b42bef80bbaacea9649d09f63d76
+    requires:
+      gpus: 4
+      topology: single-node
+      gpuProduct:
+        - NVIDIA-H100-80GB-HBM3
+    values:
+      model:
+        hostPathType: Directory
+        contextLength: ''
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - '*.safetensors'
+      extraArgs:
+        - --chunked-prefill-size=16384
+        - --enable-cache-report
+        - --max-prefill-tokens=16384
+        - --mem-fraction-static=0.85
+        - --reasoning-parser=gemma4
+        - --stream-response-default-include-usage
+        - --tool-call-parser=gemma4
+        - --tp-size=4
+        - --triton-attention-num-kv-splits=16
+      env:
+        - name: NVIDIA_DISABLE_REQUIRE
+          value: '1'
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+      volumes:
+        - name: dot-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+      volumeMounts:
+        - name: dot-cache
+          mountPath: /root/.cache
+        - name: dshm
+          mountPath: /dev/shm
+      resources:
+        requests:
+          ephemeral-storage: 16Gi
+        limits:
+          ephemeral-storage: 16Gi
+      progressDeadlineSeconds: 7200
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 180
+      terminationGracePeriodSeconds: 3600
+      lifecycle:
+        preStop:
+          drainSeconds: 600
+          pollIntervalSeconds: 5
+        forceShutdown: true
+        preStopKill: true
+      hangWatcher:
+        enabled: true
