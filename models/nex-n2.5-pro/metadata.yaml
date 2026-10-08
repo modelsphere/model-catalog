@@ -13,5 +13,10 @@ tuning:
   - version: 1.0.0
     baseline: sglang-tp8-h100-baseline
     optimized: sglang-tp8-h100-optimized
-    uplift: 24
+    uplift: 21.6
+    workloads:
+      - name: 50k + 1.5k
+        uplift: 21.6
+      - name: 8k + 1k
+        uplift: 26.4
     report: nex-n2.5-pro-h100-report.html

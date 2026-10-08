@@ -82,7 +82,7 @@ function variantRole(id, tuning) {
 }
 
 function formatUplift(pct) {
-  return `${pct < 0 ? "" : "+"}${Math.round(pct * 10) / 10}%`;
+  return `${pct < 0 ? "" : "+"}${(Math.round(pct * 10) / 10).toFixed(1)}%`;
 }
 
 // variants[].link is only schema-checked as a URI, which admits javascript:.
@@ -237,43 +237,37 @@ const UPLIFT_HELP =
   "Throughput of the tuned variant over its baseline, from the tuning benchmark. " +
   "Workloads are input + output tokens per request, e.g. 50k + 1.5k.";
 
-// The workload the headline number was measured on: the first whose number is
-// the headline. Absent when the benchmark recorded no workloads.
-function headlineWorkload(c) {
-  return c.workloads.find((w) => w.upliftPct === c.upliftPct);
+// The workloads to draw: the report's, or the headline alone when the
+// benchmark recorded none.
+function workloadsOf(c) {
+  if (c.workloads.length) return c.workloads;
+  return c.upliftPct == null ? [] : [{ name: "", upliftPct: c.upliftPct, upliftLabel: c.upliftLabel }];
 }
 
-function otherWorkloads(c) {
-  const head = headlineWorkload(c);
-  return c.workloads.filter((w) => w !== head);
+// The largest result in the catalog: every bar is drawn against it, so bars
+// compare across models as well as within one.
+function upliftScale(models) {
+  const all = models.flatMap((m) => (m.comparison ? workloadsOf(m.comparison).map((w) => w.upliftPct) : []));
+  return Math.max(0, ...all) || 1;
 }
 
-// A workload as a literal: `50k + 1.5k` tokens.
-function workloadName(w) {
-  return `<code class="wl-name">${escapeHtml(w.name)}</code> tokens`;
-}
-
-// One result: +23.4% at `8k + 1k` tokens.
-function workloadResult(w) {
-  return `<span class="wl"><span class="wl-pct">${escapeHtml(w.upliftLabel)}</span> at ${workloadName(w)}</span>`;
-}
-
-// The table's uplift cell: one row per workload, workload left and uplift
-// right, so the numbers line up. The headline keeps the badge; the others use
-// the same box unfilled, so their digits align with it. "Tokens" is said once,
-// in the column header.
-//   50k + 1.5k  [+64.2%]
-//      8k + 1k    +7.6%
-function upliftCell(c, latest) {
-  const head = headlineWorkload(c);
-  const rows = [
-    `<span class="wl-label">${head ? escapeHtml(head.name) : ""}</span>${upliftBadge(c, "uplift uplift-sm")}`,
-    ...otherWorkloads(c).map(
-      (w) => `<span class="wl-label">${escapeHtml(w.name)}</span><span class="uplift uplift-sm uplift-quiet">${escapeHtml(w.upliftLabel)}</span>`
-    ),
-  ];
-  if (c.version !== latest) rows.push(`<span class="wl-ver">measured on v${escapeHtml(c.version)}</span>`);
-  return `<div class="wl-grid">${rows.join("")}</div>`;
+// One bar per workload: workload, bar, number. Rows share their columns
+// (subgrid), so labels, bars and digits line up. The headline row's number is
+// bold; a regression draws no bar. "Tokens" is said once, by the caller.
+//   50k + 1.5k  ██████████  +64.2%
+//   8k + 1k     █            +7.6%
+function workloadBars(c, scale) {
+  const rows = workloadsOf(c).map((w) => {
+    const width = Math.max(0, Math.min(100, (w.upliftPct / scale) * 100));
+    const head = w.upliftPct === c.upliftPct ? " wl-head" : "";
+    const title = `${w.upliftLabel}${w.name ? ` at ${w.name} tokens` : ""}: ${c.optimizedId} vs ${c.baselineId}, measured on v${c.version}`;
+    return `<div class="wl-row${head}" title="${escapeHtml(title)}"><span class="wl-label">${escapeHtml(
+      w.name
+    )}</span><span class="wl-track"><span class="wl-fill" style="width:${width.toFixed(1)}%"></span></span><span class="wl-val">${escapeHtml(
+      w.upliftLabel
+    )}</span></div>`;
+  });
+  return `<div class="wl-bars">${rows.join("")}</div>`;
 }
 
 // Per-model facts the page filters, sorts and summarizes on. Embedded in the
@@ -350,7 +344,7 @@ function computeSummary(models) {
 }
 
 function renderSummary(s) {
-  const pct = (x) => "+" + Math.round(x * 10) / 10 + "%";
+  const pct = (x) => "+" + (Math.round(x * 10) / 10).toFixed(1) + "%";
   const counts = (o) =>
     Object.keys(o)
       .sort((a, b) => o[b] - o[a] || a.localeCompare(b))
@@ -369,13 +363,13 @@ function renderSummary(s) {
       s.models ? `${Math.round((s.pairs / s.models) * 100)}% of models` : ""
     ),
     stat(
-      "Median uplift",
+      "Median improvement",
       s.median == null ? "—" : pct(s.median),
       s.median == null ? "" : `${pct(s.worst.pct)} to ${pct(s.best.pct)}`,
       s.median == null ? "" : "pos"
     ),
     stat(
-      "Best uplift",
+      "Best improvement",
       s.best ? pct(s.best.pct) : "—",
       s.best ? escapeHtml(s.best.name) : "",
       s.best ? "pos" : ""
@@ -698,7 +692,7 @@ function modelLinks(m, cls, reportLabel) {
   return links;
 }
 
-function renderCard(m, i) {
+function renderCard(m, i, scale) {
   const variants = orderedVariants(m)
     .map((v) => {
       // Cards are narrow, so hardware leads the description line instead of
@@ -740,10 +734,10 @@ function renderCard(m, i) {
     <div class="model-body">
       <div class="model-info">
         ${
-          m.comparison && m.comparison.workloads.length
-            ? `<p class="workloads" title="${escapeHtml(UPLIFT_HELP)}">${m.comparison.workloads
-                .map(workloadResult)
-                .join(` <span class="wl-sep">·</span> `)}</p>`
+          m.comparison
+            ? `<div class="workloads"><div class="workloads-cap" title="${escapeHtml(
+                UPLIFT_HELP
+              )}">Per workload · in + out tokens</div>${workloadBars(m.comparison, scale)}</div>`
             : ""
         }
         ${m.description ? `<p class="desc clamp" title="${escapeHtml(m.description)}">${escapeHtml(m.description)}</p>` : ""}
@@ -758,7 +752,7 @@ function renderCard(m, i) {
 }
 
 // Compact view: no descriptions (the description is the name's tooltip).
-function renderRow(m, i) {
+function renderRow(m, i, scale) {
   const none = `<span class="none">—</span>`;
   const links = modelLinks(m, "t-link", "Report");
   const title = m.description ? ` title="${escapeHtml(m.description)}"` : "";
@@ -772,7 +766,10 @@ function renderRow(m, i) {
         <td class="t-variants">${orderedVariants(m).map((v) => variantLine(v, "t-variant")).join("")}</td>
         <td class="num">${
           m.comparison
-            ? upliftCell(m.comparison, m.latest)
+            ? workloadBars(m.comparison, scale) +
+              (m.comparison.version !== m.latest
+                ? `<div class="wl-ver">measured on v${escapeHtml(m.comparison.version)}</div>`
+                : "")
             : none
         }</td>
         <td>${links.length ? `<div class="t-links">${links.join("")}</div>` : none}</td>
@@ -782,6 +779,7 @@ function renderRow(m, i) {
 function renderIndex(catalog) {
   const facets = catalog.models.map(facetsOf);
   const hasDeprecated = facets.some((f) => f.deprecated);
+  const scale = upliftScale(catalog.models);
   // Keep "</script>" in descriptions from closing the data block.
   const dataJson = JSON.stringify(facets).replace(/</g, "\\u003c");
   const sortTh = (col, label, cls, title, sub) =>
@@ -850,7 +848,7 @@ ${renderSummary(computeSummary(facets))}
       <label><span class="sr-only">Sort by</span>
         <select name="sort">
           <option value="name">Sort by name</option>
-          <option value="uplift">Sort by uplift</option>
+          <option value="uplift">Sort by improvement</option>
           <option value="family">Sort by family</option>
         </select>
       </label>
@@ -864,7 +862,7 @@ ${renderSummary(computeSummary(facets))}
   </form>
   <div id="results">
     <div id="models" class="models">
-${catalog.models.map(renderCard).join("\n")}
+${catalog.models.map((m, i) => renderCard(m, i, scale)).join("\n")}
     </div>
     <div class="table-view table-wrap">
       <table class="models-table">
@@ -874,12 +872,12 @@ ${catalog.models.map(renderCard).join("\n")}
             ${sortTh("family", "Family")}
             <th scope="col" class="t-tags">Tags</th>
             <th scope="col">Variants (latest)</th>
-            ${sortTh("uplift", "Uplift vs baseline", "num", UPLIFT_HELP, "per workload · in + out tokens")}
+            ${sortTh("uplift", "Improvement vs baseline", "num", UPLIFT_HELP, "per workload · in + out tokens")}
             <th scope="col">Links</th>
           </tr>
         </thead>
         <tbody id="table-rows">
-${catalog.models.map(renderRow).join("\n")}
+${catalog.models.map((m, i) => renderRow(m, i, scale)).join("\n")}
         </tbody>
       </table>
     </div>
@@ -1326,20 +1324,23 @@ th[aria-sort="descending"] .sort-ind::after { content: "↓"; }
 .t-variant { display: flex; align-items: center; gap: 0.45rem; white-space: nowrap; }
 .t-variant + .t-variant { margin-top: 0.35rem; }
 .t-variant .variant-id { font-size: 0.82rem; }
-.uplift-sm { font-size: 0.86rem; padding: 0.02rem 0.45rem; border-radius: 6px; }
-/* Same box as the badge, unfilled, so a column of results lines up. */
-.uplift-quiet { background: transparent; font-weight: 600; }
-.wl-grid {
-  display: inline-grid;
-  grid-template-columns: auto auto;
+/* Workload bars: rows share the container's columns, so labels, bars and
+   digits line up. Bars are one hue, anchored left, rounded at the data end. */
+.wl-bars {
+  display: grid;
+  grid-template-columns: auto minmax(56px, 1fr) minmax(4.6em, auto);
   align-items: center;
   column-gap: 0.6rem;
-  row-gap: 0.2rem;
+  row-gap: 0.3rem;
 }
-/* Values hug the right edge, so a badge fits its number and the digits align. */
-.wl-grid > .uplift { justify-self: end; }
-.wl-label { font-family: var(--mono); font-size: 0.76rem; color: var(--muted); text-align: left; white-space: nowrap; }
-.wl-ver { grid-column: 1 / -1; font-size: 0.76rem; color: var(--muted); text-align: right; }
+.wl-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
+.wl-label { font-family: var(--mono); font-size: 0.76rem; color: var(--muted); white-space: nowrap; }
+.wl-track { height: 8px; border-radius: 0 4px 4px 0; background: var(--panel-2); overflow: hidden; }
+.wl-fill { display: block; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--ok); }
+.wl-val { font-size: 0.86rem; font-variant-numeric: tabular-nums; text-align: right; color: var(--text); }
+.wl-head .wl-val { font-weight: 700; }
+.wl-ver { margin-top: 0.3rem; font-size: 0.76rem; color: var(--muted); text-align: right; }
+.models-table .wl-bars { grid-template-columns: auto 64px minmax(4.6em, auto); width: max-content; margin-left: auto; text-align: left; }
 .th-sub { display: block; font-size: 0.68rem; font-weight: 400; color: var(--faint); margin-top: 0.1rem; }
 .t-links { display: grid; gap: 0.2rem; justify-items: start; }
 .t-link { display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
@@ -1348,21 +1349,8 @@ th[aria-sort="descending"] .sort-ind::after { content: "↓"; }
 /* footer.wrap, so .wrap's padding shorthand does not zero these. */
 footer.wrap { padding-top: 2.5rem; padding-bottom: 3rem; font-size: 0.84rem; color: var(--faint); }
 .nowrap { white-space: nowrap; }
-.workloads { margin: 0 0 0.5rem; font-size: 0.82rem; color: var(--muted); line-height: 1.9; }
-/* Result literals: the number and the workload set in mono, the words between plain. */
-.wl { white-space: nowrap; }
-.wl-pct { font-family: var(--mono); font-weight: 600; color: var(--ok); }
-.wl-name {
-  font-family: var(--mono);
-  font-size: 0.92em;
-  color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0 0.3em;
-}
-/* Spaces around the dot are where the line may wrap. */
-.wl-sep { color: var(--faint); }
+.workloads { margin: 0 0 0.75rem; }
+.workloads-cap { font-size: 0.72rem; color: var(--faint); margin-bottom: 0.35rem; }
 footer p { margin: 0; }
 @media (max-width: 560px) {
   .site-header { padding-top: 1.5rem; }
