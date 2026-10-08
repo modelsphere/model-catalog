@@ -8,7 +8,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const YAML = require("yaml");
 const {main, options} = require("./validate-helm");
-const config = require("../schema/helm/config.json");
+const config = require("../schema/crds/config.json");
 
 function fixture(t, failure, {chartName = "sglang", declaredVersion = "0.8.0", latestVersion = "0.8.0"} = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "helm-validator-"));
@@ -19,8 +19,8 @@ function fixture(t, failure, {chartName = "sglang", declaredVersion = "0.8.0", l
     {id: "default", default: true, chart: {name: chartName, version: declaredVersion}},
     {id: "other", chart: {name: chartName, version: `>=${config.minimumChartVersions[chartName]}`}, values: {extraArgs: ["--other"]}}
   ]}));
-  fs.mkdirSync(path.join(root, "schema/helm"), {recursive: true});
-  fs.writeFileSync(path.join(root, "schema/helm/provenance.json"), JSON.stringify({converterVersion: config.converterVersion, sources: []}));
+  fs.mkdirSync(path.join(root, "schema/crds"), {recursive: true});
+  fs.writeFileSync(path.join(root, "schema/crds/crds-lock.json"), JSON.stringify({converterVersion: config.converterVersion, sources: []}));
   const calls = [];
   const bytes = Buffer.from("fixture-package");
   let prereleaseInserted = false;

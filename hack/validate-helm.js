@@ -7,7 +7,7 @@ const crypto = require("node:crypto");
 const YAML = require("yaml");
 const {root, compareVersions, isPrerelease} = require("./lib/catalog");
 const {command, selectFiles, variantValues, kubeconformArgs, parseVersions} = require("./lib/helm-validation");
-const config = require("../schema/helm/config.json");
+const config = require("../schema/crds/config.json");
 
 function options(args) {
   const opts = {files: [], chartMode: "latest", output: path.join(root, "artifacts/helm-validation")};
@@ -77,13 +77,13 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
         throw new Error(`${name}: expected ${config[`${name}Version`]}, got ${version}; run npm run helm:install`);
       }
     }
-    const lock = path.join(root, "schema/helm/provenance.json");
-    const provenance = JSON.parse(fs.readFileSync(lock, "utf8"));
-    if (provenance.converterVersion !== config.converterVersion) throw new Error("CRD converter version mismatch");
-    const apis = [...new Set(provenance.sources.flatMap((source) => source.schemas.map((s) => `${s.group}/${s.version}`)))];
-    // CRD schemas are not committed: build them from the lock for this run.
+    const lock = JSON.parse(fs.readFileSync(path.join(root, "schema/crds/crds-lock.json"), "utf8"));
+    if (lock.converterVersion !== config.converterVersion) throw new Error("CRD converter version mismatch");
+    const apis = [...new Set(lock.sources.flatMap((source) => source.schemas.map((s) => `${s.group}/${s.version}`)))];
+    // CRD schemas are not committed: build them from the lock for this run,
+    // which must not rewrite it.
     const schemaDir = path.join(runDir, "crds");
-    requireSuccess(invoke(process.execPath, [path.join(__dirname, "build-crds.js"), "--lock", lock, schemaDir], runDir, "crds"), "crds");
+    requireSuccess(invoke(process.execPath, [path.join(__dirname, "build-crds.js"), "--locked", schemaDir], runDir, "crds"), "crds");
     const schemaCache = path.join(runDir, "schema-cache");
     fs.mkdirSync(schemaCache);
     requireSuccess(invoke(bin("helm"), ["repo", "add", "catalog", config.chartRepository], runDir, "chart-repository"), "chart-repository");

@@ -7,7 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const {execFileSync} = require("node:child_process");
 const {selectFiles, variantValues, kubeconformArgs} = require("./helm-validation");
-const config = require("../../schema/helm/config.json");
+const config = require("../../schema/crds/config.json");
 
 function repository(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "helm-selection-"));
@@ -57,7 +57,7 @@ test("selection uses the common ancestor even when the target branch advances", 
 });
 
 test("validator, dependency and schema changes, including deletions, trigger all versions", (t) => {
-  for (const file of ["hack/validate-helm.js", "hack/build-crds.js", "hack/lib/crd-schema.js", "schema/helm/config.json", "package-lock.json", ".github/workflows/lint.yml"]) {
+  for (const file of ["hack/validate-helm.js", "hack/build-crds.js", "hack/lib/crd-schema.js", "schema/crds/config.json", "package-lock.json", ".github/workflows/lint.yml"]) {
     const r = repository(t);
     r.write(file, "changed\n"); r.commit();
     assert.equal(selectFiles(r.dir, {base: "base"}).reason, "validator/dependency/schema changes");

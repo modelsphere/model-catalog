@@ -10,7 +10,7 @@ const YAML = require("yaml");
 const {root} = require("./lib/catalog");
 const {main} = require("./validate-helm");
 const {command, kubeconformArgs} = require("./lib/helm-validation");
-const config = require("../schema/helm/config.json");
+const config = require("../schema/crds/config.json");
 
 for (const chartMode of ["latest", "declared"]) {
   test(`released charts (${chartMode}): fixed/range versions, all example variants, LWS, defaults and invalid configurations`, {timeout: 240000}, (t) => {
@@ -18,7 +18,7 @@ for (const chartMode of ["latest", "declared"]) {
     t.after(() => fs.rmSync(temp, {recursive: true, force: true}));
     fs.mkdirSync(path.join(temp, "models/fixtures"), {recursive: true});
     fs.mkdirSync(path.join(temp, "schema"));
-    fs.symlinkSync(path.join(root, "schema/helm"), path.join(temp, "schema/helm"), "dir");
+    fs.symlinkSync(path.join(root, "schema/crds"), path.join(temp, "schema/crds"), "dir");
     fs.symlinkSync(path.join(root, ".cache"), path.join(temp, ".cache"), "dir");
     function write(name, doc) {
       fs.writeFileSync(path.join(temp, `models/fixtures/${name}.yaml`), YAML.stringify(doc));

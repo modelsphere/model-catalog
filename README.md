@@ -118,7 +118,7 @@ thing that behaves like one: it rebuilds the index, then serves the tree.
 
 PRs also run the independent `validate-helm` check on every variant in changed
 version YAMLs, using the latest stable released chart for each engine, Helm's
-values schema and strict Kubernetes/CRD schemas. See [Helm validation](schema/helm/README.md) for
+values schema and strict Kubernetes/CRD schemas. See [Helm validation](schema/crds/README.md) for
 local commands, schema updates, artifacts, and validation limits.
 Deployment still follows the YAML chart declaration. Use `--chart-mode declared`
 with `npm run validate:helm` to reproduce that release locally.

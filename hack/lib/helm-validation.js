@@ -10,8 +10,8 @@ function isVersionFile(file) {
 }
 
 function affectsValidator(file) {
-  return file.startsWith("schema/helm/") ||
-    /^hack\/(validate-helm|install-helm-tools|build-crds|update-crds)(\.integration)?\.(js|test\.js)$/.test(file) ||
+  return file.startsWith("schema/crds/") ||
+    /^hack\/(validate-helm|install-helm-tools|build-crds)(\.integration)?\.(js|test\.js)$/.test(file) ||
     /^hack\/lib\/(helm-validation|crd-schema|download|catalog)(\.test)?\.js$/.test(file) ||
     ["package.json", "package-lock.json", ".github/workflows/lint.yml"].includes(file);
 }

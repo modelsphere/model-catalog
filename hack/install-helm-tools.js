@@ -7,7 +7,7 @@ const crypto = require("node:crypto");
 const {execFileSync} = require("node:child_process");
 const {root} = require("./lib/catalog");
 const {download} = require("./lib/download");
-const config = require("../schema/helm/config.json");
+const config = require("../schema/crds/config.json");
 
 async function main() {
   const platform = `${process.platform}-${{x64: "amd64", arm64: "arm64"}[process.arch]}`;

@@ -100,7 +100,7 @@ async function fetchPinned({url, sha256}) {
 }
 
 // Download CRD sources at their pinned commits and convert every served version.
-// Returns the schema files and the provenance records that lock them.
+// Returns the schema files and the records that lock them.
 async function buildSchemas(sources, objectMeta) {
   const meta = await fetchPinned(objectMeta);
   const metadata = objectMetaSchema(JSON.parse(meta.body).definitions);
