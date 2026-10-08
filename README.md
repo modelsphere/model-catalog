@@ -82,7 +82,9 @@ cp -r models/glm5.1 models/my-model  # or models/kimi-k2.5 for a multi-node mode
 3. Check it, and preview the catalog page:
 
    ```sh
-   npm run validate:schema   # the same check CI runs
+   npm run validate:schema   # catalog structure and tuning references
+   npm run helm:install      # pinned Helm and kubeconform (first time)
+   npm run validate:helm -- models/my-model/my-model-1.0.0.yaml
    npm run build:site        # then open site/index.html
    ```
 
@@ -113,6 +115,11 @@ hack/serve.sh                 serve it over HTTP, for local development
 
 A published catalog is a static site, and `./hack/serve.sh` is the smallest
 thing that behaves like one: it rebuilds the index, then serves the tree.
+
+PRs also run the independent `validate-helm` check on every variant in changed
+version YAMLs, using the declared released chart, Helm's values schema and
+strict Kubernetes/CRD schemas. See [Helm validation](schema/helm/README.md) for
+local commands, schema updates, artifacts, and validation limits.
 
 ## Versions are immutable
 

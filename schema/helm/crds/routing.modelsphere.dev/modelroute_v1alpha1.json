@@ -1,0 +1,541 @@
+{
+  "description": "ModelRoute 把「一个模型的后端」自动同步到 openresty 的 peers 与 CART 的 workers。",
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "enum": [
+        "routing.modelsphere.dev/v1alpha1"
+      ]
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "ModelRoute"
+      ]
+    },
+    "metadata": {
+      "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta"
+    },
+    "spec": {
+      "description": "ModelRouteSpec 是一个模型的完整路由绑定。\n注:spec.slo 还在另一条分支上(feat/llmslo-to-openresty),main 的 schema 里没有这个字段。\nCEL 按 schema 编译,引用不存在的字段会让整个 CRD 被 API server 拒(\"undefined field 'slo'\"),\n所以这里先不写 slo 的规则 —— 那条分支合进来后补上:\n\n\trule: !has(self.modelType) || self.modelType != 'video' || !has(self.slo)\n\tmsg:  modelType: video 不支持 slo(TTFT/TPS 是 token 级指标,视频生成没有这些)\n\nmonitor 的 service 行是给 LLM 健康检查用的(它按 /v1/models、TTFT 这类信号判活与告警),\n指向 H3 只会产生假告警。视频服务的可观测走 Prometheus(H3 自己的 /metrics/queue)。\nvideo 只认自己的调优项;LLM 那些(ttft/tps/自适应并发/会话亲和)在纯反代里根本没人读,\n与其静默忽略,不如直接拒 —— 配了以为生效才是最坑的。\n反过来:llm 路由里写 video 的旋钮同样是无效配置(它们只在 video 模板里渲染)。",
+      "properties": {
+        "cart": {
+          "description": "Cart:可选;有 = autoconfig 管这个 CART,无 = nginx 直连后端。",
+          "properties": {
+            "maxLoad": {
+              "description": "MaxLoad:每 worker 的 max_load,默认 20。",
+              "type": "integer"
+            },
+            "outputConfigMap": {
+              "description": "OutputConfigMap:autoconfig 写 CART workers 的 ConfigMap(\"ns/name\")。autoconfig 只更新不创建。",
+              "type": "string"
+            },
+            "outputKey": {
+              "description": "OutputKey:workers 写进这个 ConfigMap 的哪个 key。省略 = \"config.yaml\"。\n指到一个【只放 workers】的 key(如 \"workers.yaml\"),底稿那个 key 就完全归 chart:\nCART 按 `-c config.yaml -c workers.yaml` 的顺序合并(后者覆盖前者),helm upgrade 与 autoconfig\n各写各的 key,不再抢同一份内容。autoconfig 对这个 key 没有特殊规则 —— 读它现有内容当底稿、\n换掉 workers 再写回,key 还没内容就等于从空文档起写。",
+              "type": "string"
+            },
+            "port": {
+              "description": "Port:CART 端口。省略则从 EndpointSlice/containerPort 自动推导(单端口)。",
+              "type": "integer"
+            },
+            "selector": {
+              "type": "string"
+            },
+            "service": {
+              "description": "CART pod 的发现(供 openresty 的 cart source);service/selector 二选一。service 支持 \"ns/name\" 跨 ns。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "outputConfigMap"
+          ],
+          "type": "object",
+          "x-kubernetes-validations": [
+            {
+              "message": "cart: service 和 selector 必须恰好给一个",
+              "rule": "has(self.service) != has(self.selector)"
+            }
+          ],
+          "additionalProperties": false
+        },
+        "discovery": {
+          "description": "Discovery:本模型的后端桶(喂 CART 的 workers、nginx 的 backend 来源、monitor 的 services)。",
+          "properties": {
+            "includeNotReady": {
+              "description": "IncludeNotReady:默认 false 只取 Ready 端点(排空中端点自动排除)。",
+              "type": "boolean"
+            },
+            "port": {
+              "description": "Port:后端服务端口(配 pod IP)。省略则自动推导:service 路径从 EndpointSlice 取、selector 路径从 containerPort 取(仅单端口可推)。",
+              "type": "integer"
+            },
+            "selector": {
+              "description": "Selector:走 pod label 发现(兜底:没建 Service 的单机/单卡)。",
+              "type": "string"
+            },
+            "service": {
+              "description": "Service:走 EndpointSlice 发现(推荐);该 Service 需只选服务端点(LWS Service 配成只选 leader)。\n支持 \"ns/name\" 跨 ns 发现(裸名默认与 ModelRoute 同 ns),让 ModelRoute 可放中心 ns。",
+              "type": "string"
+            }
+          },
+          "type": "object",
+          "x-kubernetes-validations": [
+            {
+              "message": "discovery: service 和 selector 必须恰好给一个",
+              "rule": "has(self.service) != has(self.selector)"
+            }
+          ],
+          "additionalProperties": false
+        },
+        "modelType": {
+          "default": "llm",
+          "description": "ModelType:这条路由服务的是哪类模型,决定各 sink 的渲染方式。默认 llm(向后兼容,\n老的 ModelRoute 不写这个字段,行为完全不变)。\n\n  llm    大语言模型(/v1/chat/completions):走 lua 路由引擎 —— 会话亲和、TTFT/TPS 限流、\n         自适应并发、CART 前置。\n  video  视频生成(如 MiniMax H3):异步建任务 + 轮询 + 大文件下载。请求体可能是 64MB 的\n         base64 图,响应可能是几十 MB 的视频流,LLM 那套(解析 body 取 model、按 token\n         速率限流、会话亲和)不适用甚至有害,所以渲染成纯反向代理:放开超时、关响应缓冲、\n         透传 Range、补齐 X-Forwarded-Host/Proto。\n\n以后再有别的形态(如 embedding / rerank / ASR)在这里加枚举值 + 对应模板即可,\n不用给每种形态另造一个 CRD。",
+          "enum": [
+            "llm",
+            "video"
+          ],
+          "type": "string"
+        },
+        "monitor": {
+          "description": "Monitor:可选;有 = 把发现的后端也写进 monitor 的 services(monitor 60s 自热加载,无 sidecar)。",
+          "properties": {
+            "gpuType": {
+              "description": "GPUType:monitor service 行的 gpu_type 字段(如 H100 / A100 / H200)。省略 = 从后端所在节点的\nGPU label(nvidia.com/gpu.product,GFD 打)自动推导成短名;推不出(无 label / 无 GFD)则留空。显式配则覆盖。",
+              "type": "string"
+            },
+            "model": {
+              "description": "Model:monitor service 行的 model 字段(served-model-name);省略 = metadata.name。",
+              "type": "string"
+            },
+            "nginx": {
+              "description": "Nginx:可选,默认 true(当 spec.nginx 配了 service/selector);复用 nginx 入口发现,写 monitor 的 nginx: 行\n(端口用 spec.nginx.listen,每端口 = 一个模型,name = 本模型)。设 false 关闭。",
+              "type": "boolean"
+            },
+            "outputConfigMap": {
+              "description": "OutputConfigMap:autoconfig 写 monitor 配置的 ConfigMap(\"ns/name\",多模型共享,每模型一个 key)。",
+              "type": "string"
+            },
+            "router": {
+              "description": "Router:可选,默认 true(当配了 spec.cart);复用 spec.cart 发现的 CART pod,写 monitor 的 router: 表(.../workers)。设 false 关闭。",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "outputConfigMap"
+          ],
+          "type": "object",
+          "additionalProperties": false
+        },
+        "nginx": {
+          "description": "Nginx:nginx(openresty)路由。",
+          "properties": {
+            "outputConfigMap": {
+              "description": "OutputConfigMap:输出 ConfigMap(\"ns/name\",多路由共享,每路由一个 key)。",
+              "type": "string"
+            },
+            "peers": {
+              "description": "Peers:有序 peer 组(如 cart 优先 + backend 兜底)。",
+              "items": {
+                "description": "RoutePeer:openresty 一条 route 的一组 peer 来源(cart 组 / backend 组)。",
+                "properties": {
+                  "maxConcurrency": {
+                    "description": "MaxConcurrency:该组所有 peer 的并发上限;省略用 values.default_max。",
+                    "type": "integer"
+                  },
+                  "maxConcurrencyFromBackend": {
+                    "description": "MaxConcurrencyFromBackend:仅 use:cart 有意义。true = cart 的并发上限动态 = 后端单实例并发 × 后端数\n(CART 扇出到 N 个后端,总容量=各后端容量之和,随后端扩缩自动变)。设了它就忽略静态 MaxConcurrency。\n后端单实例并发取 use:backend 组的 maxConcurrency —— CEL 校验强制此时它必须 > 0(见 ModelRouteSpec)。",
+                    "type": "boolean"
+                  },
+                  "priority": {
+                    "description": "Priority:openresty peer 优先级(CART 优先=1,后端兜底=0)。",
+                    "type": "integer"
+                  },
+                  "probePath": {
+                    "description": "ProbePath:该层 openresty 健康探测路径覆盖(GET <path> 状态行含 200=健康,否则 ban)。\n省略时:use:cart 默认 \"/health\"(cache_aware_router 的 /v1/models 是缓存端点、worker 全挂也返 200\n不能当健康信号;/health 是 worker-aware 的),其余层默认空=用 route 的 health_probe_path(/v1/models)。\n显式设值(含对 cart 设为 \"/v1/models\")覆盖默认。",
+                    "type": "string"
+                  },
+                  "use": {
+                    "description": "Use:\"cart\"(CART 上游,走 CART Service 的 ClusterIP)、\"backend\"(discovery 的后端桶,pod IP)、\n或 \"backend-svc\"(后端 Service 的 ClusterIP VIP,作最低优先级【静态兜底】——operator 宕+rollout 时\npod-IP 层全死也不全断,降级走 kube-proxy;需 discovery.service,selector 模式无 VIP 会被跳过)。",
+                    "enum": [
+                      "cart",
+                      "backend",
+                      "backend-svc"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "use"
+                ],
+                "type": "object",
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "route": {
+              "description": "Route:路由短名(= conf 文件名 session_route_<route>.conf + openresty dict 名 + unix socket 名 <route>.sock\n**字符集必须 ⊆ [a-z0-9._-]**:它要做 dispatch 的路径捕获正则 `^/(?<rkey>[a-z0-9._-]+)/`,含大写/其它字符\n→ dispatch 派生不到 <route>.sock → 该模型经 8080 永远打不通。故加 Pattern 强校验。",
+              "pattern": "^[a-z0-9._-]+$",
+              "type": "string"
+            },
+            "selector": {
+              "description": "Selector:可选;nginx 入口的 pod label 发现(没建 Service 时的兜底)。",
+              "type": "string"
+            },
+            "service": {
+              "description": "Service:可选;nginx 入口自身的 Service(\"ns/name\")→ 供 monitor 的 nginx: 行 + 入口 pod 扩缩事件驱动。\n端口取 Service 的 dispatch 命名端口(8080,路径路由统一入口)。与 selector 二选一(都配则 service 优先)。",
+              "type": "string"
+            },
+            "values": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Values:任意调优项,原样渲染进 lua register_route 返回表(key = value)。nginx 加新调优项无需改代码。\n常用:ttft_limit_ms、tps_limit_tps、adaptive_cc_min、default_max。值按 lua 字面量原样写(数字不加引号)。\n\n⚠️ 这里的值全部走 luaVal:非数字/非布尔会被**加引号当字符串**。所以不能在这里手写\nttft_metrics / tps_metrics 这类**嵌套 table** —— 写了会渲染成字符串,引擎的\nutil.validate_metrics 直接整份丢弃。那两个键由 spec.slo 从 LLMSLORequirement 生成,\n且渲染在本段之后 → **配了 spec.slo 时,这里手写的同名键会被静默覆盖**(实测确认)。\n要调 SLO 阈值请改 LLMSLORequirement,不要在这里写。\nMaxProperties/MaxLength 不只是防呆:CEL 规则的**估算开销**与 map 的可能大小成正比,\n不加上限时 k8s 按\"无限大\"估,白名单一长就超预算被拒\n(estimated rule cost exceeds budget —— 实测加到 9 个键就超了 2.2%)。",
+              "maxProperties": 32,
+              "type": "object"
+            }
+          },
+          "required": [
+            "outputConfigMap",
+            "peers"
+          ],
+          "type": "object",
+          "additionalProperties": false
+        },
+        "slo": {
+          "description": "SLO:可选;有 = 把同 ns 里匹配本路由的 LLMSLORequirement 翻译成 ttft_metrics / tps_metrics,\n渲染进本路由的 session_route_<route>.conf(与其它调优项同一条通道,reload 生效)。\n没有 = 完全不碰 SLO(openresty 回落 nginx.values 里的静态 ttft_limit_ms / tps_limit_tps)。",
+          "properties": {
+            "name": {
+              "description": "Name:要读哪个 LLMSLORequirement,按 **metadata.name** 取。必填,不做任何推导。\n支持 \"ns/name\" 跨 ns 引用;裸名默认用 ModelRoute 自己的 ns\n(与 discovery.service、nginx.outputConfigMap 同一套写法)。\n\n用 name 而不是 spec.serviceId,有两个原因:\n\n 1. **唯一性由 k8s 保证**。serviceId 只是个自由字符串,同 ns 里两个对象写同一个\n    serviceId 完全能 apply,那时\"用哪份\"就由 List 的顺序(informer 缓存,无序保证)\n    决定,阈值会在两份之间漂,而两份 CRD 看上去都正常。按 name 是直接 Get,不存在这问题。\n 2. **不含糊**。一个服务在不同地方叫 glm 和 glm-leader,serviceId 写哪个要靠猜;\n    name 是这个对象唯一的、写在 yaml 上的身份。\n\n早先还有一版是从 discovery.service 截掉 \"-leader\" 后缀推 serviceId(LWS 惯例)。\n一并删了:那是按命名规则猜关联,猜错不报错——要么静默回落静态阈值,要么套用别人的 SLO。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object",
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "discovery",
+        "nginx"
+      ],
+      "type": "object",
+      "x-kubernetes-validations": [
+        {
+          "message": "modelType: video 不支持 cart(CART 是 LLM 的前缀缓存路由器)",
+          "rule": "!has(self.modelType) || self.modelType != 'video' || !has(self.cart)"
+        },
+        {
+          "message": "modelType: video 的 nginx.peers 不能用 cart",
+          "rule": "!has(self.modelType) || self.modelType != 'video' || !self.nginx.peers.exists(s, s.use == 'cart')"
+        },
+        {
+          "message": "modelType: video 不支持 monitor(它的探活与告警是按 LLM 端点设计的,会产生假告警;视频服务用 Prometheus 抓自己的指标)",
+          "rule": "!has(self.modelType) || self.modelType != 'video' || !has(self.monitor)"
+        },
+        {
+          "message": "modelType: video 的 nginx.values 只支持 max_body_size / proxy_timeout / connect_timeout / rate_limit / upload_conn_limit / upload_req_limit / upload_req_burst / upload_limit_key / download_conn_limit / auth / auth_public_paths(TTFT/TPS/自适应并发等是 LLM 引擎的调优项,video 是纯反向代理,配了不会生效;rate_limit_after 已废弃 —— 下载路径现在从第一字节起就限速,不再豁免首段)",
+          "rule": "!has(self.modelType) || self.modelType != 'video' || !has(self.nginx.values) || self.nginx.values.all(k, k in ['max_body_size','proxy_timeout','connect_timeout','rate_limit','upload_conn_limit','upload_req_limit','upload_req_burst','upload_limit_key','download_conn_limit','auth','auth_public_paths'])"
+        },
+        {
+          "message": "max_body_size / proxy_timeout / connect_timeout / rate_limit / upload_conn_limit / upload_req_limit / upload_req_burst / upload_limit_key / download_conn_limit / auth / auth_public_paths 只对 modelType: video 生效,llm 路由请用 ttft_limit_ms / tps_limit_tps / adaptive_cc_min 等",
+          "rule": "(has(self.modelType) && self.modelType == 'video') || !has(self.nginx.values) || self.nginx.values.all(k, !(k in ['max_body_size','proxy_timeout','connect_timeout','rate_limit','upload_conn_limit','upload_req_limit','upload_req_burst','upload_limit_key','download_conn_limit','auth','auth_public_paths']))"
+        },
+        {
+          "message": "nginx.peers 用了 cart,但没配 spec.cart",
+          "rule": "!self.nginx.peers.exists(s, s.use == 'cart') || has(self.cart)"
+        },
+        {
+          "message": "cart 用了 maxConcurrencyFromBackend,必须给 backend 组配 maxConcurrency(> 0)作乘数",
+          "rule": "!self.nginx.peers.exists(s, s.use == 'cart' && has(s.maxConcurrencyFromBackend) && s.maxConcurrencyFromBackend) || self.nginx.peers.exists(s, s.use == 'backend' && has(s.maxConcurrency) && s.maxConcurrency > 0)"
+        }
+      ],
+      "additionalProperties": false
+    },
+    "status": {
+      "description": "ModelRouteStatus 是 controller 回写的观测状态。",
+      "properties": {
+        "appliedRouteConfigMap": {
+          "type": "string"
+        },
+        "appliedRouteKey": {
+          "description": "AppliedRouteKey / AppliedRouteConfigMap:**上一次真正写进去的** openresty key 及其 ConfigMap。\n用来在 spec.nginx.route 改名后删掉旧 key —— 只看当前 spec 是推不出旧名字的,\n结果就是改一次名泄漏一个 key,而 openresty 会继续加载那条陈旧路由(指向改名前的 peers)。",
+          "type": "string"
+        },
+        "backends": {
+          "type": "integer"
+        },
+        "cartPeers": {
+          "type": "integer"
+        },
+        "conditions": {
+          "items": {
+            "description": "Condition contains details for one aspect of the current state of this API Resource.",
+            "properties": {
+              "lastTransitionTime": {
+                "description": "lastTransitionTime is the last time the condition transitioned from one status to another.\nThis should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.",
+                "format": "date-time",
+                "type": "string"
+              },
+              "message": {
+                "description": "message is a human readable message indicating details about the transition.\nThis may be an empty string.",
+                "maxLength": 32768,
+                "type": "string"
+              },
+              "observedGeneration": {
+                "description": "observedGeneration represents the .metadata.generation that the condition was set based upon.\nFor instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date\nwith respect to the current state of the instance.",
+                "format": "int64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "reason": {
+                "description": "reason contains a programmatic identifier indicating the reason for the condition's last transition.\nProducers of specific condition types may define expected values and meanings for this field,\nand whether the values are considered a guaranteed API.\nThe value should be a CamelCase string.\nThis field may not be empty.",
+                "maxLength": 1024,
+                "minLength": 1,
+                "pattern": "^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$",
+                "type": "string"
+              },
+              "status": {
+                "description": "status of the condition, one of True, False, Unknown.",
+                "enum": [
+                  "True",
+                  "False",
+                  "Unknown"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "description": "type of condition in CamelCase or in foo.example.com/CamelCase.",
+                "maxLength": 316,
+                "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "lastTransitionTime",
+              "message",
+              "reason",
+              "status",
+              "type"
+            ],
+            "type": "object",
+            "additionalProperties": false
+          },
+          "type": "array"
+        },
+        "lastSyncTime": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "observedGeneration": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "orphanRouteKeys": {
+          "description": "OrphanRouteKeys:改名后遗留、已无任何 ModelRoute 声明的 openresty key(格式 \"ns/cm:key\")。\n**只报不删** —— 见 reportOrphanKeys 里为什么不能由 operator 自动删。",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ready": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "backends",
+        "cartPeers",
+        "ready"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta": {
+      "description": "ObjectMeta is metadata that all persisted resources must have, which includes all objects users must create.",
+      "properties": {
+        "annotations": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Annotations is an unstructured key value map stored with a resource that may be set by external tools to store and retrieve arbitrary metadata. They are not queryable and should be preserved when modifying objects. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations",
+          "type": "object"
+        },
+        "creationTimestamp": {
+          "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+          "description": "CreationTimestamp is a timestamp representing the server time when this object was created. It is not guaranteed to be set in happens-before order across separate operations. Clients may not set this value. It is represented in RFC3339 form and is in UTC.\n\nPopulated by the system. Read-only. Null for lists. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+        },
+        "deletionGracePeriodSeconds": {
+          "description": "Number of seconds allowed for this object to gracefully terminate before it will be removed from the system. Only set when deletionTimestamp is also set. May only be shortened. Read-only.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "deletionTimestamp": {
+          "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+          "description": "DeletionTimestamp is RFC 3339 date and time at which this resource will be deleted. This field is set by the server when a graceful deletion is requested by the user, and is not directly settable by a client. The resource is expected to be deleted (no longer visible from resource lists, and not reachable by name) after the time in this field, once the finalizers list is empty. As long as the finalizers list contains items, deletion is blocked. Once the deletionTimestamp is set, this value may not be unset or be set further into the future, although it may be shortened or the resource may be deleted prior to this time. For example, a user may request that a pod is deleted in 30 seconds. The Kubelet will react by sending a graceful termination signal to the containers in the pod. After that 30 seconds, the Kubelet will send a hard termination signal (SIGKILL) to the container and after cleanup, remove the pod from the API. In the presence of network partitions, this object may still exist after this timestamp, until an administrator or automated process can determine the resource is fully terminated. If not set, graceful deletion of the object has not been requested.\n\nPopulated by the system when a graceful deletion is requested. Read-only. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata"
+        },
+        "finalizers": {
+          "description": "Must be empty before the object is deleted from the registry. Each entry is an identifier for the responsible component that will remove the entry from the list. If the deletionTimestamp of the object is non-nil, entries in this list can only be removed. Finalizers may be processed and removed in any order.  Order is NOT enforced because it introduces significant risk of stuck finalizers. finalizers is a shared field, any actor with permission can reorder it. If the finalizer list is processed in order, then this can lead to a situation in which the component responsible for the first finalizer in the list is waiting for a signal (field value, external system, or other) produced by a component responsible for a finalizer later in the list, resulting in a deadlock. Without enforced ordering finalizers are free to order amongst themselves and are not vulnerable to ordering changes in the list.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "set",
+          "x-kubernetes-patch-strategy": "merge"
+        },
+        "generateName": {
+          "description": "GenerateName is an optional prefix, used by the server, to generate a unique name ONLY IF the Name field has not been provided. If this field is used, the name returned to the client will be different than the name passed. This value will also be combined with a unique suffix. The provided value has the same validation rules as the Name field, and may be truncated by the length of the suffix required to make the value unique on the server.\n\nIf this field is specified and the generated name exists, the server will return a 409.\n\nApplied only if Name is not specified. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#idempotency",
+          "type": "string"
+        },
+        "generation": {
+          "description": "A sequence number representing a specific generation of the desired state. Populated by the system. Read-only.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Map of string keys and values that can be used to organize and categorize (scope and select) objects. May match selectors of replication controllers and services. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels",
+          "type": "object"
+        },
+        "managedFields": {
+          "description": "ManagedFields maps workflow-id and version to the set of fields that are managed by that workflow. This is mostly for internal housekeeping, and users typically shouldn't need to set or understand this field. A workflow can be the user's name, a controller's name, or the name of a specific apply path like \"ci-cd\". The set of fields is always in the version that the workflow used when modifying the object.",
+          "items": {
+            "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ManagedFieldsEntry"
+          },
+          "type": "array",
+          "x-kubernetes-list-type": "atomic"
+        },
+        "name": {
+          "description": "Name must be unique within a namespace. Is required when creating resources, although some resources may allow a client to request the generation of an appropriate name automatically. Name is primarily intended for creation idempotence and configuration definition. Cannot be updated. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#names",
+          "type": "string"
+        },
+        "namespace": {
+          "description": "Namespace defines the space within which each name must be unique. An empty namespace is equivalent to the \"default\" namespace, but \"default\" is the canonical representation. Not all objects are required to be scoped to a namespace - the value of this field for those objects will be empty.\n\nMust be a DNS_LABEL. Cannot be updated. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces",
+          "type": "string"
+        },
+        "ownerReferences": {
+          "description": "List of objects depended by this object. If ALL objects in the list have been deleted, this object will be garbage collected. If this object is managed by a controller, then an entry in this list will point to this controller, with the controller field set to true. There cannot be more than one managing controller.",
+          "items": {
+            "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.OwnerReference"
+          },
+          "type": "array",
+          "x-kubernetes-list-map-keys": [
+            "uid"
+          ],
+          "x-kubernetes-list-type": "map",
+          "x-kubernetes-patch-merge-key": "uid",
+          "x-kubernetes-patch-strategy": "merge"
+        },
+        "resourceVersion": {
+          "description": "An opaque value that represents the internal version of this object that can be used by clients to determine when objects have changed. May be used for optimistic concurrency, change detection, and the watch operation on a resource or set of resources. Clients must treat these values as opaque and passed unmodified back to the server. They may only be valid for a particular resource or set of resources.\n\nPopulated by the system. Read-only. Value must be treated as opaque by clients and . More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency",
+          "type": "string"
+        },
+        "selfLink": {
+          "description": "Deprecated: selfLink is a legacy read-only field that is no longer populated by the system.",
+          "type": "string"
+        },
+        "uid": {
+          "description": "UID is the unique in time and space value for this object. It is typically generated by the server on successful creation of a resource and is not allowed to change on PUT operations.\n\nPopulated by the system. Read-only. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#uids",
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "io.k8s.apimachinery.pkg.apis.meta.v1.Time": {
+      "description": "Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "io.k8s.apimachinery.pkg.apis.meta.v1.ManagedFieldsEntry": {
+      "description": "ManagedFieldsEntry is a workflow-id, a FieldSet and the group version of the resource that the fieldset applies to.",
+      "properties": {
+        "apiVersion": {
+          "description": "APIVersion defines the version of this resource that this field set applies to. The format is \"group/version\" just like the top-level APIVersion field. It is necessary to track the version of a field set because it cannot be automatically converted.",
+          "type": "string"
+        },
+        "fieldsType": {
+          "description": "FieldsType is the discriminator for the different fields format and version. There is currently only one possible value: \"FieldsV1\"",
+          "type": "string"
+        },
+        "fieldsV1": {
+          "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.FieldsV1",
+          "description": "FieldsV1 holds the first JSON version format as described in the \"FieldsV1\" type."
+        },
+        "manager": {
+          "description": "Manager is an identifier of the workflow managing these fields.",
+          "type": "string"
+        },
+        "operation": {
+          "description": "Operation is the type of operation which lead to this ManagedFieldsEntry being created. The only valid values for this field are 'Apply' and 'Update'.",
+          "type": "string"
+        },
+        "subresource": {
+          "description": "Subresource is the name of the subresource used to update that object, or empty string if the object was updated through the main resource. The value of this field is used to distinguish between managers, even if they share the same name. For example, a status update will be distinct from a regular update using the same manager name. Note that the APIVersion field is not related to the Subresource field and it always corresponds to the version of the main resource.",
+          "type": "string"
+        },
+        "time": {
+          "$ref": "#/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.Time",
+          "description": "Time is the timestamp of when the ManagedFields entry was added. The timestamp will also be updated if a field is added, the manager changes any of the owned fields value or removes a field. The timestamp does not update when a field is removed from the entry because another manager took it over."
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "io.k8s.apimachinery.pkg.apis.meta.v1.FieldsV1": {
+      "description": "FieldsV1 stores a set of fields in a data structure like a Trie, in JSON format.\n\nEach key is either a '.' representing the field itself, and will always map to an empty set, or a string representing a sub-field or item. The string will follow one of these four formats: 'f:<name>', where <name> is the name of a field in a struct, or key in a map 'v:<value>', where <value> is the exact json formatted value of a list item 'i:<index>', where <index> is position of a item in a list 'k:<keys>', where <keys> is a map of  a list item's key fields to their unique values If a key maps to an empty Fields value, the field that key represents is part of the set.\n\nThe exact format is defined in sigs.k8s.io/structured-merge-diff",
+      "type": "object"
+    },
+    "io.k8s.apimachinery.pkg.apis.meta.v1.OwnerReference": {
+      "description": "OwnerReference contains enough information to let you identify an owning object. An owning object must be in the same namespace as the dependent, or be cluster-scoped, so there is no namespace field.",
+      "properties": {
+        "apiVersion": {
+          "description": "API version of the referent.",
+          "type": "string"
+        },
+        "blockOwnerDeletion": {
+          "description": "If true, AND if the owner has the \"foregroundDeletion\" finalizer, then the owner cannot be deleted from the key-value store until this reference is removed. See https://kubernetes.io/docs/concepts/architecture/garbage-collection/#foreground-deletion for how the garbage collector interacts with this field and enforces the foreground deletion. Defaults to false. To set this field, a user needs \"delete\" permission of the owner, otherwise 422 (Unprocessable Entity) will be returned.",
+          "type": "boolean"
+        },
+        "controller": {
+          "description": "If true, this reference points to the managing controller.",
+          "type": "boolean"
+        },
+        "kind": {
+          "description": "Kind of the referent. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#names",
+          "type": "string"
+        },
+        "uid": {
+          "description": "UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names#uids",
+          "type": "string"
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "name",
+        "uid"
+      ],
+      "type": "object",
+      "x-kubernetes-map-type": "atomic",
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata"
+  ]
+}

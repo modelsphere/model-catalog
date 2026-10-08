@@ -1,0 +1,121 @@
+{
+  "converterVersion": "catalog-crd-schema-v1",
+  "objectMeta": {
+    "url": "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/39a87cd29966bc0b3434e8cfbc2061782c8cb69a/v1.36.3-standalone-strict/_definitions.json",
+    "sha256": "ed76a6bccfa27ff085c390952d64267a18c91beb045b3e33117d482e26510cf3"
+  },
+  "sources": [
+    {
+      "repository": "modelsphere/autoconfig",
+      "commit": "b07623f8179a31cd63545d4077fa21c253b608dd",
+      "path": "config/crd/bases/routing.modelsphere.dev_modelroutes.yaml",
+      "kind": "ModelRoute",
+      "url": "https://raw.githubusercontent.com/modelsphere/autoconfig/b07623f8179a31cd63545d4077fa21c253b608dd/config/crd/bases/routing.modelsphere.dev_modelroutes.yaml",
+      "sha256": "ee2397f6a5636f585c5ec9b96abf46ef0b68df758beb94abd048236340554e2f",
+      "schemas": [
+        {
+          "file": "routing.modelsphere.dev/modelroute_v1alpha1.json",
+          "group": "routing.modelsphere.dev",
+          "version": "v1alpha1",
+          "kind": "ModelRoute"
+        }
+      ]
+    },
+    {
+      "repository": "modelsphere/llm-operator",
+      "commit": "47d2040748b20bd8f73cad587df556d3b29e4842",
+      "path": "config/crd/bases/autoscaling.4pd.io_llmscalers.yaml",
+      "kind": "LLMScaler",
+      "url": "https://raw.githubusercontent.com/modelsphere/llm-operator/47d2040748b20bd8f73cad587df556d3b29e4842/config/crd/bases/autoscaling.4pd.io_llmscalers.yaml",
+      "sha256": "ad25f5946a732fb3021485298db31dbec2a2d9b4285f14a9b31d33b2ea517115",
+      "schemas": [
+        {
+          "file": "autoscaling.4pd.io/llmscaler_v1alpha1.json",
+          "group": "autoscaling.4pd.io",
+          "version": "v1alpha1",
+          "kind": "LLMScaler"
+        }
+      ]
+    },
+    {
+      "repository": "modelsphere/llm-operator",
+      "commit": "3583a1fae4b979fd506f81be9317d3316395fc00",
+      "path": "config/crd/bases/autoscaling.modelsphere.dev_llmscalers.yaml",
+      "kind": "LLMScaler",
+      "url": "https://raw.githubusercontent.com/modelsphere/llm-operator/3583a1fae4b979fd506f81be9317d3316395fc00/config/crd/bases/autoscaling.modelsphere.dev_llmscalers.yaml",
+      "sha256": "72168fc74a2603ad726ad6a85a2cb7737d105cc4e3e8eeea4284ff87f3a85214",
+      "schemas": [
+        {
+          "file": "autoscaling.modelsphere.dev/llmscaler_v1alpha1.json",
+          "group": "autoscaling.modelsphere.dev",
+          "version": "v1alpha1",
+          "kind": "LLMScaler"
+        }
+      ]
+    },
+    {
+      "repository": "modelsphere/helm-charts",
+      "commit": "46c4a9c4c90274bb2c6d9fbfe2617d5b39e2eccc",
+      "path": "charts/llm-slo-decision-gen/crds/llmslorequirements.inference.x-k8s.io.yaml",
+      "kind": "LLMSLORequirement",
+      "url": "https://raw.githubusercontent.com/modelsphere/helm-charts/46c4a9c4c90274bb2c6d9fbfe2617d5b39e2eccc/charts/llm-slo-decision-gen/crds/llmslorequirements.inference.x-k8s.io.yaml",
+      "sha256": "9e2744ddd82995bd5404797d23ee19ae6dfc9b76d77b9f29c3a8f76da1661352",
+      "schemas": [
+        {
+          "file": "inference.x-k8s.io/llmslorequirement_v1alpha1.json",
+          "group": "inference.x-k8s.io",
+          "version": "v1alpha1",
+          "kind": "LLMSLORequirement"
+        }
+      ]
+    },
+    {
+      "repository": "modelsphere/helm-charts",
+      "commit": "8c2ca99e4576aafbdd17107a3c55fb391b2473c4",
+      "path": "charts/llm-slo-decision-gen/crds/llmslorequirements.inference.modelsphere.dev.yaml",
+      "kind": "LLMSLORequirement",
+      "url": "https://raw.githubusercontent.com/modelsphere/helm-charts/8c2ca99e4576aafbdd17107a3c55fb391b2473c4/charts/llm-slo-decision-gen/crds/llmslorequirements.inference.modelsphere.dev.yaml",
+      "sha256": "a16199665872f1d2b78cb008bcfff3d232db59595e1f8c820f648c85720a511a",
+      "schemas": [
+        {
+          "file": "inference.modelsphere.dev/llmslorequirement_v1alpha1.json",
+          "group": "inference.modelsphere.dev",
+          "version": "v1alpha1",
+          "kind": "LLMSLORequirement"
+        }
+      ]
+    },
+    {
+      "repository": "kubernetes-sigs/lws",
+      "commit": "03254992e177a706fc531572376a3d3153addc93",
+      "path": "config/crd/bases/leaderworkerset.x-k8s.io_leaderworkersets.yaml",
+      "kind": "LeaderWorkerSet",
+      "url": "https://raw.githubusercontent.com/kubernetes-sigs/lws/03254992e177a706fc531572376a3d3153addc93/config/crd/bases/leaderworkerset.x-k8s.io_leaderworkersets.yaml",
+      "sha256": "1554930d16a4c48bbfca4952afbf877c2814f9f751e0f9694e6c22ef3206a518",
+      "schemas": [
+        {
+          "file": "leaderworkerset.x-k8s.io/leaderworkerset_v1.json",
+          "group": "leaderworkerset.x-k8s.io",
+          "version": "v1",
+          "kind": "LeaderWorkerSet"
+        }
+      ]
+    },
+    {
+      "repository": "prometheus-operator/prometheus-operator",
+      "commit": "5b656b46d40ee3de0c444e55bce82871b42aa959",
+      "path": "example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml",
+      "kind": "ServiceMonitor",
+      "url": "https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/5b656b46d40ee3de0c444e55bce82871b42aa959/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml",
+      "sha256": "31bdff398b54ac2bc993a33f5dcb0472792a77104a6a609d264c8f1f17829769",
+      "schemas": [
+        {
+          "file": "monitoring.coreos.com/servicemonitor_v1.json",
+          "group": "monitoring.coreos.com",
+          "version": "v1",
+          "kind": "ServiceMonitor"
+        }
+      ]
+    }
+  ]
+}
