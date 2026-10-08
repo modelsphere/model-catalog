@@ -63,6 +63,7 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
   try {
     if (!["latest", "declared"].includes(chartMode)) throw new Error("chartMode must be latest or declared");
     const selection = selectFiles(root, opts);
+    const added = new Set(selection.added);
     Object.assign(summary, selection, {runDirectory: path.relative(root, runDir)});
     log(`Selection: ${selection.reason}${selection.mergeBase ? ` (${selection.mergeBase})` : ""}`);
     if (!selection.files.length) {
@@ -76,10 +77,13 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
         throw new Error(`${name}: expected ${config[`${name}Version`]}, got ${version}; run npm run helm:install`);
       }
     }
-    const schemaDir = path.join(root, "schema/helm/crds");
-    const provenance = JSON.parse(fs.readFileSync(path.join(root, "schema/helm/provenance.json"), "utf8"));
+    const lock = path.join(root, "schema/helm/provenance.json");
+    const provenance = JSON.parse(fs.readFileSync(lock, "utf8"));
     if (provenance.converterVersion !== config.converterVersion) throw new Error("CRD converter version mismatch");
     const apis = [...new Set(provenance.sources.flatMap((source) => source.schemas.map((s) => `${s.group}/${s.version}`)))];
+    // CRD schemas are not committed: build them from the lock for this run.
+    const schemaDir = path.join(runDir, "crds");
+    requireSuccess(invoke(process.execPath, [path.join(__dirname, "build-crds.js"), "--lock", lock, schemaDir], runDir, "crds"), "crds");
     const schemaCache = path.join(runDir, "schema-cache");
     fs.mkdirSync(schemaCache);
     requireSuccess(invoke(bin("helm"), ["repo", "add", "catalog", config.chartRepository], runDir, "chart-repository"), "chart-repository");
@@ -113,10 +117,15 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
         const minimum = config.minimumChartVersions[chart.name];
         if (!minimum) throw new Error(`chart.name: unsupported chart ${chart.name}`);
         // Keep deployment declarations resolvable even when rendering against
-        // latest. A missing or obsolete declared release must still fail CI.
+        // latest. A missing declared release must still fail CI; one below the
+        // minimum fails a new version only (see the variant loop).
         const declaredVersion = resolveChart(chart.name, chart.version, dir, "declared-chart-resolution");
-        if (compareVersions(declaredVersion, minimum) < 0) {
-          throw new Error(`chart.version: ${chart.name} ${declaredVersion} is below the required minimum ${minimum}`);
+        const legacy = compareVersions(declaredVersion, minimum) < 0;
+        if (legacy && chartMode === "declared") {
+          // Its chart renders API groups with no schema here: nothing to render.
+          const pkg = {name: chart.name, declaredVersion, minimum, legacy};
+          requests.set(requestKey, pkg);
+          return pkg;
         }
         const selectionConstraint = chartMode === "latest" ? `>=${minimum}` : chart.version;
         const actualVersion = chartMode === "latest" ?
@@ -134,7 +143,7 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
           if (metadata.name !== chart.name || metadata.version !== actualVersion) throw new Error(`${key}: package metadata mismatch`);
           packages.set(key, {archive, name: chart.name, actualVersion, digest: `sha256:${digest}`});
         }
-        const pkg = {...packages.get(key), declaredVersion, selectionConstraint};
+        const pkg = {...packages.get(key), declaredVersion, selectionConstraint, minimum, legacy};
         requests.set(requestKey, pkg);
         return pkg;
       } catch (err) {
@@ -167,6 +176,19 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
           fs.writeFileSync(valuesFile, YAML.stringify(values));
           stage = "chart";
           const pkg = chartFor(variant.chart, dir);
+          if (pkg.legacy) {
+            const below = `${pkg.name} ${pkg.declaredVersion} is below the required minimum ${pkg.minimum}`;
+            if (added.has(file)) throw new Error(`chart.version: ${below}`);
+            // A published version keeps its chart; rewriting it to pass would
+            // change the digest every existing deploy recorded.
+            record.warning = `published version declares ${below}`;
+            if (!pkg.archive) {
+              record.skipped = true;
+              log(`SKIP ${label}: ${record.warning}; its legacy chart cannot be rendered here`);
+              continue;
+            }
+            log(`WARN ${label}: ${record.warning}; its values are still checked against the latest chart`);
+          }
           record.chart = {name: pkg.name, version: pkg.actualVersion, digest: pkg.digest,
             mode: chartMode, declaredVersion: pkg.declaredVersion, selectionConstraint: pkg.selectionConstraint};
           log(`${label}: declared ${pkg.name} ${variant.chart.version} -> ${pkg.declaredVersion}; validating ${chartMode} chart ${pkg.name}@${pkg.actualVersion} ${pkg.digest}`);
@@ -207,8 +229,10 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
         }
       }
     }
-    const failed = summary.results.filter((r) => !r.ok).length;
-    log(`${summary.results.length} checks: ${summary.results.length - failed} passed, ${failed} failed. Artifacts: ${runDir}`);
+    const failed = summary.results.filter((r) => !r.ok && !r.skipped).length;
+    const skipped = summary.results.filter((r) => r.skipped).length;
+    log(`${summary.results.length} checks: ${summary.results.length - failed - skipped} passed, ${failed} failed` +
+      `${skipped ? `, ${skipped} skipped` : ""}. Artifacts: ${runDir}`);
     return failed === 0;
   } catch (err) {
     summary.error = err.message;

@@ -6,6 +6,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const {execFileSync} = require("node:child_process");
 const {root} = require("./lib/catalog");
+const {download} = require("./lib/download");
 const config = require("../schema/helm/config.json");
 
 async function main() {
@@ -19,9 +20,7 @@ async function main() {
     const archive = name === "helm" ? `helm-v${version}-${platform}.tar.gz` : `kubeconform-${platform}.tar.gz`;
     const url = name === "helm" ? `https://get.helm.sh/${archive}` :
       `https://github.com/yannh/kubeconform/releases/download/v${version}/${archive}`;
-    const response = await fetch(url, {signal: AbortSignal.timeout(60000)});
-    if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
-    const bytes = Buffer.from(await response.arrayBuffer());
+    const bytes = await download(url);
     if (crypto.createHash("sha256").update(bytes).digest("hex") !== sums[name]) {
       throw new Error(`${archive}: checksum mismatch`);
     }

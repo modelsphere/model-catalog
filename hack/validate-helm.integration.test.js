@@ -23,14 +23,19 @@ for (const chartMode of ["latest", "declared"]) {
     function write(name, doc) {
       fs.writeFileSync(path.join(temp, `models/fixtures/${name}.yaml`), YAML.stringify(doc));
     }
+    const read = (file) => YAML.parse(fs.readFileSync(path.join(root, file), "utf8"));
     for (const [name, file] of [
-      ["valid-fixed", "models/glm5.3/glm5.3-1.0.0.yaml"],
       ["valid-range", "models/glm5.3/glm5.3-1.0.1.yaml"],
       ["valid-gemma", "models/gemma-4-31b-it/google-gemma-4-31b-it-1.0.0.yaml"],
       ["valid-lws", "models/kimi-k2.5/kimi-k2.5-1.0.0.yaml"]
-    ]) write(name, YAML.parse(fs.readFileSync(path.join(root, file), "utf8")));
-    const vllm = YAML.parse(fs.readFileSync(path.join(root, "models/kimi-k3/kimi-k3-1.0.1.yaml"), "utf8"));
+    ]) write(name, read(file));
+    // Published fixed pins predate the minimum; pin these copies to it.
+    const glm = read("models/glm5.3/glm5.3-1.0.0.yaml");
+    for (const v of glm.variants) v.chart.version = config.minimumChartVersions.sglang;
+    write("valid-fixed", glm);
+    const vllm = read("models/kimi-k3/kimi-k3-1.0.1.yaml");
     vllm.variants = vllm.variants.filter((v) => v.chart.name === "vllm");
+    for (const v of vllm.variants) v.chart.version = config.minimumChartVersions.vllm;
     write("valid-vllm-fixed", vllm);
     const base = {variants: [{id: "fixture", chart: {name: "sglang", version: ">=0.8.0"}}]};
     write("valid-defaults", base);
@@ -52,7 +57,9 @@ for (const chartMode of ["latest", "declared"]) {
     const legacy = structuredClone(base); legacy.variants[0].chart.version = "0.7.1";
     write("bad-legacy-chart", legacy);
     const output = path.join(temp, "artifacts");
-    assert.equal(main({all: true, files: [], output, chartMode}, {repositoryRoot: temp}), false);
+    // Explicit files are new versions, so the legacy fixture must fail the minimum.
+    const files = fs.readdirSync(path.join(temp, "models/fixtures")).map((name) => `models/fixtures/${name}`);
+    assert.equal(main({files, output, chartMode}, {repositoryRoot: temp}), false);
     const summary = JSON.parse(fs.readFileSync(path.join(output, "summary.json"), "utf8"));
     for (const result of summary.results.filter((r) => path.basename(r.file).startsWith("valid-"))) {
       assert.equal(result.ok, true, `${result.file}: ${JSON.stringify(result)}`);
@@ -102,7 +109,7 @@ for (const chartMode of ["latest", "declared"]) {
       const rendered = path.join(temp, "unknown.yaml");
       fs.writeFileSync(rendered, YAML.stringify({apiVersion, kind, metadata: {name: "unknown"}}));
       const result = command(path.join(root, ".cache/helm-validation/bin/kubeconform"),
-        kubeconformArgs(config, path.join(root, "schema/helm/crds"), cache, rendered));
+        kubeconformArgs(config, path.join(temp, summary.runDirectory, "crds"), cache, rendered));
       assert.equal(result.ok, false, `${apiVersion}/${kind}`);
     }
   });

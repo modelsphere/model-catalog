@@ -52,7 +52,8 @@ function fixture(t, failure, {chartName = "sglang", declaredVersion = "0.8.0", l
     else if (args[0] === "show") stdout = YAML.stringify({name: chartName,
       version: path.basename(args.at(-1)).slice(chartName.length + 1, -4)});
     else if (args[0] === "template") stdout = failure === "empty" ? "" : "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: example\n";
-    const stage = args[0] === "-strict" ? "kubeconform" : args[0] === "pull" ? "download" : args[0];
+    const stage = args[0] === "-strict" ? "kubeconform" : args[0] === "pull" ? "download" :
+      args[0].endsWith("build-crds.js") ? "crds" : args[0];
     const ok = stage !== failure;
     return {stdout, ok, log: ok ? stdout : `${stage}: fixture failure at spec.template.spec.containers[0].env[0]\n`};
   };
@@ -97,10 +98,28 @@ test("declared mode checks the fixed deployment release independently of latest"
   assert.equal(f.summary().results[0].chart.mode, "declared");
 });
 
-test("a declared release below the baseline cannot pass by checking a newer chart", (t) => {
+test("a new version below the baseline cannot pass by checking a newer chart", (t) => {
   const f = fixture(t, undefined, {declaredVersion: "0.7.1"});
-  assert.equal(f.run(), false);
+  assert.equal(f.run({all: false, files: ["models/example/example-1.0.0.yaml"]}), false);
   assert.match(f.summary().results[0].error, /below the required minimum 0.8.0/);
+});
+
+test("a published version below the baseline warns and its values are checked against latest", (t) => {
+  const f = fixture(t, undefined, {declaredVersion: "0.7.1", latestVersion: "0.8.2"});
+  assert.equal(f.run(), true);
+  const [legacy] = f.summary().results;
+  assert.equal(legacy.ok, true);
+  assert.match(legacy.warning, /0.7.1 is below the required minimum 0.8.0/);
+  assert.equal(legacy.chart.version, "0.8.2");
+});
+
+test("declared mode skips a published version below the baseline instead of rendering its legacy chart", (t) => {
+  const f = fixture(t, undefined, {declaredVersion: "0.7.1"});
+  assert.equal(f.run({chartMode: "declared"}), true);
+  const [legacy, other] = f.summary().results;
+  assert.equal(legacy.skipped, true);
+  assert.equal(other.ok, true);
+  assert(f.calls.filter((a) => a[0] === "pull").every((a) => !a.includes("0.7.1")));
 });
 
 test("missing latest release does not fall back to a valid declared pin", (t) => {
@@ -110,7 +129,7 @@ test("missing latest release does not fall back to a valid declared pin", (t) =>
   assert.equal(f.calls.filter((a) => a[0] === "pull").length, 0);
 });
 
-for (const failure of ["resolution", "download", "schema", "lint", "template", "kubeconform", "empty"]) {
+for (const failure of ["crds", "resolution", "download", "schema", "lint", "template", "kubeconform", "empty"]) {
   test(`${failure} failure cannot report success`, (t) => {
     const f = fixture(t, failure);
     assert.equal(f.run(), false);

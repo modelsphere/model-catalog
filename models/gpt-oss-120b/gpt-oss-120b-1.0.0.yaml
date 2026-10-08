@@ -8,7 +8,7 @@ variants:
     engine: sglang
     chart:
       name: sglang
-      version: ">=0.8.0"
+      version: ">=0.7.1"
     image:
       repository: harbor.4pd.io/hardcore-tech/sglang
       tag: dev-dsv41
@@ -80,7 +80,7 @@ variants:
     engine: sglang
     chart:
       name: sglang
-      version: ">=0.8.0"
+      version: ">=0.7.1"
     image:
       repository: harbor.4pd.io/hardcore-tech/sglang
       tag: dev-dsv41

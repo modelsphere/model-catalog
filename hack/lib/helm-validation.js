@@ -11,8 +11,8 @@ function isVersionFile(file) {
 
 function affectsValidator(file) {
   return file.startsWith("schema/helm/") ||
-    /^hack\/(validate-helm|install-helm-tools|update-helm-schemas)(\.integration)?\.(js|test\.js)$/.test(file) ||
-    /^hack\/lib\/(helm-validation|crd-schema|catalog)(\.test)?\.js$/.test(file) ||
+    /^hack\/(validate-helm|install-helm-tools|build-crds|update-crds)(\.integration)?\.(js|test\.js)$/.test(file) ||
+    /^hack\/lib\/(helm-validation|crd-schema|download|catalog)(\.test)?\.js$/.test(file) ||
     ["package.json", "package-lock.json", ".github/workflows/lint.yml"].includes(file);
 }
 
@@ -43,26 +43,33 @@ function allVersionFiles(root) {
 
 // Keep both sides of renames for validator-change detection. NUL delimiters
 // preserve filenames with whitespace; missing old/deleted model paths are excluded.
+// `added` lists the new versions, held to the chart minimum: a published version
+// keeps the chart it was published with. Explicit files are checked as new.
 function selectFiles(root, {all = false, base = "origin/HEAD", files = []} = {}) {
-  if (all) return {files: allVersionFiles(root), reason: "--all"};
+  if (all) return {files: allVersionFiles(root), added: [], reason: "--all"};
   if (files.length) {
     const selected = files.map((file) => path.relative(root, path.resolve(root, file)).split(path.sep).join("/"));
     if (selected.some((file) => !isVersionFile(file) || !fs.existsSync(path.join(root, file)))) {
       throw new Error("explicit files must be existing model version YAMLs under models/");
     }
-    return {files: [...new Set(selected)].sort(), reason: "explicit files"};
+    const unique = [...new Set(selected)].sort();
+    return {files: unique, added: unique, reason: "explicit files"};
   }
   const mergeBase = git(root, ["merge-base", base, "HEAD"]).trim();
   const tokens = git(root, ["diff", "--name-status", "-z", "--find-renames", mergeBase, "HEAD"]).split("\0");
   const changed = [];
+  const added = [];
   for (let i = 0; i < tokens.length && tokens[i];) {
     const status = tokens[i++];
     changed.push(tokens[i++]);
     if (/^[RC]/.test(status)) changed.push(tokens[i++]);
+    if (/^[ARC]/.test(status)) added.push(changed.at(-1));
   }
-  if (changed.some(affectsValidator)) return {files: allVersionFiles(root), reason: "validator/dependency/schema changes", mergeBase};
-  return {files: [...new Set(changed.filter((file) => isVersionFile(file) && fs.existsSync(path.join(root, file))))].sort(),
-    reason: `changes since merge-base with ${base}`, mergeBase};
+  const versions = (list) => [...new Set(list.filter((file) => isVersionFile(file) && fs.existsSync(path.join(root, file))))].sort();
+  if (changed.some(affectsValidator)) {
+    return {files: allVersionFiles(root), added: versions(added), reason: "validator/dependency/schema changes", mergeBase};
+  }
+  return {files: versions(changed), added: versions(added), reason: `changes since merge-base with ${base}`, mergeBase};
 }
 
 function isObject(value) {

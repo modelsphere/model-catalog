@@ -57,7 +57,7 @@ test("selection uses the common ancestor even when the target branch advances", 
 });
 
 test("validator, dependency and schema changes, including deletions, trigger all versions", (t) => {
-  for (const file of ["hack/validate-helm.js", "hack/lib/crd-schema.js", "schema/helm/config.json", "package-lock.json", ".github/workflows/lint.yml"]) {
+  for (const file of ["hack/validate-helm.js", "hack/build-crds.js", "hack/lib/crd-schema.js", "schema/helm/config.json", "package-lock.json", ".github/workflows/lint.yml"]) {
     const r = repository(t);
     r.write(file, "changed\n"); r.commit();
     assert.equal(selectFiles(r.dir, {base: "base"}).reason, "validator/dependency/schema changes");
@@ -68,6 +68,18 @@ test("validator, dependency and schema changes, including deletions, trigger all
   const renamed = repository(t);
   renamed.git("mv", "hack/validate-helm.js", "archived-validator.txt"); renamed.commit();
   assert.equal(selectFiles(renamed.dir, {base: "base"}).reason, "validator/dependency/schema changes");
+});
+
+test("only added versions are held to the chart minimum, also in a full scan", (t) => {
+  const r = repository(t);
+  r.write("models/example/example-1.0.0.yaml", "modified\n");
+  r.write("models/example/example-1.1.0.yaml");
+  r.write("hack/validate-helm.js", "changed\n"); r.commit();
+  const selection = selectFiles(r.dir, {base: "base"});
+  assert.deepEqual(selection.files, ["models/example/example-1.0.0.yaml", "models/example/example-1.1.0.yaml"]);
+  assert.deepEqual(selection.added, ["models/example/example-1.1.0.yaml"]);
+  assert.deepEqual(selectFiles(r.dir, {all: true}).added, []);
+  assert.deepEqual(selectFiles(r.dir, {files: ["models/example/example-1.0.0.yaml"]}).added, ["models/example/example-1.0.0.yaml"]);
 });
 
 test("unknown base fails rather than reporting no changes", (t) => {

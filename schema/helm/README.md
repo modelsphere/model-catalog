@@ -47,8 +47,12 @@ engine use the same release, even when their YAML pins an older chart or imposes
 an upper bound. The latest selection is never reused across invocations.
 
 Helm separately resolves the YAML declaration and checks that its selected
-release meets the configured minimum. A missing, invalid or obsolete declared
-release still fails the check. The YAML declaration continues to control
+release meets the configured minimum. A missing or invalid declared release
+fails the check, and so does an obsolete one in a version that is new: added
+since the base, or named explicitly. A published version keeps the chart it was
+published with, so an obsolete declaration there is a warning: latest mode still
+checks its values against the latest chart, and declared mode skips it, since
+its chart renders API groups with no schema here. The YAML declaration continues to control
 deployment; latest-mode validation checks forward compatibility and does not
 change that declaration. `--chart-mode declared` renders the actual release
 selected by the YAML constraint, for deployment compatibility and reproduction.
@@ -66,22 +70,27 @@ The default artifact directory is `artifacts/helm-validation/`; override it with
 mode, resolved declaration versions, stage results and per-variant artifact
 directories. Each invocation has a fresh `run-*` directory with extracted values,
 rendered manifests, tool logs, downloaded
-charts, a schema cache and isolated Helm settings. CI uploads these artifacts
+charts, the CRD schemas it built, a schema cache and isolated Helm settings. CI uploads these artifacts
 even on failure. Helm and kubeconform errors retain field paths.
 
 ## Schema sources and updates
 
-[`sources.json`](sources.json) locks upstream CRDs to full commit SHAs.
-[`provenance.json`](provenance.json) records source URLs, source hashes, served
-versions and generated filenames. Modelsphere-owned CRDs use only
+[`sources.json`](sources.json) pins upstream CRDs to full commit SHAs.
+[`provenance.json`](provenance.json) is the lock: source URLs, the SHA-256 of each
+source file, served versions and schema filenames. The converted schemas are not
+committed. Each `validate:helm` run builds them into its run directory with
+`hack/build-crds.js`, which downloads every source at its locked commit and
+refuses one whose bytes differ from the recorded hash. Modelsphere-owned CRDs use only
 `routing.modelsphere.dev`, `autoscaling.modelsphere.dev` and
 `inference.modelsphere.dev`. Each source declares its expected group and kind;
 the generator rejects a mismatched CRD or a Modelsphere source whose group does
 not end in `.modelsphere.dev`.
 
-Catalog chart declarations use `sglang` version `0.8.0` or newer and `vllm`
-version `0.5.0` or newer, the first releases using these groups. Fixed pins remain
-fixed, and version ranges retain their form with the new minimum. Legacy
+New model versions declare `sglang` version `0.8.0` or newer and `vllm`
+version `0.5.0` or newer, the first releases using these groups. Published
+versions are not rewritten to match: their ranges already resolve above the
+minimum, and their fixed pins (`glm5.3` 1.0.0, `kimi-k3` 1.0.0 and 1.0.1,
+`qwen3.6-35b-a3b` 1.0.0) are each superseded by a later version. Legacy
 `autoscaling.4pd.io` and `inference.x-k8s.io` schemas are removed; resources from
 old charts fail validation rather than being rewritten or accepted through aliases.
 External CRDs retain their upstream groups: `leaderworkerset.x-k8s.io` for
@@ -89,9 +98,7 @@ LeaderWorkerSet and `monitoring.coreos.com` for ServiceMonitor.
 
 Deployments using the old groups need the corresponding controllers, CRDs,
 RBAC and resource objects migrated together. Existing objects under an old API
-group do not automatically become objects under the new group. This catalog
-change deliberately updates published version declarations; the Pages workflow
-requires `allow_rewrites` when publishing those changes.
+group do not automatically become objects under the new group.
 
 The converter is repository-versioned as `catalog-crd-schema-v1` in
 [`hack/lib/crd-schema.js`](../../hack/lib/crd-schema.js), using the YAML parser
@@ -105,24 +112,27 @@ to each CRD schema, including CRDs that omit it.
 
 Native Kubernetes schemas use the configured `1.36.3` baseline and a pinned
 `yannh/kubernetes-json-schema` commit. Helm uses the same version baseline.
-Schema checking requires no cluster. Downloading tools, charts, and native
-schemas requires public network access; CRD schemas are committed locally.
+Schema checking requires no cluster. Downloading tools, charts, native schemas
+and CRD sources requires public network access. Every download honors
+`HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY`: Helm and kubeconform natively, and the Node
+scripts through `hack/lib/download.js`.
 
 To update a source, edit its commit/path in `sources.json` (and the Kubernetes
-commit/version in `config.json` when needed), then regenerate and verify:
+commit/version in `config.json` when needed), then refresh the lock and verify:
 
 ```sh
-npm run helm:update-schemas
+npm run helm:update-crds
 npm run test:helm
 npm run test:helm:integration
 npm run validate:helm -- --all
 npm run validate:helm -- --all --chart-mode declared
 ```
 
-Review generated changes together with provenance. Changes to conversion rules
-must regenerate the schemas; bump the converter version when changing an
-already deployed conversion contract. Tool updates must also update archive
-checksums in `config.json`.
+Review the lock change by comparing each upstream CRD between the old and new
+commits; `node hack/build-crds.js DIR` writes the converted schemas for a closer
+look. Conversion rule changes take effect on the next run; bump the converter
+version, and refresh the lock, when changing an already deployed conversion
+contract. Tool updates must also update archive checksums in `config.json`.
 
 The acceptance suite runs both latest and declared modes. It checks GLM's fixed
 and ranged chart declarations, a fixed vLLM release, both Gemma variants, an LWS
@@ -131,8 +141,8 @@ fields, incorrect types, invalid Kubernetes nesting, invalid CRD fields, templat
 release, legacy chart rejection, and unknown/mismatched GVKs. Rendered custom
 resources must use the canonical Modelsphere groups. Unit tests additionally
 cover selection, future stable releases beyond fixed pins, prerelease exclusion,
-package reuse, missing latest releases, download failures, a missing chart values
-schema, empty renders and failure propagation.
+package reuse, missing latest releases, CRD build and download failures, a missing chart values
+schema, empty renders, published legacy declarations and failure propagation.
 
 ## Rollout and limits
 
@@ -142,6 +152,8 @@ The initial full-catalog run exposed a deadline/startup budget mismatch in the
 `180 × 30 = 5400` seconds. Both values have been deliberately corrected to
 `7200`, matching this model's other variants and leaving 1800 seconds beyond
 the probe budget. No validator exception is needed for these configurations.
+This edits two published versions in place, so the Pages workflow requires
+`allow_rewrites` when publishing it.
 
 After this workflow is merged and its check has run, add **`validate-helm`** to
 the target branch's required status checks in GitHub branch protection/rulesets.

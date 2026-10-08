@@ -1,5 +1,9 @@
 "use strict";
 
+const crypto = require("node:crypto");
+const YAML = require("yaml");
+const {download} = require("./download");
+
 // Versioned with the repository; changing this contract requires regeneration.
 const CONVERTER_VERSION = "catalog-crd-schema-v1";
 
@@ -87,4 +91,40 @@ function crdSchemas(crd, metadata = {schema: {type: "object"}, definitions: {}})
   });
 }
 
-module.exports = {CONVERTER_VERSION, assertCrdSource, convertSchema, crdSchemas, objectMetaSchema};
+// A source carrying a sha256 is locked: different bytes are refused, not converted.
+async function fetchPinned({url, sha256}) {
+  const bytes = await download(url);
+  const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+  if (sha256 && digest !== sha256) throw new Error(`${url}: sha256 ${digest}, locked ${sha256}`);
+  return {body: bytes.toString("utf8"), sha256: digest};
+}
+
+// Download CRD sources at their pinned commits and convert every served version.
+// Returns the schema files and the provenance records that lock them.
+async function buildSchemas(sources, objectMeta) {
+  const meta = await fetchPinned(objectMeta);
+  const metadata = objectMetaSchema(JSON.parse(meta.body).definitions);
+  const files = new Map();
+  const records = [];
+  for (const source of sources) {
+    if (!/^[a-f0-9]{40}$/.test(source.commit)) throw new Error("source must use a full commit SHA");
+    const url = `https://raw.githubusercontent.com/${source.repository}/${source.commit}/${source.path}`;
+    const {body, sha256} = await fetchPinned({url, sha256: source.sha256});
+    const schemas = YAML.parseAllDocuments(body).flatMap((doc) => {
+      if (doc.errors.length) throw doc.errors[0];
+      const crd = doc.toJS();
+      if (!crd) return [];
+      assertCrdSource(source, crd);
+      return crdSchemas(crd, metadata);
+    });
+    if (!schemas.length) throw new Error(`${url}: no served schemas`);
+    for (const {file, schema} of schemas) {
+      if (files.has(file)) throw new Error(`duplicate schema ${file}`);
+      files.set(file, JSON.stringify(schema, null, 2) + "\n");
+    }
+    records.push({...source, url, sha256, schemas: schemas.map(({file, group, version, kind}) => ({file, group, version, kind}))});
+  }
+  return {files, objectMeta: {url: objectMeta.url, sha256: meta.sha256}, records};
+}
+
+module.exports = {CONVERTER_VERSION, assertCrdSource, convertSchema, crdSchemas, objectMetaSchema, buildSchemas};
