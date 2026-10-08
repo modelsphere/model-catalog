@@ -1,0 +1,83 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v1
+name: qwen3-8b
+version: 1.0.0
+servedName: Qwen3-8B
+variants:
+  - id: vllm-tp1-910b
+    default: true
+    description: 'Baseline: one Ascend 910B card, single node. vLLM''s Ascend backend (CANN), not a CUDA build. Not yet tuned -- no AutoTune run on this hardware.'
+    engine: vllm
+    chart:
+      name: vllm
+      version: ">=0.7.6"
+    image:
+      # Upstream vllm-ascend. Multi-arch, and arm64 is the one that matters:
+      # Atlas 800T A2 is aarch64. The digest is the index, not a platform
+      # manifest, so a pull still picks the right architecture.
+      repository: quay.io/ascend/vllm-ascend
+      tag: v0.23.0.post1
+      digest: sha256:ffe9306186781ddb80812eda574134e601ee8499693ea36e4a97173111ddf7e7
+    requires:
+      gpus: 1
+      topology: single-node
+      # Decides the extended resource and the product label; the mapping to
+      # huawei.com/Ascend910 lives in swiss, not in this file.
+      vendor: ascend
+    values:
+      model:
+        hostPathType: Directory
+        contextLength: ''
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - '*.safetensors'
+      extraArgs:
+        - --enable-prompt-tokens-details
+        - --reasoning-parser=qwen3
+        - --enable-auto-tool-choice
+        - --tool-call-parser=hermes
+        - --max-model-len=32768
+        - --gpu-memory-utilization=0.9
+      env:
+        # No NVIDIA_DISABLE_REQUIRE and no PYTORCH_ALLOC_CONF here: the first is
+        # a CUDA-image concern, the second configures the CUDA caching allocator,
+        # which torch_npu does not use.
+        - name: VLLM_USE_V1
+          value: '1'
+      volumes:
+        - name: dot-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+      volumeMounts:
+        - name: dot-cache
+          mountPath: /root/.cache
+        - name: dshm
+          mountPath: /dev/shm
+      resources:
+        requests:
+          ephemeral-storage: 16Gi
+        limits:
+          ephemeral-storage: 16Gi
+      progressDeadlineSeconds: 7200
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 180
+      terminationGracePeriodSeconds: 3600
+      lifecycle:
+        preStop:
+          drainSeconds: 600
+          pollIntervalSeconds: 5
+        forceShutdown: true
+        preStopKill: true
+      hangWatcher:
+        enabled: true
