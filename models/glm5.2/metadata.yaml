@@ -9,4 +9,4 @@ tags:
   - tool-use
   - vision
 source:
-  hf: zai-org/GLM-5.2-NVFP4
+  hf: nvidia/GLM-5.2-NVFP4
