@@ -96,21 +96,12 @@ propagation.
 
 ## Rollout and limits
 
-The initial full-catalog run checked 43 variants: 41 passed and two existing
-Qwen configurations failed Helm's template check. Their published YAMLs are
-intentionally preserved; the gate has no exception for these failures.
-
-| Version file | Variant | Declared / resolved chart | Existing failure |
-| --- | --- | --- | --- |
-| `models/qwen3.6-35b-a3b/qwen3.6-35b-a3b-1.0.0.yaml` | `sglang-tp2-h100` | `0.7.1` / `0.7.1` | `values.progressDeadlineSeconds: 2000` is below the startup probe budget, `180 × 30 = 5400` seconds. |
-| `models/qwen3.6-35b-a3b/qwen3.6-35b-a3b-1.1.0.yaml` | `sglang-tp2-h100` | `>=0.7.1` / `0.8.10` | The same deadline/startup budget mismatch. |
-
-Consequently, this validator's introduction and subsequent changes that trigger
-full-catalog validation will fail until those historical incompatibilities are
-resolved. PRs that change other version configurations validate only their
-selected files. The real acceptance suite passes independently of these two
-historical failures. The resolved range version above records the initial run
-and may change on future runs.
+The initial full-catalog run exposed a deadline/startup budget mismatch in the
+`sglang-tp2-h100` variants of Qwen 3.6 versions `1.0.0` and `1.1.0`:
+`progressDeadlineSeconds: 2000` was below the startup probe budget,
+`180 × 30 = 5400` seconds. Both values have been deliberately corrected to
+`7200`, matching this model's other variants and leaving 1800 seconds beyond
+the probe budget. No validator exception is needed for these configurations.
 
 After this workflow is merged and its check has run, add **`validate-helm`** to
 the target branch's required status checks in GitHub branch protection/rulesets.
