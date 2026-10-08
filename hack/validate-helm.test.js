@@ -16,8 +16,8 @@ function fixture(t, failure) {
   const file = "models/example/example-1.0.0.yaml";
   fs.mkdirSync(path.join(root, "models/example"), {recursive: true});
   fs.writeFileSync(path.join(root, file), YAML.stringify({variants: [
-    {id: "default", default: true, chart: {name: "sglang", version: "0.7.1"}},
-    {id: "other", chart: {name: "sglang", version: ">=0.7.1"}, values: {extraArgs: ["--other"]}}
+    {id: "default", default: true, chart: {name: "sglang", version: "0.8.0"}},
+    {id: "other", chart: {name: "sglang", version: ">=0.8.0"}, values: {extraArgs: ["--other"]}}
   ]}));
   fs.mkdirSync(path.join(root, "schema/helm"), {recursive: true});
   fs.writeFileSync(path.join(root, "schema/helm/provenance.json"), JSON.stringify({converterVersion: config.converterVersion, sources: []}));
@@ -32,12 +32,12 @@ function fixture(t, failure) {
       const dir = path.join(opts.env.HELM_CACHE_HOME, "repository");
       fs.mkdirSync(dir, {recursive: true});
       fs.writeFileSync(path.join(dir, "catalog-index.yaml"), YAML.stringify({entries: {sglang: [
-        {version: "0.7.1", digest: crypto.createHash("sha256").update(bytes).digest("hex")}
+        {version: "0.8.0", digest: crypto.createHash("sha256").update(bytes).digest("hex")}
       ]}}));
-    } else if (args[0] === "search") stdout = JSON.stringify(failure === "resolution" ? [] : [{name: "catalog/sglang", version: "0.7.1"}]);
-    else if (args[0] === "pull") fs.writeFileSync(path.join(args.at(-1), "sglang-0.7.1.tgz"), bytes);
+    } else if (args[0] === "search") stdout = JSON.stringify(failure === "resolution" ? [] : [{name: "catalog/sglang", version: "0.8.0"}]);
+    else if (args[0] === "pull") fs.writeFileSync(path.join(args.at(-1), "sglang-0.8.0.tgz"), bytes);
     else if (args[0] === "-tzf") stdout = failure === "schema" ? "sglang/Chart.yaml\n" : "sglang/Chart.yaml\nsglang/values.schema.json\n";
-    else if (args[0] === "show") stdout = "name: sglang\nversion: 0.7.1\n";
+    else if (args[0] === "show") stdout = "name: sglang\nversion: 0.8.0\n";
     else if (args[0] === "template") stdout = failure === "empty" ? "" : "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: example\n";
     const stage = args[0] === "-strict" ? "kubeconform" : args[0] === "pull" ? "download" : args[0];
     const ok = stage !== failure;
@@ -54,7 +54,7 @@ test("every variant uses independent values and the resolved package is reused",
   assert.equal(f.run(), true);
   const s = f.summary();
   assert.equal(s.results.length, 2);
-  assert(s.results.every((r) => r.ok && r.chart.version === "0.7.1" && r.chart.digest.startsWith("sha256:")));
+  assert(s.results.every((r) => r.ok && r.chart.version === "0.8.0" && r.chart.digest.startsWith("sha256:")));
   assert.equal(f.calls.filter((a) => a[0] === "pull").length, 1);
   const values = s.results.map((r) => YAML.parse(fs.readFileSync(path.join(f.root, r.artifacts, "values.yaml"), "utf8")));
   assert.equal(values[0].extraArgs, undefined);

@@ -53,9 +53,25 @@ even on failure. Helm and kubeconform errors retain field paths.
 
 [`sources.json`](sources.json) locks upstream CRDs to full commit SHAs.
 [`provenance.json`](provenance.json) records source URLs, source hashes, served
-versions and generated filenames. Both historical and current API groups are
-included for `LLMScaler` and `LLMSLORequirement`: chart `0.7.1` uses the older
-groups, while later releases use `modelsphere.dev`.
+versions and generated filenames. Modelsphere-owned CRDs use only
+`routing.modelsphere.dev`, `autoscaling.modelsphere.dev` and
+`inference.modelsphere.dev`. Each source declares its expected group and kind;
+the generator rejects a mismatched CRD or a Modelsphere source whose group does
+not end in `.modelsphere.dev`.
+
+Catalog chart declarations use `sglang` version `0.8.0` or newer and `vllm`
+version `0.5.0` or newer, the first releases using these groups. Fixed pins remain
+fixed, and version ranges retain their form with the new minimum. Legacy
+`autoscaling.4pd.io` and `inference.x-k8s.io` schemas are removed; resources from
+old charts fail validation rather than being rewritten or accepted through aliases.
+External CRDs retain their upstream groups: `leaderworkerset.x-k8s.io` for
+LeaderWorkerSet and `monitoring.coreos.com` for ServiceMonitor.
+
+Deployments using the old groups need the corresponding controllers, CRDs,
+RBAC and resource objects migrated together. Existing objects under an old API
+group do not automatically become objects under the new group. This catalog
+change deliberately updates published version declarations; the Pages workflow
+requires `allow_rewrites` when publishing those changes.
 
 The converter is repository-versioned as `catalog-crd-schema-v1` in
 [`hack/lib/crd-schema.js`](../../hack/lib/crd-schema.js), using the YAML parser
@@ -87,11 +103,12 @@ must regenerate the schemas; bump the converter version when changing an
 already deployed conversion contract. Tool updates must also update archive
 checksums in `config.json`.
 
-The acceptance suite checks GLM's fixed and ranged chart declarations, both
-Gemma variants, an LWS deployment, default values, misspelled fields, incorrect
-types, invalid Kubernetes nesting, invalid CRD fields, template errors, no matching
-release, and unknown/mismatched GVKs. Unit tests additionally cover selection,
-download failures, a missing chart values schema, empty renders and failure
+The acceptance suite checks GLM's fixed and ranged chart declarations, a fixed
+vLLM release, both Gemma variants, an LWS deployment, default values, misspelled
+fields, incorrect types, invalid Kubernetes nesting, invalid CRD fields, template errors, no matching
+release, legacy chart rejection, and unknown/mismatched GVKs. Rendered custom
+resources must use the canonical Modelsphere groups. Unit tests additionally
+cover selection, download failures, a missing chart values schema, empty renders and failure
 propagation.
 
 ## Rollout and limits

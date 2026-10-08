@@ -11,7 +11,7 @@ variants:
     description: TP8 with DCP8 on one eight-GPU B300 node, fp8 KV cache, DSPARK speculative decoding.
     chart:
       name: sglang
-      version: 0.7.1
+      version: 0.8.0
     image:
       repository: harbor.4pd.io/hardcore-tech/sglang
       tag: v0.5.19

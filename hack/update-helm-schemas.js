@@ -6,7 +6,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const YAML = require("yaml");
 const {root} = require("./lib/catalog");
-const {CONVERTER_VERSION, crdSchemas, objectMetaSchema} = require("./lib/crd-schema");
+const {CONVERTER_VERSION, assertCrdSource, crdSchemas, objectMetaSchema} = require("./lib/crd-schema");
 const config = require("../schema/helm/config.json");
 const sources = require("../schema/helm/sources.json").sources;
 
@@ -32,7 +32,7 @@ async function main() {
       if (doc.errors.length) throw doc.errors[0];
       const crd = doc.toJS();
       if (!crd) return [];
-      if (crd.spec?.names?.kind !== source.kind) throw new Error(`${url}: unexpected CRD kind`);
+      assertCrdSource(source, crd);
       return crdSchemas(crd, metadata);
     });
     if (!schemas.length) throw new Error(`${url}: no served schemas`);

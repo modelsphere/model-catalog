@@ -13,7 +13,7 @@ variants:
     description: TP4 on four B300 GPUs. NVFP4 weights, EAGLE speculative decoding, hierarchical KV cache.
     chart:
       name: sglang
-      version: 0.7.1
+      version: 0.8.0
     image:
       repository: harbor.4pd.io/hardcore-tech/sglang
       tag: v0.5.19

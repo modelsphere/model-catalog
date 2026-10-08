@@ -148,10 +148,10 @@ publishing a new one.
 
 | `chart.version` | means |
 | --- | --- |
-| `0.7.1` | exactly 0.7.1 |
-| `">=0.7.1"` | 0.7.1 or newer (quoted: a bare `>` starts a YAML block scalar) |
-| `"^0.7.1"` | 0.7.x from 0.7.1; in 0.x, a minor bump is the breaking one |
-| `">=0.7.1 <0.9.0"` | both |
+| `0.8.0` | exactly 0.8.0 |
+| `">=0.8.0"` | 0.8.0 or newer (quoted: a bare `>` starts a YAML block scalar) |
+| `"^0.8.0"` | 0.8.x from 0.8.0; in 0.x, a minor bump is the breaking one |
+| `">=0.8.0 <0.9.0"` | both |
 
 A deploy still pins: swissd records the one version the range resolved to (the
 newest in range, or one the operator picks) and an upgrade keeps it until asked

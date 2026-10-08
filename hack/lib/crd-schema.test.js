@@ -3,9 +3,21 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const Ajv = require("ajv");
-const {convertSchema, crdSchemas, objectMetaSchema} = require("./crd-schema");
+const {assertCrdSource, convertSchema, crdSchemas, objectMetaSchema} = require("./crd-schema");
 
 const compile = (schema) => new Ajv({strict: false}).compile(schema);
+
+test("Modelsphere sources require their own API groups; external CRDs retain upstream groups", () => {
+  const source = {repository: "modelsphere/llm-operator", group: "autoscaling.modelsphere.dev", kind: "LLMScaler"};
+  const crd = {kind: "CustomResourceDefinition", spec: {group: source.group, names: {kind: source.kind}}};
+  assert.doesNotThrow(() => assertCrdSource(source, crd));
+  assert.throws(() => assertCrdSource(source, {...crd, spec: {...crd.spec, group: "autoscaling.4pd.io"}}), /expected CRD/);
+  assert.throws(() => assertCrdSource({...source, group: "autoscaling.4pd.io"}, crd), /must use a .modelsphere.dev/);
+  assert.throws(() => assertCrdSource(source, {...crd, spec: {...crd.spec, names: {kind: "Wrong"}}}), /expected CRD/);
+  const external = {repository: "kubernetes-sigs/lws", group: "leaderworkerset.x-k8s.io", kind: "LeaderWorkerSet"};
+  assert.doesNotThrow(() => assertCrdSource(external,
+    {kind: "CustomResourceDefinition", spec: {group: external.group, names: {kind: external.kind}}}));
+});
 
 test("strictness descends into array items while preserving typed maps and free objects", () => {
   const validate = compile(convertSchema({type: "object", properties: {

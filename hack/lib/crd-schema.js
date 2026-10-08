@@ -3,6 +3,15 @@
 // Versioned with the repository; changing this contract requires regeneration.
 const CONVERTER_VERSION = "catalog-crd-schema-v1";
 
+function assertCrdSource(source, crd) {
+  if (source.repository.startsWith("modelsphere/") && !source.group?.endsWith(".modelsphere.dev")) {
+    throw new Error(`${source.repository}: Modelsphere CRDs must use a .modelsphere.dev API group`);
+  }
+  if (crd?.kind !== "CustomResourceDefinition" || crd.spec?.names?.kind !== source.kind || crd.spec?.group !== source.group) {
+    throw new Error(`expected CRD ${source.group}/${source.kind}, got ${crd?.spec?.group}/${crd?.spec?.names?.kind}`);
+  }
+}
+
 function convertSchema(input) {
   if (typeof input === "boolean") return input;
   const schema = structuredClone(input);
@@ -78,4 +87,4 @@ function crdSchemas(crd, metadata = {schema: {type: "object"}, definitions: {}})
   });
 }
 
-module.exports = {CONVERTER_VERSION, convertSchema, crdSchemas, objectMetaSchema};
+module.exports = {CONVERTER_VERSION, assertCrdSource, convertSchema, crdSchemas, objectMetaSchema};

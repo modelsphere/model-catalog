@@ -67,7 +67,7 @@ function detail(err) {
     case "pattern":
       // The chart.version pattern is a generated grammar nobody reads.
       if (err.instancePath.endsWith("/chart/version")) {
-        return `must be a chart version or a range, e.g. 0.7.1, ">=0.7.1", "^0.7.1"${got}`
+        return `must be a chart version or a range, e.g. 0.8.0, ">=0.8.0", "^0.8.0"${got}`
       }
       return `must match /${params.pattern}/${got}`
     case "type":

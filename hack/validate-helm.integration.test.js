@@ -28,7 +28,10 @@ test("released charts: fixed/range versions, all example variants, LWS, defaults
     ["valid-gemma", "models/gemma-4-31b-it/google-gemma-4-31b-it-1.0.0.yaml"],
     ["valid-lws", "models/kimi-k2.5/kimi-k2.5-1.0.0.yaml"]
   ]) write(name, YAML.parse(fs.readFileSync(path.join(root, file), "utf8")));
-  const base = {variants: [{id: "fixture", chart: {name: "sglang", version: ">=0.7.8"}}]};
+  const vllm = YAML.parse(fs.readFileSync(path.join(root, "models/kimi-k3/kimi-k3-1.0.1.yaml"), "utf8"));
+  vllm.variants = vllm.variants.filter((v) => v.chart.name === "vllm");
+  write("valid-vllm-fixed", vllm);
+  const base = {variants: [{id: "fixture", chart: {name: "sglang", version: ">=0.8.0"}}]};
   write("valid-defaults", base);
   const invalids = [
     ["bad-key", {unkownField: true}, "lint"],
@@ -45,14 +48,24 @@ test("released charts: fixed/range versions, all example variants, LWS, defaults
   }
   const noVersion = structuredClone(base); noVersion.variants[0].chart.version = "9999.0.0";
   write("bad-resolution", noVersion);
+  const legacy = structuredClone(base); legacy.variants[0].chart.version = "0.7.1";
+  write("bad-legacy-chart", legacy);
   const output = path.join(temp, "artifacts");
   assert.equal(main({all: true, files: [], output}, {repositoryRoot: temp}), false);
   const summary = JSON.parse(fs.readFileSync(path.join(output, "summary.json"), "utf8"));
   for (const result of summary.results.filter((r) => path.basename(r.file).startsWith("valid-"))) {
     assert.equal(result.ok, true, `${result.file}: ${JSON.stringify(result)}`);
+    const expected = {LLMScaler: "autoscaling.modelsphere.dev/v1alpha1", LLMSLORequirement: "inference.modelsphere.dev/v1alpha1",
+      ModelRoute: "routing.modelsphere.dev/v1alpha1"};
+    const rendered = YAML.parseAllDocuments(fs.readFileSync(path.join(temp, result.artifacts, "rendered.yaml"), "utf8"));
+    for (const doc of rendered) {
+      const resource = doc.toJS();
+      if (expected[resource?.kind]) assert.equal(resource.apiVersion, expected[resource.kind], result.file);
+    }
   }
   const fixed = summary.results.find((r) => r.file.endsWith("valid-fixed.yaml"));
-  assert.equal(fixed.chart.version, "0.7.1");
+  assert.equal(fixed.chart.version, "0.8.0");
+  assert.equal(summary.results.find((r) => r.file.endsWith("valid-vllm-fixed.yaml")).chart.version, "0.5.0");
   assert.equal(summary.results.filter((r) => r.file.endsWith("valid-gemma.yaml")).length, 2);
   for (const [name, , stage] of invalids) {
     const result = summary.results.find((r) => r.file.endsWith(`${name}.yaml`));
@@ -60,12 +73,15 @@ test("released charts: fixed/range versions, all example variants, LWS, defaults
     assert.equal(result.stages[stage], false, `${name}: ${JSON.stringify(result)}`);
   }
   assert.match(summary.results.find((r) => r.file.endsWith("bad-resolution.yaml")).error, /no published/);
+  assert.equal(summary.results.find((r) => r.file.endsWith("bad-legacy-chart.yaml")).stages.kubeconform, false);
   // Verify the exact production kubeconform invocation fails for unknown GVKs,
   // even if their kind resembles an existing native resource or known CRD.
   const cache = path.join(temp, "schema-cache"); fs.mkdirSync(cache);
   for (const [apiVersion, kind] of [
     ["unknown.example/v1", "Unknown"], ["wrong.example/v1", "ModelRoute"],
-    ["routing.modelsphere.dev/v9", "ModelRoute"], ["apps.wrong.example/v1", "Deployment"]
+    ["routing.modelsphere.dev/v9", "ModelRoute"], ["apps.wrong.example/v1", "Deployment"],
+    ["autoscaling.4pd.io/v1alpha1", "LLMScaler"], ["inference.x-k8s.io/v1alpha1", "LLMSLORequirement"],
+    ["routing.gpucluster.io/v1alpha1", "ModelRoute"]
   ]) {
     const rendered = path.join(temp, "unknown.yaml");
     fs.writeFileSync(rendered, YAML.stringify({apiVersion, kind, metadata: {name: "unknown"}}));
