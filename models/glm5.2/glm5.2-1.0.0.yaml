@@ -1,0 +1,75 @@
+apiVersion: catalog.swiss/v1
+name: glm5.2
+version: 1.0.0
+servedName: glm-5.2
+variants:
+  - id: vllm-tp8-pp2-6000d
+    default: true
+    engine: vllm
+    description: TP8 per node, PP2 across two nodes over RoCE.
+    chart:
+      name: vllm
+      version: ">=0.7.6"
+    image:
+      repository: vllm/vllm-openai
+      tag: v0.30.0
+    requires:
+      gpus: 8 # per pod; 16 across the group
+      nodes: 2
+      topology: lws
+      rdma: true
+      gpuProduct:
+        - NVIDIA-RTX-6000D
+    values:
+      model:
+        localPath: /data/models/GLM-5.2-NVFP4
+        mountPath: /models
+        contextLength: ""
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - "*.safetensors"
+      lws:
+        enabled: true
+        size: 2
+      hostNetwork: true
+      rdma:
+        enabled: true
+      extraArgs:
+        - --tensor-parallel-size=8
+        - --pipeline-parallel-size=2
+        # 0.85, not 0.90: the KV pool fills at 24 concurrent requests and TTFT
+        # goes from 12s to 67s past that.
+        - --gpu-memory-utilization=0.85
+        - --max-num-batched-tokens=8192
+        - --max-num-seqs=256
+        - --trust-remote-code
+        - --mm-encoder-tp-mode=data
+        - --enable-prompt-tokens-details
+        - --allowed-media-domains=none.invalid
+        - --tool-call-parser=glm47
+        - --enable-auto-tool-choice
+        - --reasoning-parser=glm45
+        - --chat-template-content-format=string
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        # The trtllm fused-MoE autotuner picks shapes that are not built for
+        # sm120; skipping those ops leaves the rest of the autotuner on.
+        - name: VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS
+          value: trtllm::fused_moe::gemm1,trtllm::fused_moe::gemm2,fp8_gemm
+        - name: VLLM_MEDIA_URL_ALLOW_REDIRECTS
+          value: "0"
+        - name: NCCL_DEBUG
+          value: INFO
+        - name: NCCL_SOCKET_IFNAME
+          value: bond0
+        - name: GLOO_SOCKET_IFNAME
+          value: bond0
+        - name: NCCL_NET_GDR_LEVEL
+          value: "1"
+      service:
+        port: 8050
+      hangWatcher:
+        enabled: true

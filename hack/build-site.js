@@ -19,6 +19,8 @@
 
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
+const { parseDocument, LineCounter } = require("yaml");
 const {
   root,
   modelsDir,
@@ -32,6 +34,74 @@ const {
 } = require("./lib/catalog");
 
 const outDir = path.join(root, "site");
+
+// The GitHub repository the version files live in: the one being built in CI,
+// else package.json's.
+function sourceRepo() {
+  if (process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY) {
+    return `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}`;
+  }
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const url = (pkg.repository && pkg.repository.url) || "";
+  const m = url.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/);
+  return m ? `https://github.com/${m[1]}` : null;
+}
+
+function git(...args) {
+  try {
+    return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    return null;
+  }
+}
+
+// Permalinks to a version file and to each of its variants, by id: the file as
+// of the last commit that touched it, with the variant's lines highlighted.
+// Lines come from that commit's copy, so local edits do not shift them. No
+// links when the file is not committed (or there is no git).
+function variantSources(repo, rel) {
+  const sha = repo && (git("log", "-1", "--format=%H", "--", rel) || "").trim();
+  const text = sha && git("show", `${sha}:${rel}`);
+  if (!text) return { file: null, variants: {} };
+  const lc = new LineCounter();
+  const doc = parseDocument(text, { lineCounter: lc });
+  const seq = doc.get("variants", true);
+  const out = {};
+  for (const item of (seq && seq.items) || []) {
+    const id = item.get && item.get("id");
+    if (!id || !item.range) continue;
+    const [start, end] = item.range;
+    const from = lc.linePos(start).line;
+    const to = lc.linePos(Math.max(start, end - 1)).line;
+    out[id] = `${repo}/blob/${sha}/${encodePath(rel)}#L${from}-L${to}`;
+  }
+  return { file: `${repo}/blob/${sha}/${encodePath(rel)}`, variants: out };
+}
+
+// A version file as the model page shows it: servedName, and per variant id
+// its parsed fields and its own lines of the file, dedented.
+function versionDetail(rel) {
+  const text = fs.readFileSync(path.join(root, rel), "utf8");
+  const lc = new LineCounter();
+  const doc = parseDocument(text, { lineCounter: lc });
+  const lines = text.split("\n");
+  const seq = doc.get("variants", true);
+  const variants = {};
+  for (const item of (seq && seq.items) || []) {
+    const id = item.get && item.get("id");
+    if (!id || !item.range) continue;
+    const start = lc.linePos(item.range[0]);
+    const end = lc.linePos(Math.max(item.range[0], item.range[1] - 1));
+    const indent = start.col - 1; // past "  - "
+    const own = lines.slice(start.line - 1, end.line);
+    own[0] = " ".repeat(indent) + own[0].slice(indent);
+    variants[id] = {
+      raw: item.toJSON(),
+      yaml: own.map((l) => l.slice(indent)).join("\n").replace(/\s+$/, ""),
+    };
+  }
+  return { servedName: doc.get("servedName") || null, variants };
+}
 
 function rmrf(p) {
   fs.rmSync(p, { recursive: true, force: true });
@@ -74,6 +144,18 @@ function hardwareShort(req) {
   return s;
 }
 
+// hardwareShort as HTML, each GPU name highlighted: "8 × <H100>". Labels are
+// only GPU names when the variant names products; "any GPU" stays plain.
+function hardwareHtml(v) {
+  let html = escapeHtml(v.hardwareShort);
+  for (const label of v.hardware || []) {
+    if (label === "any GPU") continue;
+    const e = escapeHtml(label);
+    html = html.replace(e, `<span class="gpu hue-${gpuHue(label)}">${e}</span>`);
+  }
+  return html;
+}
+
 // A variant's role, by id, from the model's recorded tuning. swiss's web
 // (web/src/lib/catalog.ts) reads the same field by the same rules.
 function variantRole(id, tuning) {
@@ -104,6 +186,7 @@ function escapeHtml(s) {
 
 function loadCatalog() {
   const models = [];
+  const repo = sourceRepo();
   for (const name of modelNames()) {
     const dir = path.join(modelsDir, name);
     const metaPath = path.join(dir, "metadata.yaml");
@@ -127,6 +210,8 @@ function loadCatalog() {
     for (const rel of versionFiles(name)) {
       const doc = readYaml(path.join(root, rel));
       const raw = doc.variants || [];
+      const sources = variantSources(repo, rel);
+      const detail = versionDetail(rel);
       // Schema: the first variant is the default when none is marked.
       const defaultIdx = Math.max(0, raw.findIndex((v) => v.default));
       const variants = raw.map((v, i) => {
@@ -137,6 +222,10 @@ function loadCatalog() {
           default: i === defaultIdx,
           description: v.description || null,
           link: safeLink(v.link),
+          source: sources.variants[v.id] || null,
+          chart: v.chart || null,
+          image: v.image || null,
+          yaml: detail.variants[v.id] ? detail.variants[v.id].yaml : null,
           requires: v.requires || null,
           requiresSummary: requiresSummary(v.requires),
           hardware: hardwareLabels(v.requires),
@@ -148,6 +237,7 @@ function loadCatalog() {
       versions.push({
         version: doc.version,
         path: rel,
+        source: sources.file,
         servedName: doc.servedName || null,
         variants,
       });
@@ -163,6 +253,7 @@ function loadCatalog() {
 
     models.push({
       name: meta.name || name,
+      dir: name,
       displayName: meta.displayName || meta.name || name,
       description: meta.description || null,
       family: meta.family || null,
@@ -178,6 +269,8 @@ function loadCatalog() {
         .map((v) => ({
           version: v.version,
           path: v.path,
+          source: v.source,
+          servedName: v.servedName,
           variantCount: v.variants.length,
           variants: v.variants.map((x) => ({
             id: x.id,
@@ -185,6 +278,10 @@ function loadCatalog() {
             default: x.default,
             description: x.description,
             link: x.link,
+            source: x.source,
+            chart: x.chart,
+            image: x.image,
+            yaml: x.yaml,
             requiresSummary: x.requiresSummary,
             hardware: x.hardware,
             hardwareShort: x.hardwareShort,
@@ -194,6 +291,9 @@ function loadCatalog() {
         })),
       reports,
       comparison,
+      // Every recorded pair, for the model page: tuning binds to the
+      // optimized variant, and each names its own baseline.
+      tuning: tuning.map((t) => tuningEntry(name, t)),
     });
   }
   return {
@@ -201,6 +301,22 @@ function loadCatalog() {
     generatedBy: "hack/build-site.js",
     count: models.length,
     models,
+  };
+}
+
+function tuningEntry(name, t) {
+  const pct = typeof t.uplift === "number" ? t.uplift : null;
+  return {
+    version: String(t.version),
+    baselineId: t.baseline,
+    optimizedId: t.optimized,
+    upliftPct: pct,
+    upliftLabel: pct == null ? null : formatUplift(pct),
+    report: t.report ? `models/${name}/${t.report}` : null,
+    reportFile: t.report || null,
+    workloads: Array.isArray(t.workloads)
+      ? t.workloads.map((w) => ({ name: String(w.name), upliftPct: w.uplift, upliftLabel: formatUplift(w.uplift) }))
+      : [],
   };
 }
 
@@ -217,17 +333,16 @@ function comparisonFor(name, tuning, version) {
     fits.find((x) => def && x.optimized === def.id) ||
     fits[0];
   if (!t) return null;
-  const pct = typeof t.uplift === "number" ? t.uplift : null;
+  const e = tuningEntry(name, t);
+  // The model's one number -- badge, table, sort and summary: its best
+  // workload, or the headline when the benchmark recorded none.
+  const best = e.workloads.reduce((b, w) => (b && b.upliftPct >= w.upliftPct ? b : w), null);
+  const bestPct = best ? best.upliftPct : e.upliftPct;
   return {
-    baselineId: t.baseline,
-    optimizedId: t.optimized,
-    upliftPct: pct,
-    upliftLabel: pct == null ? null : formatUplift(pct),
-    version: String(t.version),
-    report: t.report ? `models/${name}/${t.report}` : null,
-    workloads: Array.isArray(t.workloads)
-      ? t.workloads.map((w) => ({ name: String(w.name), upliftPct: w.uplift, upliftLabel: formatUplift(w.uplift) }))
-      : [],
+    ...e,
+    bestPct,
+    bestLabel: bestPct == null ? null : formatUplift(bestPct),
+    bestWorkload: best ? best.name : null,
   };
 }
 
@@ -236,39 +351,6 @@ function comparisonFor(name, tuning, version) {
 const UPLIFT_HELP =
   "Throughput of the tuned variant over its baseline, from the tuning benchmark. " +
   "Workloads are input + output tokens per request, e.g. 50k + 1.5k.";
-
-// The workloads to draw: the report's, or the headline alone when the
-// benchmark recorded none.
-function workloadsOf(c) {
-  if (c.workloads.length) return c.workloads;
-  return c.upliftPct == null ? [] : [{ name: "", upliftPct: c.upliftPct, upliftLabel: c.upliftLabel }];
-}
-
-// The largest result in the catalog: every bar is drawn against it, so bars
-// compare across models as well as within one.
-function upliftScale(models) {
-  const all = models.flatMap((m) => (m.comparison ? workloadsOf(m.comparison).map((w) => w.upliftPct) : []));
-  return Math.max(0, ...all) || 1;
-}
-
-// One bar per workload: workload, bar, number. Rows share their columns
-// (subgrid), so labels, bars and digits line up. The headline row's number is
-// bold; a regression draws no bar. "Tokens" is said once, by the caller.
-//   50k + 1.5k  ██████████  +64.2%
-//   8k + 1k     █            +7.6%
-function workloadBars(c, scale) {
-  const rows = workloadsOf(c).map((w) => {
-    const width = Math.max(0, Math.min(100, (w.upliftPct / scale) * 100));
-    const head = w.upliftPct === c.upliftPct ? " wl-head" : "";
-    const title = `${w.upliftLabel}${w.name ? ` at ${w.name} tokens` : ""}: ${c.optimizedId} vs ${c.baselineId}, measured on v${c.version}`;
-    return `<div class="wl-row${head}" title="${escapeHtml(title)}"><span class="wl-label">${escapeHtml(
-      w.name
-    )}</span><span class="wl-track"><span class="wl-fill" style="width:${width.toFixed(1)}%"></span></span><span class="wl-val">${escapeHtml(
-      w.upliftLabel
-    )}</span></div>`;
-  });
-  return `<div class="wl-bars">${rows.join("")}</div>`;
-}
 
 // Per-model facts the page filters, sorts and summarizes on. Embedded in the
 // page as JSON so filtering works from file:// too, without fetching catalog.json.
@@ -294,7 +376,7 @@ function facetsOf(m) {
     engines: latest.variants.map((v) => v.engine),
     hardware: [...new Set(latest.variants.flatMap((v) => v.hardware))].sort(),
     hasCmp: !!m.comparison,
-    uplift: m.comparison ? m.comparison.upliftPct : null,
+    uplift: m.comparison ? m.comparison.bestPct : null,
     reports: m.reports.length,
     deprecated: m.deprecated,
     text,
@@ -412,11 +494,25 @@ function clientMain() {
   };
   const sortDir = { name: "ascending", family: "ascending", uplift: "descending" };
 
+  // A lone radio is an element, not a RadioNodeList, and its value is its
+  // value attribute whether checked or not.
+  function getField(el) {
+    if (el.type === "checkbox") return el.checked;
+    if (el.type === "radio") return el.checked ? el.value : "";
+    return el.value;
+  }
+
+  function setField(el, v) {
+    if (el.type === "checkbox") el.checked = v === "1";
+    else if (el.type === "radio") el.checked = el.value === v;
+    else if (v != null && (el.tagName !== "SELECT" || [...el.options].some((o) => o.value === v))) el.value = v;
+  }
+
   function readState() {
     const st = {};
     for (const k of fields) {
       const el = form.elements[k];
-      if (el) st[k] = el.type === "checkbox" ? el.checked : el.value;
+      if (el) st[k] = getField(el);
     }
     return st;
   }
@@ -424,11 +520,7 @@ function clientMain() {
   function writeState(params) {
     for (const k of fields) {
       const el = form.elements[k];
-      if (!el) continue;
-      const v = params.get(k);
-      if (el.type === "checkbox") el.checked = v === "1";
-      else if (v != null && (el.tagName !== "SELECT" || [...el.options].some((o) => o.value === v)))
-        el.value = v;
+      if (el) setField(el, params.get(k));
     }
   }
 
@@ -445,8 +537,11 @@ function clientMain() {
     return true;
   }
 
+  let hardware = "";
+
   function apply() {
     const st = readState();
+    hardware = st.hardware;
     const sorter = sorters[st.sort] || sorters.name;
     const order = data.map((_, i) => i).sort((a, b) => sorter(data[a], data[b]));
     const visible = data.map((m) => matches(m, st));
@@ -496,6 +591,15 @@ function clientMain() {
     apply();
   });
   form.addEventListener("submit", (e) => e.preventDefault());
+  // A GPU toggle is a radio: clicking the selected one clears the filter.
+  // Clicking an already-checked radio fires click but no change.
+  form.addEventListener("click", (e) => {
+    const r = e.target;
+    if (r.name === "hardware" && r.type === "radio" && r.value === hardware) {
+      r.checked = false;
+      apply();
+    }
+  });
   // Reset clears the filters but keeps the view. The reset event fires before
   // the controls are reset.
   form.addEventListener("reset", () => {
@@ -510,7 +614,7 @@ function clientMain() {
     // Tag and family chips set the matching filter.
     const chip = e.target.closest("[data-filter]");
     if (chip) {
-      form.elements[chip.dataset.filter].value = chip.dataset.value;
+      setField(form.elements[chip.dataset.filter], chip.dataset.value);
       apply();
       form.scrollIntoView({ block: "nearest" });
       return;
@@ -591,6 +695,53 @@ const ICONS = {
   table: svg('<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 9.5h18M3 14.5h18M9 9.5V20"/>'),
 };
 
+function themeButton() {
+  return `<button type="button" id="theme-toggle" class="theme-toggle" hidden>
+      <span data-icon="system">${ICONS.system}</span><span data-icon="light" hidden>${
+        ICONS.light
+      }</span><span data-icon="dark" hidden>${ICONS.dark}</span>
+      <span class="theme-label">System</span>
+    </button>`;
+}
+
+// Whether the id adds nothing to the display name: the name lowercased, with
+// spaces and slashes as dashes (DeepSeek-V4-Flash -> deepseek-v4-flash). The
+// lists then show the id only as a tooltip.
+function idIsDisplayName(m) {
+  const slug = m.displayName
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug === m.name;
+}
+
+// Each model's page, relative to the catalog page.
+function modelHref(m) {
+  return `models/${encodeURIComponent(m.dir)}/index.html`;
+}
+
+// The hardware filter: one toggle per GPU, most models first ("any GPU"
+// last). Radios, so one GPU at a time; clicking the selected one clears it.
+function gpuToggles(facets) {
+  const counts = {};
+  for (const h of facets.flatMap((f) => f.hardware)) counts[h] = (counts[h] || 0) + 1;
+  const labels = Object.keys(counts).sort(
+    (a, b) => (a === "any GPU") - (b === "any GPU") || counts[b] - counts[a] || a.localeCompare(b)
+  );
+  return `<fieldset class="gpu-filter">
+        <legend class="sr-only">GPU</legend>
+        <span class="gpu-filter-label" aria-hidden="true">GPU</span>
+        ${labels
+          .map(
+            (h) =>
+              `<label class="toggle tint hue-${gpuHue(h)}" title="Models with a variant for ${escapeHtml(h)}">` +
+              `<input type="radio" name="hardware" value="${escapeHtml(h)}">` +
+              `${escapeHtml(h)}<span class="gpu-n">${counts[h]}</span></label>`
+          )
+          .join("\n        ")}
+      </fieldset>`;
+}
+
 function renderOptions(values, allLabel) {
   const counts = {};
   for (const v of values) counts[v] = (counts[v] || 0) + 1;
@@ -610,17 +761,38 @@ function renderOptions(values, allLabel) {
 // (web/src/lib/catalog.ts) keeps the same table.
 const TAG_HUES = {
   chat: "blue",
-  reasoning: "violet",
-  "tool-use": "teal",
+  reasoning: "purple",
+  "tool-use": "green",
   moe: "orange",
-  "speculative-decoding": "pink",
-  "long-context": "amber",
-  "multi-node": "indigo",
+  "speculative-decoding": "red",
+  "long-context": "yellow",
+  "multi-node": "grey",
   vision: "green",
-  fp4: "cyan",
-  fallback: "slate",
+  fp4: "orange",
+  fallback: "grey",
 };
-const HUES = ["blue", "violet", "teal", "orange", "pink", "amber", "indigo", "green", "cyan", "slate"];
+// Sonokai's accents, the order an unlisted tag or GPU hashes into.
+const HUES = ["blue", "purple", "green", "orange", "red", "yellow"];
+
+// Each GPU keeps one color wherever it appears: toolbar filter, table tags,
+// hardware lines. Fixed, so a filter never repaints the others; an unlisted
+// GPU gets a stable hue from its name.
+const GPU_HUES = {
+  A100: "yellow",
+  A800: "yellow",
+  H20: "red",
+  H100: "blue",
+  H200: "yellow",
+  H800: "green",
+  B200: "red",
+  B300: "purple",
+  "NVIDIA-RTX-6000D": "orange",
+  "any GPU": "grey",
+};
+
+function gpuHue(label) {
+  return GPU_HUES[label] || tagHue(label);
+}
 
 function tagHue(tag) {
   if (TAG_HUES[tag]) return TAG_HUES[tag];
@@ -630,8 +802,14 @@ function tagHue(tag) {
 }
 
 function chip(filter, value) {
-  // Family chips stay neutral, so a family never reads as a tag.
-  const cls = filter === "tag" ? `chip hue-${tagHue(value)}` : "chip";
+  // Family chips stay neutral, so a family never reads as a tag; GPU names
+  // wear the same highlight as in hardware lines.
+  const cls =
+    filter === "tag"
+      ? `chip hue-${tagHue(value)}`
+      : filter === "hardware"
+        ? `chip chip-gpu hue-${gpuHue(value)}`
+        : "chip";
   return `<button type="button" class="${cls}" data-filter="${filter}" data-value="${escapeHtml(
     value
   )}" title="Filter by ${filter}: ${escapeHtml(value)}">${escapeHtml(value)}</button>`;
@@ -648,29 +826,19 @@ function orderedVariants(m) {
   return m.versions[0].variants.slice().sort((a, b) => Number(b.default) - Number(a.default));
 }
 
-// id, badges and (unless the caller places it elsewhere) hardware on one line.
-function variantLine(v, cls, withHardware = true) {
+// id and badges on one line. The id links to the variant's source, pinned to
+// a commit, when there is one.
+function variantLine(v, cls) {
   const badges = [];
   if (v.default) badges.push("default");
   if (v.isOptimized) badges.push("optimized");
   if (v.isBaseline) badges.push("baseline");
-  const hw = withHardware && v.hardwareShort
-    ? `<span class="variant-hw" title="${escapeHtml(v.requiresSummary)}">${escapeHtml(
-        v.hardwareShort
-      )}</span>`
-    : "";
-  return `<div class="${cls}"><span class="variant-id">${escapeHtml(v.id)}</span>${badges
-    .map((b) => `<span class="badge badge-${b}">${b}</span>`)
-    .join("")}${hw}</div>`;
-}
-
-function upliftBadge(c, cls) {
-  const results = c.workloads.map((w) => `${w.upliftLabel} at ${w.name} tokens`).join(", ");
-  const title = escapeHtml(
-    `${c.optimizedId} vs ${c.baselineId}, measured on v${c.version}${results ? `: ${results}` : ""}. ${UPLIFT_HELP}`
-  );
-  const label = c.upliftLabel ? escapeHtml(c.upliftLabel) : "optimized";
-  return `<span class="${cls}" title="${title}">${label}</span>`;
+  const id = v.source
+    ? `<a class="variant-id variant-src" href="${escapeHtml(v.source)}" target="_blank" rel="noopener" title="Source on GitHub, pinned to commit ${escapeHtml(
+        v.source.split("/blob/")[1].slice(0, 7)
+      )}">${escapeHtml(v.id)}</a>`
+    : `<span class="variant-id">${escapeHtml(v.id)}</span>`;
+  return `<div class="${cls}">${id}${badges.map((b) => `<span class="badge badge-${b}">${b}</span>`).join("")}</div>`;
 }
 
 // Perf reports, then any variants[].link.
@@ -698,9 +866,7 @@ function renderCard(m, i, scale) {
       // Cards are narrow, so hardware leads the description line instead of
       // wrapping onto a line of its own.
       const hw = v.hardwareShort
-        ? `<span class="variant-hw-inline" title="${escapeHtml(v.requiresSummary)}">${escapeHtml(
-            v.hardwareShort
-          )}</span>`
+        ? `<span class="variant-hw-inline" title="${escapeHtml(v.requiresSummary)}">${hardwareHtml(v)}</span>`
         : "";
       const desc = v.description ? escapeHtml(v.description) : "";
       const sub =
@@ -709,39 +875,29 @@ function renderCard(m, i, scale) {
               hw && desc ? " · " : ""
             }${desc}</div>`
           : "";
-      return `<li class="variant">${variantLine(v, "variant-line", false)}${sub}</li>`;
+      const bar = improvementBar(m, v, scale, "v-imp");
+      return `<li class="variant">${
+        bar ? `<div class="variant-top">${variantLine(v, "variant-line")}${bar}</div>` : variantLine(v, "variant-line")
+      }${sub}</li>`;
     })
     .join("");
-  const uplift = m.comparison
-    ? `<div class="uplift-box">${upliftBadge(m.comparison, "uplift")}<div class="uplift-sub">vs baseline${
-        m.comparison.version !== m.latest ? ` · v${escapeHtml(m.comparison.version)}` : ""
-      }</div></div>`
-    : "";
   const links = modelLinks(m, "btn", "Perf report");
 
   return `<article class="model" data-i="${i}">
     <div class="model-head">
       <div>
-        <h2 class="model-title">${escapeHtml(m.displayName)} ${deprecatedBadge(m)}</h2>
+        <h2 class="model-title"><a class="model-link" href="${modelHref(m)}" title="${escapeHtml(m.name)}">${escapeHtml(
+          m.displayName
+        )}</a> ${deprecatedBadge(m)}</h2>
         <div class="model-meta">
-          <code>${escapeHtml(m.name)}</code>
-          <span>v${escapeHtml(m.latest)}</span>
+          ${idIsDisplayName(m) ? "" : `<code>${escapeHtml(m.name)}</code>`}
           ${m.family ? chip("family", m.family) : ""}
         </div>
       </div>
-      ${uplift}
     </div>
     <div class="model-body">
       <div class="model-info">
-        ${
-          m.comparison
-            ? `<div class="workloads"><div class="workloads-cap" title="${escapeHtml(
-                UPLIFT_HELP
-              )}">Per workload · in + out tokens</div>${workloadBars(m.comparison, scale)}</div>`
-            : ""
-        }
         ${m.description ? `<p class="desc clamp" title="${escapeHtml(m.description)}">${escapeHtml(m.description)}</p>` : ""}
-        ${m.tags.length ? `<div class="chips">${m.tags.map((t) => chip("tag", t)).join("")}</div>` : ""}
       </div>
       <div class="model-variants">
         <ul class="variants" aria-label="Variants">${variants}</ul>
@@ -751,27 +907,60 @@ function renderCard(m, i, scale) {
   </article>`;
 }
 
+// An optimized variant's best result in the latest version, over its pairs and
+// their workloads; null for any other variant.
+function variantBest(m, id) {
+  let best = null;
+  for (const t of tuningFor(m, m.latest, id)) {
+    const rows = t.workloads.length ? t.workloads : [{ name: null, upliftPct: t.upliftPct, upliftLabel: t.upliftLabel }];
+    for (const w of rows) {
+      if (w.upliftPct != null && (!best || w.upliftPct > best.upliftPct)) best = { ...w, t, of: rows.length };
+    }
+  }
+  return best;
+}
+
+// An optimized variant's bar and best number, drawn against the catalog's
+// best result; null for any other variant.
+function improvementBar(m, v, scale, cls) {
+  const b = variantBest(m, v.id);
+  if (!b) return null;
+  const width = Math.max(0, Math.min(100, (b.upliftPct / scale) * 100));
+  const title =
+    (b.of > 1 ? `Best of ${b.of} workloads: ` : "") +
+    `${b.upliftLabel}${b.name ? ` at ${b.name} tokens` : ""}, ${v.id} vs ${b.t.baselineId}, measured on v${b.t.version}. ` +
+    UPLIFT_HELP;
+  return `<div class="imp ${cls}" title="${escapeHtml(title)}"><span class="imp-track"><span class="imp-fill" style="width:${width.toFixed(
+    1
+  )}%"></span></span><span class="imp-val">${escapeHtml(b.upliftLabel)}</span></div>`;
+}
+
+// The table's improvement cell: one row per variant line, so each optimized
+// variant's bar sits on its own line and the rest stay blank.
+function improvementCell(m, scale) {
+  const bars = orderedVariants(m).map((v) => improvementBar(m, v, scale, "t-imp-row"));
+  return bars.some(Boolean)
+    ? bars.map((b) => b || `<div class="t-imp-row" aria-hidden="true"></div>`).join("")
+    : null;
+}
+
 // Compact view: no descriptions (the description is the name's tooltip).
 function renderRow(m, i, scale) {
   const none = `<span class="none">—</span>`;
   const links = modelLinks(m, "t-link", "Report");
-  const title = m.description ? ` title="${escapeHtml(m.description)}"` : "";
+  const title = ` title="${escapeHtml(m.description ? `${m.name} — ${m.description}` : m.name)}"`;
   return `<tr data-i="${i}">
         <td>
-          <div class="t-name"${title}>${escapeHtml(m.displayName)} ${deprecatedBadge(m)}</div>
-          <div class="t-meta"><code>${escapeHtml(m.name)}</code> · v${escapeHtml(m.latest)}</div>
+          <div class="t-name"${title}><a class="model-link" href="${modelHref(m)}">${escapeHtml(m.displayName)}</a> ${deprecatedBadge(m)}</div>
+          ${idIsDisplayName(m) ? "" : `<div class="t-meta"><code>${escapeHtml(m.name)}</code></div>`}
+          <div class="t-gpus">${[...new Set(m.versions[0].variants.flatMap((v) => v.hardware))]
+            .sort()
+            .map((h) => chip("hardware", h))
+            .join("")}</div>
         </td>
         <td>${m.family ? chip("family", m.family) : none}</td>
-        <td class="t-tags">${m.tags.length ? `<div class="chips">${m.tags.map((t) => chip("tag", t)).join("")}</div>` : none}</td>
         <td class="t-variants">${orderedVariants(m).map((v) => variantLine(v, "t-variant")).join("")}</td>
-        <td class="num">${
-          m.comparison
-            ? workloadBars(m.comparison, scale) +
-              (m.comparison.version !== m.latest
-                ? `<div class="wl-ver">measured on v${escapeHtml(m.comparison.version)}</div>`
-                : "")
-            : none
-        }</td>
+        <td class="num">${improvementCell(m, scale) || none}</td>
         <td>${links.length ? `<div class="t-links">${links.join("")}</div>` : none}</td>
       </tr>`;
 }
@@ -779,7 +968,9 @@ function renderRow(m, i, scale) {
 function renderIndex(catalog) {
   const facets = catalog.models.map(facetsOf);
   const hasDeprecated = facets.some((f) => f.deprecated);
-  const scale = upliftScale(catalog.models);
+  // Every bar in the table is drawn against the catalog's best result.
+  const scale =
+    Math.max(0, ...catalog.models.flatMap((m) => m.versions[0].variants.map((v) => (variantBest(m, v.id) || {}).upliftPct || 0))) || 1;
   // Keep "</script>" in descriptions from closing the data block.
   const dataJson = JSON.stringify(facets).replace(/</g, "\\u003c");
   const sortTh = (col, label, cls, title, sub) =>
@@ -807,12 +998,7 @@ ${BOOT_SCRIPT}
       <p class="eyebrow">modelsphere / model-catalog</p>
       <h1>Model catalog</h1>
     </div>
-    <button type="button" id="theme-toggle" class="theme-toggle" hidden>
-      <span data-icon="system">${ICONS.system}</span><span data-icon="light" hidden>${
-        ICONS.light
-      }</span><span data-icon="dark" hidden>${ICONS.dark}</span>
-      <span class="theme-label">System</span>
-    </button>
+    ${themeButton()}
   </div>
 </header>
 <main class="wrap">
@@ -832,17 +1018,14 @@ ${renderSummary(computeSummary(facets))}
       <label><span class="sr-only">Engine</span>
         <select name="engine">${renderOptions(facets.flatMap((f) => [...new Set(f.engines)]), "All engines")}</select>
       </label>
-      <label><span class="sr-only">Hardware</span>
-        <select name="hardware">${renderOptions(facets.flatMap((f) => f.hardware), "All hardware")}</select>
-      </label>
       <label><span class="sr-only">Tag</span>
         <select name="tag">${renderOptions(facets.flatMap((f) => f.tags), "All tags")}</select>
       </label>
     </div>
     <div class="toolbar-row">
-      <label class="toggle"><input type="checkbox" name="cmp">Optimized vs baseline</label>
-      <label class="toggle"><input type="checkbox" name="reports">Has perf report</label>
-      ${hasDeprecated ? `<label class="toggle"><input type="checkbox" name="hidedep">Hide deprecated</label>` : ""}
+      <label class="toggle tint tint-ok"><input type="checkbox" name="cmp">Optimized vs baseline</label>
+      <label class="toggle tint tint-accent"><input type="checkbox" name="reports">Has perf report</label>
+      ${hasDeprecated ? `<label class="toggle tint tint-bad"><input type="checkbox" name="hidedep">Hide deprecated</label>` : ""}
       <span class="toolbar-spacer"></span>
       <p id="result-count" class="result-count" aria-live="polite"></p>
       <label><span class="sr-only">Sort by</span>
@@ -859,6 +1042,9 @@ ${renderSummary(computeSummary(facets))}
       </fieldset>
       <button type="reset" class="link-btn">Reset</button>
     </div>
+    <div class="toolbar-row">
+      ${gpuToggles(facets)}
+    </div>
   </form>
   <div id="results">
     <div id="models" class="models">
@@ -870,9 +1056,8 @@ ${catalog.models.map((m, i) => renderCard(m, i, scale)).join("\n")}
           <tr>
             ${sortTh("name", "Model")}
             ${sortTh("family", "Family")}
-            <th scope="col" class="t-tags">Tags</th>
             <th scope="col">Variants (latest)</th>
-            ${sortTh("uplift", "Improvement vs baseline", "num", UPLIFT_HELP, "per workload · in + out tokens")}
+            ${sortTh("uplift", "Improvement vs baseline", "num", UPLIFT_HELP, "best workload")}
             <th scope="col">Links</th>
           </tr>
         </thead>
@@ -894,75 +1079,294 @@ ${catalog.models.map((m, i) => renderRow(m, i, scale)).join("\n")}
 `;
 }
 
+// ---- Model page: models/<name>/index.html ----
+//
+// Every version and every variant in full. Tuning binds to the optimized
+// variant: a model may have several, each against its own baseline, so each
+// optimized variant carries its own results.
+
+const anchorOf = (version, id) => `v${version}-${id}`;
+
+// The pairs shown on an optimized variant in a version: those measured on that
+// version, else -- a tuned variant carried forward unchanged -- those of the
+// newest earlier version that measured it.
+function tuningFor(m, version, id) {
+  const mine = m.tuning.filter((t) => t.optimizedId === id);
+  const same = mine.filter((t) => t.version === String(version));
+  if (same.length) return same;
+  const earlier = mine
+    .filter((t) => compareVersions(t.version, version) < 0)
+    .sort((a, b) => compareVersions(b.version, a.version));
+  return earlier.length ? earlier.filter((t) => t.version === earlier[0].version) : [];
+}
+
+// A pair's baseline: linked when this version has it -- a pair carried from
+// an earlier version may name one this version dropped.
+function baselineRef(ver, t) {
+  const code = `<code>${escapeHtml(t.baselineId)}</code>`;
+  return ver.variants.some((v) => v.id === t.baselineId)
+    ? `<a href="#${escapeHtml(anchorOf(ver.version, t.baselineId))}">${code}</a>`
+    : code;
+}
+
+// One bar per workload, drawn against the model's largest result so bars
+// compare across its variants. The best row is bold; a regression draws no bar.
+//   50k + 1.5k  ██████████  +64.2%
+//   8k + 1k     █            +7.6%
+function tuningBars(t, scale) {
+  const rows = t.workloads.length
+    ? t.workloads
+    : t.upliftPct == null
+      ? []
+      : [{ name: "headline", upliftPct: t.upliftPct, upliftLabel: t.upliftLabel }];
+  const best = Math.max(...rows.map((w) => w.upliftPct));
+  return `<div class="tn-bars" title="${escapeHtml(UPLIFT_HELP)}">${rows
+    .map((w) => {
+      const width = Math.max(0, Math.min(100, (w.upliftPct / scale) * 100));
+      return `<div class="tn-row${w.upliftPct === best ? " tn-best" : ""}"><span class="tn-label">${escapeHtml(
+        w.name
+      )}</span><span class="tn-track"><span class="tn-fill" style="width:${width.toFixed(
+        1
+      )}%"></span></span><span class="tn-val">${escapeHtml(w.upliftLabel)}</span></div>`;
+    })
+    .join("")}</div>`;
+}
+
+function tuningBlock(m, ver, t, scale) {
+  const report = t.reportFile
+    ? `<a class="tn-report" href="${escapeHtml(encodeURIComponent(t.reportFile))}">${ICONS.report}Perf report</a>`
+    : "";
+  return `<div class="tn">
+          <div class="tn-head"><span>Improvement vs ${baselineRef(ver, t)}<span class="tn-sub"> · per workload, in + out tokens</span></span>${report}</div>
+          ${tuningBars(t, scale)}
+        </div>`;
+}
+
+function fact(label, value) {
+  return value ? `<div><dt>${label}</dt><dd>${value}</dd></div>` : "";
+}
+
+function variantDetail(m, ver, v, scale) {
+  const badges = [];
+  if (v.default) badges.push("default");
+  if (v.isOptimized) badges.push("optimized");
+  if (v.isBaseline) badges.push("baseline");
+  const chart = v.chart && v.chart.name ? `<code>${escapeHtml(v.chart.name)}${v.chart.version ? ` ${escapeHtml(v.chart.version)}` : ""}</code>` : "";
+  const image =
+    v.image && v.image.repository
+      ? `<code>${escapeHtml(v.image.repository)}${v.image.tag ? `:${escapeHtml(v.image.tag)}` : ""}</code>`
+      : "";
+  const pairs = tuningFor(m, ver.version, v.id);
+  // Optimized variants of this version measured against this one.
+  const against = ver.variants.filter((o) => tuningFor(m, ver.version, o.id).some((t) => t.baselineId === v.id));
+  const source = v.source
+    ? `<a class="btn btn-sm" href="${escapeHtml(v.source)}" target="_blank" rel="noopener" title="Pinned to commit ${escapeHtml(
+        v.source.split("/blob/")[1].slice(0, 7)
+      )}">${ICONS.external}Source</a>`
+    : "";
+  const link = v.link
+    ? `<a class="btn btn-sm" href="${escapeHtml(v.link)}" target="_blank" rel="noopener">${ICONS.external}Link</a>`
+    : "";
+  return `<article class="vd" id="${escapeHtml(anchorOf(ver.version, v.id))}">
+        <div class="vd-head">
+          <h3 class="vd-id"><a href="#${escapeHtml(anchorOf(ver.version, v.id))}">${escapeHtml(v.id)}</a></h3>
+          ${badges.map((b) => `<span class="badge badge-${b}">${b}</span>`).join("")}
+          <span class="vd-actions">${link}${source}</span>
+        </div>
+        ${v.description ? `<p class="vd-desc">${escapeHtml(v.description)}</p>` : ""}
+        <dl class="vd-facts">
+          ${fact("Engine", escapeHtml(v.engine || ""))}
+          ${fact("Hardware", v.hardwareShort ? `${hardwareHtml(v)}<span class="vd-faint"> · ${escapeHtml(v.requiresSummary)}</span>` : "")}
+          ${fact("Chart", chart)}
+          ${fact("Image", image)}
+        </dl>
+        ${pairs.map((t) => tuningBlock(m, ver, t, scale)).join("")}
+        ${
+          against.length
+            ? `<p class="vd-baseline">Baseline for ${against
+                .map((o) => `<a href="#${escapeHtml(anchorOf(ver.version, o.id))}"><code>${escapeHtml(o.id)}</code></a>`)
+                .join(", ")}</p>`
+            : ""
+        }
+        ${v.yaml ? `<details class="vd-config"><summary>Configuration</summary><pre><code>${escapeHtml(v.yaml)}</code></pre></details>` : ""}
+      </article>`;
+}
+
+// The latest version only: what a deploy gets. Earlier versions stay in git
+// and index.json.
+function versionSection(m, ver, scale) {
+  // Default first; the rest keep file order, as on the catalog page.
+  const variants = ver.variants.slice().sort((a, b) => Number(b.default) - Number(a.default));
+  return `<section class="ver" id="v${escapeHtml(ver.version)}">
+      <div class="ver-head">
+        <h2>Variants</h2>
+        <span class="ver-meta">${ver.variants.length} variant${ver.variants.length === 1 ? "" : "s"}${
+          ver.servedName ? ` · served as <code>${escapeHtml(ver.servedName)}</code>` : ""
+        }</span>
+        ${
+          ver.source
+            ? `<a class="ver-src" href="${escapeHtml(ver.source)}" target="_blank" rel="noopener">${ICONS.external}${escapeHtml(
+                ver.path.split("/").pop()
+              )}</a>`
+            : ""
+        }
+      </div>
+      <div class="ver-body">
+      ${variants.map((v) => variantDetail(m, ver, v, scale)).join("\n      ")}
+      </div>
+    </section>`;
+}
+
+function renderModelPage(m) {
+  const latest = m.versions.find((v) => v.version === m.latest);
+  const shown = latest.variants.flatMap((v) => tuningFor(m, latest.version, v.id));
+  const all = shown.flatMap((t) => (t.workloads.length ? t.workloads.map((w) => w.upliftPct) : [t.upliftPct]));
+  const scale = Math.max(0, ...all.filter((x) => x != null)) || 1;
+  const home = "../../index.html";
+  const filterLink = (field, value, cls) =>
+    `<a class="${cls}" href="${home}?${field}=${encodeURIComponent(value)}" title="All models with ${field} ${escapeHtml(
+      value
+    )}">${escapeHtml(value)}</a>`;
+  const hf = m.source && m.source.hf;
+  const reports = m.reports.map(
+    (r) => `<a class="btn" href="${escapeHtml(encodeURIComponent(r.file))}">${ICONS.report}${
+      m.reports.length > 1 ? escapeHtml(r.title) : "Perf report"
+    }</a>`
+  );
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>${escapeHtml(m.displayName)} · Model Catalog</title>
+${BOOT_SCRIPT}
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body class="mp-page">
+<header class="site-header">
+  <div class="wrap header-row">
+    <div>
+      <p class="eyebrow"><a href="${home}">model-catalog</a> / ${escapeHtml(m.name)}</p>
+      <h1>${escapeHtml(m.displayName)} ${deprecatedBadge(m)}</h1>
+    </div>
+    ${themeButton()}
+  </div>
+</header>
+<main class="wrap mp">
+  <section class="mp-about">
+    <div class="model-meta">
+      <code>${escapeHtml(m.name)}</code>
+      ${m.family ? filterLink("family", m.family, "chip") : ""}
+      ${
+        hf
+          ? `<a href="https://huggingface.co/${escapeHtml(hf)}" target="_blank" rel="noopener"><code>${escapeHtml(hf)}</code></a>${
+              m.source.revision ? ` @ <code>${escapeHtml(m.source.revision)}</code>` : ""
+            }`
+          : ""
+      }
+    </div>
+    ${m.deprecatedReason ? `<p class="mp-dep">Deprecated: ${escapeHtml(m.deprecatedReason)}</p>` : ""}
+    ${m.description ? `<p class="mp-desc">${escapeHtml(m.description)}</p>` : ""}
+    ${m.tags.length ? `<div class="mp-tags">${m.tags.map((t) => filterLink("tag", t, `chip hue-${tagHue(t)}`)).join("")}</div>` : ""}
+    ${reports.length ? `<div class="links">${reports.join("")}</div>` : ""}
+  </section>
+  ${versionSection(m, latest, scale)}
+</main>
+<footer class="wrap">
+  <p>Generated from <code>models/${escapeHtml(m.dir)}/</code> by <code>hack/build-site.js</code>.</p>
+</footer>
+<script src="../../assets/theme.js"></script>
+</body>
+</html>
+`;
+}
+
 const SITE_JS =
   [escapeHtml, computeSummary, renderSummary, clientMain, themeMain]
     .map((f) => f.toString())
     .join("\n\n") + "\n\nthemeMain();\nclientMain();\n";
 
+const THEME_JS = themeMain.toString() + "\n\nthemeMain();\n";
+
+// Colors are Sonokai's (github.com/sainnhe/sonokai, default style), tuned for
+// high contrast. Against the panel: text >= 15:1, muted >= 7:1, faint >= 4.5:1
+// on the page too, control borders >= 3:1, and every colored text (links,
+// improvement, labels' ink, selected or not) >= 7:1.
+//
+// Dark mode uses Sonokai's darkest steps as surfaces (black page, bg_dim
+// panel) and its hues as they are, lightened only where short of 7:1 (red,
+// orange, purple); labels color their text with the hue.
+//
+// Sonokai is dark-only. Light mode inks with its black; labels keep Sonokai's
+// own hues but put them in the wash and border, with ink near the text color,
+// since the hues stepped dark enough for text turn olive and brown. The few
+// colored texts (links, improvement, deprecated) are clean dark blue, green
+// and red at 7:1.
+//
+// --tint-* set how the label preset mixes, per mode (see .tint below).
 const DARK_TOKENS = `
   color-scheme: dark;
-  --bg: #0f1216;
-  --panel: #161a20;
-  --panel-2: #1e232b;
-  --text: #e6e9ee;
-  --muted: #9ba5b3;
-  --faint: #737d8b;
-  --line: #262c35;
-  --line-strong: #37404c;
-  --accent: #7ea9ff;
-  --accent-soft: rgba(126, 169, 255, 0.14);
-  --ok: #52d08f;
-  --ok-soft: rgba(82, 208, 143, 0.13);
-  --warn: #f0b955;
-  --warn-soft: rgba(240, 185, 85, 0.14);
-  --info: #aab6ca;
-  --info-soft: rgba(170, 182, 202, 0.12);
-  --bad: #ff8080;
-  --bad-soft: rgba(255, 128, 128, 0.13);
+  --bg: #181819;
+  --panel: #222327;
+  --panel-2: #2c2e34;
+  --text: #fafafb;
+  --muted: #a8aeba;
+  --faint: #858a96;
+  --line: #414550;
+  --line-strong: #666d7d;
+  --accent: #76cce0;
+  --accent-soft: rgba(118, 204, 224, 0.16);
+  --ok: #9ed072;
+  --bad: #ff89a4;
   --shadow: none;
-  --hue-blue: #93c5fd;
-  --hue-violet: #c4b5fd;
-  --hue-teal: #5eead4;
-  --hue-orange: #fdba74;
-  --hue-pink: #f9a8d4;
-  --hue-amber: #fcd34d;
-  --hue-indigo: #a5b4fc;
-  --hue-green: #86efac;
-  --hue-cyan: #67e8f9;
-  --hue-slate: #cbd5e1;
+  --tint-ink-pct: 85%;
+  --tint-wash-pct: 8%;
+  --tint-line-pct: 50%;
+  --tint-line-base: var(--line);
+  --tint-firm-pct: 100%;
+  --tint-hover-pct: 14%;
+  --tint-sel-ink-pct: 65%;
+  --tint-sel-wash-pct: 16%;
+  --hue-red: #ff89a4;
+  --hue-orange: #f49761;
+  --hue-yellow: #e7c664;
+  --hue-green: #9ed072;
+  --hue-blue: #76cce0;
+  --hue-purple: #b7a1f7;
+  --hue-grey: #a8aeba;
 `;
 
 const CSS = `:root {
   color-scheme: light;
-  --bg: #f6f7f9;
+  --bg: #f0f0f2;
   --panel: #ffffff;
-  --panel-2: #f0f2f5;
-  --text: #1b2230;
-  --muted: #586374;
-  --faint: #7f8998;
-  --line: #e3e7ec;
-  --line-strong: #cdd4dd;
-  --accent: #2a66d9;
-  --accent-soft: rgba(42, 102, 217, 0.09);
-  --ok: #157a48;
-  --ok-soft: rgba(21, 122, 72, 0.1);
-  --warn: #9a5a00;
-  --warn-soft: rgba(196, 122, 0, 0.12);
-  --info: #4a5a73;
-  --info-soft: rgba(74, 90, 115, 0.1);
-  --bad: #b93434;
-  --bad-soft: rgba(185, 52, 52, 0.1);
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.05);
-  --hue-blue: #1d4ed8;
-  --hue-violet: #6d28d9;
-  --hue-teal: #0f766e;
-  --hue-orange: #c2410c;
-  --hue-pink: #be185d;
-  --hue-amber: #a16207;
-  --hue-indigo: #4338ca;
-  --hue-green: #15803d;
-  --hue-cyan: #0e7490;
-  --hue-slate: #475569;
+  --panel-2: #f3f3f5;
+  --text: #181819;
+  --muted: #545863;
+  --faint: #676c77;
+  --line: #cccccd;
+  --line-strong: #7f8490;
+  --accent: #0058ad;
+  --accent-soft: rgba(0, 88, 173, 0.09);
+  --ok: #046727;
+  --bad: #a92238;
+  --shadow: 0 1px 2px rgba(24, 24, 25, 0.06), 0 1px 3px rgba(24, 24, 25, 0.08);
+  --hue-red: #fc5d7c;
+  --hue-orange: #f39660;
+  --hue-yellow: #e7c664;
+  --hue-green: #9ed072;
+  --hue-blue: #76cce0;
+  --hue-purple: #b39df3;
+  --hue-grey: #7f8490;
+  --tint-ink-pct: 25%;
+  --tint-wash-pct: 22%;
+  --tint-line-pct: 60%;
+  --tint-line-base: var(--text);
+  --tint-firm-pct: 40%;
+  --tint-hover-pct: 30%;
+  --tint-sel-ink-pct: 20%;
+  --tint-sel-wash-pct: 40%;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 }
@@ -1007,9 +1411,9 @@ h1 { font-size: clamp(1.6rem, 3vw, 2.1rem); line-height: 1.15; letter-spacing: -
   align-items: center;
   gap: 0.4rem;
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   color: var(--muted);
-  border-radius: 999px;
+  border-radius: 8px;
   padding: 0.4rem 0.75rem;
   font: inherit;
   font-size: 0.85rem;
@@ -1073,7 +1477,7 @@ h1 { font-size: clamp(1.6rem, 3vw, 2.1rem); line-height: 1.15; letter-spacing: -
 .toolbar input[type="search"], .toolbar select {
   background: var(--panel);
   color: var(--text);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   padding: 0.45rem 0.7rem;
   font: inherit;
@@ -1090,8 +1494,8 @@ h1 { font-size: clamp(1.6rem, 3vw, 2.1rem); line-height: 1.15; letter-spacing: -
   align-items: center;
   padding: 0.35rem 0.75rem;
   min-height: 34px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
   background: var(--panel);
   color: var(--muted);
   font-size: 0.85rem;
@@ -1102,6 +1506,74 @@ h1 { font-size: clamp(1.6rem, 3vw, 2.1rem); line-height: 1.15; letter-spacing: -
 .toggle input { position: absolute; opacity: 0; pointer-events: none; }
 .toggle:has(input:checked) { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The GPU filter row: a label, then one tinted toggle per GPU. */
+.gpu-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.gpu-filter-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  margin-right: 0.2rem;
+}
+/* One color preset for every colored label -- toggles, chips, badges, GPU
+   names. An element only picks a hue (--hue); the preset mixes ink, wash and
+   border from it by the mode's --tint-* amounts (dark: colored ink on a
+   faint wash; light: near-text ink on a clear pastel wash). Interactive ones
+   deepen on hover; a selected toggle deepens further, firms its border and
+   adds a check. */
+.tint, .chip, .badge, .gpu {
+  --tint-ink: color-mix(in oklab, var(--hue) var(--tint-ink-pct), var(--text));
+  --tint-wash: color-mix(in oklab, var(--hue) var(--tint-wash-pct), var(--panel));
+  --tint-line: color-mix(in oklab, var(--hue) var(--tint-line-pct), var(--tint-line-base));
+  --tint-firm: color-mix(in oklab, var(--hue) var(--tint-firm-pct), var(--tint-line-base));
+  color: var(--tint-ink);
+  background: var(--tint-wash);
+  border: 1px solid var(--tint-line);
+}
+.toggle.tint:hover, .chip:hover {
+  color: var(--tint-ink);
+  background: color-mix(in oklab, var(--hue) var(--tint-hover-pct), var(--panel));
+  border-color: var(--tint-firm);
+}
+/* Toggles: GPU ones take the GPU's hue; the others a meaning-bearing one --
+   optimized green, reports the link blue, deprecated red. */
+.tint-ok { --hue: var(--hue-green); }
+.tint-accent { --hue: var(--hue-blue); }
+.tint-bad { --hue: var(--hue-red); }
+.toggle.tint {
+  gap: 0.35rem;
+  font-weight: 500;
+  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+/* Selected: a deeper wash, so the ink leans further toward the text color to
+   stay at 7:1; the firm border, weight and check carry the state. */
+.toggle.tint:has(input:checked) {
+  color: color-mix(in oklab, var(--hue) var(--tint-sel-ink-pct), var(--text));
+  font-weight: 600;
+  background: color-mix(in oklab, var(--hue) var(--tint-sel-wash-pct), var(--panel));
+  border-color: var(--tint-firm);
+  box-shadow: inset 0 0 0 1px var(--tint-firm);
+}
+.toggle.tint:has(input:checked)::before {
+  content: "";
+  width: 0.55em;
+  height: 0.3em;
+  margin: 0 0.05em 0.2em 0;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+}
+.toggle.tint:has(input:focus-visible) { outline-color: var(--tint-firm); }
+.gpu-n { font-size: 0.74rem; font-weight: 500; opacity: 0.85; font-variant-numeric: tabular-nums; }
 .result-count { font-size: 0.85rem; color: var(--muted); margin: 0 0.25rem; font-variant-numeric: tabular-nums; }
 .link-btn {
   background: none;
@@ -1143,93 +1615,69 @@ h1 { font-size: clamp(1.6rem, 3vw, 2.1rem); line-height: 1.15; letter-spacing: -
   font-size: 0.84rem;
   color: var(--muted);
 }
-.uplift-box { text-align: right; flex-shrink: 0; }
-.uplift {
-  display: inline-block;
-  font-size: 1.05rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--ok);
-  background: var(--ok-soft);
-  border-radius: 8px;
-  padding: 0.12rem 0.55rem;
-}
-.uplift-sub { font-size: 0.74rem; color: var(--faint); margin-top: 0.15rem; }
 .model-body { display: flex; flex-direction: column; gap: 0.9rem; flex: 1; margin-top: 0.75rem; }
 /* Content stays top-aligned; links sit at the bottom so a row's buttons line up. */
 .model-variants { display: flex; flex-direction: column; flex: 1; }
 .clamp { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 .desc { margin: 0; color: var(--muted); font-size: 0.9rem; -webkit-line-clamp: 3; line-clamp: 3; }
-.chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.65rem; }
-.model-info .chips:first-child { margin-top: 0; }
+/* Chips: the preset in a neutral hue (family) unless a hue-* class gives
+   one (tags, GPUs). */
 .chip {
+  --hue: var(--hue-grey);
   font: inherit;
   font-size: 0.75rem;
   line-height: 1.5;
-  background: var(--panel-2);
-  color: var(--muted);
-  border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 6px;
   padding: 0.05rem 0.55rem;
   cursor: pointer;
   white-space: nowrap;
 }
-.chip:hover { color: var(--text); border-color: var(--line-strong); }
-.chip[class*="hue-"] {
-  color: var(--hue);
-  background: var(--panel-2);
-  background: color-mix(in srgb, var(--hue) 12%, transparent);
-}
-.chip[class*="hue-"]:hover {
-  color: var(--hue);
-  border-color: color-mix(in srgb, var(--hue) 45%, transparent);
-}
-.hue-blue { --hue: var(--hue-blue); }
-.hue-violet { --hue: var(--hue-violet); }
-.hue-teal { --hue: var(--hue-teal); }
+.chip-gpu { font-weight: 600; }
+.t-gpus { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
+.t-gpus:empty { display: none; }
+.hue-red { --hue: var(--hue-red); }
 .hue-orange { --hue: var(--hue-orange); }
-.hue-pink { --hue: var(--hue-pink); }
-.hue-amber { --hue: var(--hue-amber); }
-.hue-indigo { --hue: var(--hue-indigo); }
+.hue-yellow { --hue: var(--hue-yellow); }
 .hue-green { --hue: var(--hue-green); }
-.hue-cyan { --hue: var(--hue-cyan); }
-.hue-slate { --hue: var(--hue-slate); }
+.hue-blue { --hue: var(--hue-blue); }
+.hue-purple { --hue: var(--hue-purple); }
+.hue-grey { --hue: var(--hue-grey); }
 .variants { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; }
 .variant { padding: 0.6rem 0.8rem; }
 .variant + .variant { border-top: 1px solid var(--line); }
 .variant-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.45rem; }
 .variant-id { font-family: var(--mono); font-size: 0.84rem; overflow-wrap: anywhere; margin-right: 0.15rem; }
-.variant-hw {
-  margin-left: auto;
-  padding-left: 0.5rem;
-  font-size: 0.82rem;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
+a.variant-src { color: inherit; text-decoration: underline dotted var(--line-strong); text-underline-offset: 3px; }
+a.variant-src:hover { color: var(--accent); text-decoration-color: currentColor; }
 .variant-desc { font-size: 0.8rem; color: var(--faint); margin-top: 0.2rem; -webkit-line-clamp: 2; line-clamp: 2; }
+/* Badges: the preset, a hue per role. DEFAULT and BASELINE step back to a
+   quiet outline -- still 7:1 text, no wash, a hairline border -- so
+   OPTIMIZED (and DEPRECATED) carry the color. */
 .badge {
+  --hue: var(--hue-grey);
   display: inline-block;
   font-size: 0.66rem;
   font-weight: 600;
-  line-height: 1.6;
+  line-height: 1.45;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   border-radius: 5px;
   padding: 0 0.4rem;
 }
-.badge-default { color: var(--warn); background: var(--warn-soft); }
-.badge-optimized { color: var(--ok); background: var(--ok-soft); }
-.badge-baseline { color: var(--info); background: var(--info-soft); }
-.badge-deprecated { color: var(--bad); background: var(--bad-soft); }
+.badge-optimized { --hue: var(--hue-green); }
+.badge-deprecated { --hue: var(--hue-red); }
+.badge-default, .badge-baseline { color: var(--muted); background: transparent; border-color: var(--line); }
 .links { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: auto; padding-top: 0.75rem; }
 .variant-hw-inline { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+/* GPU names stand out from the rest of a hardware line. */
+.gpu { display: inline-block; font-weight: 600; line-height: 1.3; padding: 0 0.4em; border-radius: 5px; }
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   font-size: 0.84rem;
   padding: 0.35rem 0.75rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   color: var(--text);
   background: var(--panel);
@@ -1252,7 +1700,7 @@ html[data-view="cards"] .table-view { display: none; }
   gap: 2px;
   margin: 0;
   padding: 2px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--panel);
   min-width: 0;
@@ -1315,32 +1763,103 @@ th[aria-sort="descending"] .sort-ind::after { content: "↓"; }
 .t-name { font-weight: 600; }
 .t-name .badge { vertical-align: 1px; margin-left: 0.2rem; }
 .t-meta { margin-top: 0.1rem; font-size: 0.8rem; color: var(--muted); }
-.t-variants { min-width: 360px; }
-.t-tags { min-width: 190px; max-width: 280px; }
-.t-tags .chips { margin-top: 0; }
 .models-table td:first-child { min-width: 200px; }
-/* Tags are searchable and filterable; the column only shows when there is room. */
-@media (max-width: 1359px) { .t-tags { display: none; } }
 .t-variant { display: flex; align-items: center; gap: 0.45rem; white-space: nowrap; }
-.t-variant + .t-variant { margin-top: 0.35rem; }
+/* Improvement rows mirror the variant lines, so a bar sits on its variant's line. */
+.t-variant, .t-imp-row { height: 1.45rem; }
+.t-variant + .t-variant, .t-imp-row + .t-imp-row { margin-top: 0.35rem; }
+/* Improvement bar: one hue, anchored left, rounded at the data end; the number
+   in text ink beside it. */
+.imp { display: grid; grid-template-columns: 72px minmax(4.6em, auto); justify-content: end; align-items: center; column-gap: 0.6rem; }
+.imp-track { height: 8px; border-radius: 0 4px 4px 0; background: var(--panel-2); overflow: hidden; }
+.imp-fill { display: block; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--ok); }
+.imp-val { font-size: 0.86rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; color: var(--text); }
+.variant-top { display: flex; align-items: flex-start; gap: 0.5rem 0.75rem; }
+.variant-top .variant-line { flex: 1; min-width: 0; }
+.v-imp { flex-shrink: 0; height: 1.35rem; grid-template-columns: 56px minmax(4.4em, auto); }
 .t-variant .variant-id { font-size: 0.82rem; }
-/* Workload bars: rows share the container's columns, so labels, bars and
-   digits line up. Bars are one hue, anchored left, rounded at the data end. */
-.wl-bars {
-  display: grid;
-  grid-template-columns: auto minmax(56px, 1fr) minmax(4.6em, auto);
+a.model-link { color: inherit; }
+a.model-link:hover { color: var(--accent); }
+
+/* Model page */
+.eyebrow a { color: inherit; }
+/* Header, content and footer share one narrower column. */
+.mp-page .wrap { max-width: 1180px; }
+.mp { display: grid; gap: 1rem; }
+.mp-about { display: grid; gap: 0.75rem; }
+.mp-about .model-meta { margin-top: 0; }
+.mp-about .links { margin-top: 0; padding-top: 0; }
+.mp-desc { margin: 0; color: var(--muted); max-width: 72ch; }
+.mp-dep { margin: 0; color: var(--bad); font-size: 0.9rem; }
+.mp-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+a.chip:hover { text-decoration: none; }
+.ver { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); }
+.ver-head {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  column-gap: 0.6rem;
-  row-gap: 0.3rem;
+  gap: 0.4rem 0.75rem;
+  padding: 0.9rem 1.1rem;
+  border-bottom: 1px solid var(--line);
 }
-.wl-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
-.wl-label { font-family: var(--mono); font-size: 0.76rem; color: var(--muted); white-space: nowrap; }
-.wl-track { height: 8px; border-radius: 0 4px 4px 0; background: var(--panel-2); overflow: hidden; }
-.wl-fill { display: block; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--ok); }
-.wl-val { font-size: 0.86rem; font-variant-numeric: tabular-nums; text-align: right; color: var(--text); }
-.wl-head .wl-val { font-weight: 700; }
-.wl-ver { margin-top: 0.3rem; font-size: 0.76rem; color: var(--muted); text-align: right; }
-.models-table .wl-bars { grid-template-columns: auto 64px minmax(4.6em, auto); width: max-content; margin-left: auto; text-align: left; }
+.ver-head h2 { font-size: 1.05rem; margin: 0; font-variant-numeric: tabular-nums; }
+.ver-meta { font-size: 0.84rem; color: var(--muted); }
+.ver-src { margin-left: auto; display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.84rem; }
+.ver-src svg, .tn-report svg { width: 14px; height: 14px; flex-shrink: 0; }
+.ver-body { display: grid; }
+.vd { padding: 1rem 1.1rem; scroll-margin-top: 1rem; }
+.vd + .vd { border-top: 1px solid var(--line); }
+.vd:target { background: var(--accent-soft); }
+.vd-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem; }
+.vd-id { margin: 0; font-family: var(--mono); font-size: 0.95rem; font-weight: 600; overflow-wrap: anywhere; }
+.vd-id a { color: inherit; }
+.vd-actions { margin-left: auto; display: flex; gap: 0.4rem; }
+.btn-sm { padding: 0.2rem 0.55rem; font-size: 0.8rem; }
+.vd-desc { margin: 0.45rem 0 0; color: var(--muted); font-size: 0.9rem; }
+.vd-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem 1.25rem;
+  margin: 0.75rem 0 0;
+}
+.vd-facts dt { font-size: 0.72rem; color: var(--faint); text-transform: uppercase; letter-spacing: 0.04em; }
+.vd-facts dd { margin: 0.1rem 0 0; font-size: 0.86rem; overflow-wrap: anywhere; }
+.vd-faint { color: var(--faint); }
+.vd-baseline { margin: 0.75rem 0 0; font-size: 0.86rem; color: var(--muted); }
+.tn { margin-top: 0.85rem; padding: 0.75rem 0.85rem; border: 1px solid var(--line); border-radius: 10px; }
+.tn-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.3rem 1rem; font-size: 0.88rem; }
+.tn-sub { color: var(--faint); font-size: 0.8rem; }
+.tn-report { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.84rem; }
+/* Rows share the container's columns, so labels, bars and digits line up.
+   Bars are one hue, anchored left, rounded at the data end. */
+.tn-bars {
+  display: grid;
+  grid-template-columns: auto minmax(60px, 320px) minmax(4.6em, auto);
+  justify-content: start;
+  align-items: center;
+  column-gap: 0.75rem;
+  row-gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+.tn-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
+.tn-label { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+.tn-track { height: 8px; border-radius: 0 4px 4px 0; background: var(--panel-2); overflow: hidden; }
+.tn-fill { display: block; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--ok); }
+.tn-val { font-size: 0.88rem; font-variant-numeric: tabular-nums; text-align: right; color: var(--text); }
+.tn-best .tn-val { font-weight: 700; }
+.vd-config { margin-top: 0.85rem; }
+.vd-config > summary { cursor: pointer; font-size: 0.86rem; color: var(--muted); }
+.vd-config pre {
+  margin: 0.5rem 0 0;
+  padding: 0.75rem 0.9rem;
+  max-height: 32rem;
+  overflow: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
 .th-sub { display: block; font-size: 0.68rem; font-weight: 400; color: var(--faint); margin-top: 0.1rem; }
 .t-links { display: grid; gap: 0.2rem; justify-items: start; }
 .t-link { display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
@@ -1349,8 +1868,6 @@ th[aria-sort="descending"] .sort-ind::after { content: "↓"; }
 /* footer.wrap, so .wrap's padding shorthand does not zero these. */
 footer.wrap { padding-top: 2.5rem; padding-bottom: 3rem; font-size: 0.84rem; color: var(--faint); }
 .nowrap { white-space: nowrap; }
-.workloads { margin: 0 0 0.75rem; }
-.workloads-cap { font-size: 0.72rem; color: var(--faint); margin-bottom: 0.35rem; }
 footer p { margin: 0; }
 @media (max-width: 560px) {
   .site-header { padding-top: 1.5rem; }
@@ -1451,10 +1968,19 @@ async function main() {
   const catalog = loadCatalog();
   rmrf(outDir);
   mkdirp(path.join(outDir, "assets"));
-  fs.writeFileSync(path.join(outDir, "catalog.json"), JSON.stringify(catalog, null, 2) + "\n");
+  // Variants' YAML is for the model pages only; catalog.json stays small.
+  fs.writeFileSync(
+    path.join(outDir, "catalog.json"),
+    JSON.stringify(catalog, (k, v) => (k === "yaml" ? undefined : v), 2) + "\n"
+  );
   fs.writeFileSync(path.join(outDir, "assets/site.css"), CSS);
   fs.writeFileSync(path.join(outDir, "assets/site.js"), SITE_JS);
+  fs.writeFileSync(path.join(outDir, "assets/theme.js"), THEME_JS);
   fs.writeFileSync(path.join(outDir, "index.html"), renderIndex(catalog));
+  for (const m of catalog.models) {
+    mkdirp(path.join(outDir, "models", m.dir));
+    fs.writeFileSync(path.join(outDir, "models", m.dir, "index.html"), renderModelPage(m));
+  }
   // Helpful for project Pages paths / local preview.
   fs.writeFileSync(path.join(outDir, ".nojekyll"), "");
   copyReports(catalog);
