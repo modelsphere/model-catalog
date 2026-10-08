@@ -9,7 +9,7 @@ variants:
     engine: sglang
     chart:
       name: sglang
-      version: 0.7.1
+      version: ">=0.7.1"
     image:
       repository: harbor.4pd.io/hardcore-tech/sglang
       tag: v0.5.19-cu129
@@ -79,7 +79,7 @@ variants:
     engine: sglang
     chart:
       name: sglang
-      version: 0.7.1
+      version: ">=0.7.1"
     image:
       repository: harbor.4pd.io/hardcore-tech/sglang
       tag: v0.5.19-cu129

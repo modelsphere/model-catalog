@@ -19,6 +19,8 @@
 
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
+const { parseDocument, LineCounter } = require("yaml");
 const {
   root,
   modelsDir,
@@ -32,6 +34,49 @@ const {
 } = require("./lib/catalog");
 
 const outDir = path.join(root, "site");
+
+// The GitHub repository the version files live in: the one being built in CI,
+// else package.json's.
+function sourceRepo() {
+  if (process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY) {
+    return `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}`;
+  }
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const url = (pkg.repository && pkg.repository.url) || "";
+  const m = url.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/);
+  return m ? `https://github.com/${m[1]}` : null;
+}
+
+function git(...args) {
+  try {
+    return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    return null;
+  }
+}
+
+// Permalinks to each variant of a version file, by id: the file as of the last
+// commit that touched it, with the variant's lines highlighted. Lines come from
+// that commit's copy, so local edits do not shift them. Empty when the file is
+// not committed (or there is no git), so the page just has no link.
+function variantSources(repo, rel) {
+  const sha = repo && (git("log", "-1", "--format=%H", "--", rel) || "").trim();
+  const text = sha && git("show", `${sha}:${rel}`);
+  if (!text) return {};
+  const lc = new LineCounter();
+  const doc = parseDocument(text, { lineCounter: lc });
+  const seq = doc.get("variants", true);
+  const out = {};
+  for (const item of (seq && seq.items) || []) {
+    const id = item.get && item.get("id");
+    if (!id || !item.range) continue;
+    const [start, end] = item.range;
+    const from = lc.linePos(start).line;
+    const to = lc.linePos(Math.max(start, end - 1)).line;
+    out[id] = `${repo}/blob/${sha}/${encodePath(rel)}#L${from}-L${to}`;
+  }
+  return out;
+}
 
 function rmrf(p) {
   fs.rmSync(p, { recursive: true, force: true });
@@ -104,6 +149,7 @@ function escapeHtml(s) {
 
 function loadCatalog() {
   const models = [];
+  const repo = sourceRepo();
   for (const name of modelNames()) {
     const dir = path.join(modelsDir, name);
     const metaPath = path.join(dir, "metadata.yaml");
@@ -127,6 +173,7 @@ function loadCatalog() {
     for (const rel of versionFiles(name)) {
       const doc = readYaml(path.join(root, rel));
       const raw = doc.variants || [];
+      const sources = variantSources(repo, rel);
       // Schema: the first variant is the default when none is marked.
       const defaultIdx = Math.max(0, raw.findIndex((v) => v.default));
       const variants = raw.map((v, i) => {
@@ -137,6 +184,7 @@ function loadCatalog() {
           default: i === defaultIdx,
           description: v.description || null,
           link: safeLink(v.link),
+          source: sources[v.id] || null,
           requires: v.requires || null,
           requiresSummary: requiresSummary(v.requires),
           hardware: hardwareLabels(v.requires),
@@ -185,6 +233,7 @@ function loadCatalog() {
             default: x.default,
             description: x.description,
             link: x.link,
+            source: x.source,
             requiresSummary: x.requiresSummary,
             hardware: x.hardware,
             hardwareShort: x.hardwareShort,
@@ -218,16 +267,24 @@ function comparisonFor(name, tuning, version) {
     fits[0];
   if (!t) return null;
   const pct = typeof t.uplift === "number" ? t.uplift : null;
+  const workloads = Array.isArray(t.workloads)
+    ? t.workloads.map((w) => ({ name: String(w.name), upliftPct: w.uplift, upliftLabel: formatUplift(w.uplift) }))
+    : [];
+  // The model's one number -- badge, table, sort and summary: its best
+  // workload, or the headline when the benchmark recorded none.
+  const best = workloads.reduce((b, w) => (b && b.upliftPct >= w.upliftPct ? b : w), null);
+  const bestPct = best ? best.upliftPct : pct;
   return {
     baselineId: t.baseline,
     optimizedId: t.optimized,
     upliftPct: pct,
     upliftLabel: pct == null ? null : formatUplift(pct),
+    bestPct,
+    bestLabel: bestPct == null ? null : formatUplift(bestPct),
+    bestWorkload: best ? best.name : null,
     version: String(t.version),
     report: t.report ? `models/${name}/${t.report}` : null,
-    workloads: Array.isArray(t.workloads)
-      ? t.workloads.map((w) => ({ name: String(w.name), upliftPct: w.uplift, upliftLabel: formatUplift(w.uplift) }))
-      : [],
+    workloads,
   };
 }
 
@@ -236,39 +293,6 @@ function comparisonFor(name, tuning, version) {
 const UPLIFT_HELP =
   "Throughput of the tuned variant over its baseline, from the tuning benchmark. " +
   "Workloads are input + output tokens per request, e.g. 50k + 1.5k.";
-
-// The workloads to draw: the report's, or the headline alone when the
-// benchmark recorded none.
-function workloadsOf(c) {
-  if (c.workloads.length) return c.workloads;
-  return c.upliftPct == null ? [] : [{ name: "", upliftPct: c.upliftPct, upliftLabel: c.upliftLabel }];
-}
-
-// The largest result in the catalog: every bar is drawn against it, so bars
-// compare across models as well as within one.
-function upliftScale(models) {
-  const all = models.flatMap((m) => (m.comparison ? workloadsOf(m.comparison).map((w) => w.upliftPct) : []));
-  return Math.max(0, ...all) || 1;
-}
-
-// One bar per workload: workload, bar, number. Rows share their columns
-// (subgrid), so labels, bars and digits line up. The headline row's number is
-// bold; a regression draws no bar. "Tokens" is said once, by the caller.
-//   50k + 1.5k  ██████████  +64.2%
-//   8k + 1k     █            +7.6%
-function workloadBars(c, scale) {
-  const rows = workloadsOf(c).map((w) => {
-    const width = Math.max(0, Math.min(100, (w.upliftPct / scale) * 100));
-    const head = w.upliftPct === c.upliftPct ? " wl-head" : "";
-    const title = `${w.upliftLabel}${w.name ? ` at ${w.name} tokens` : ""}: ${c.optimizedId} vs ${c.baselineId}, measured on v${c.version}`;
-    return `<div class="wl-row${head}" title="${escapeHtml(title)}"><span class="wl-label">${escapeHtml(
-      w.name
-    )}</span><span class="wl-track"><span class="wl-fill" style="width:${width.toFixed(1)}%"></span></span><span class="wl-val">${escapeHtml(
-      w.upliftLabel
-    )}</span></div>`;
-  });
-  return `<div class="wl-bars">${rows.join("")}</div>`;
-}
 
 // Per-model facts the page filters, sorts and summarizes on. Embedded in the
 // page as JSON so filtering works from file:// too, without fetching catalog.json.
@@ -294,7 +318,7 @@ function facetsOf(m) {
     engines: latest.variants.map((v) => v.engine),
     hardware: [...new Set(latest.variants.flatMap((v) => v.hardware))].sort(),
     hasCmp: !!m.comparison,
-    uplift: m.comparison ? m.comparison.upliftPct : null,
+    uplift: m.comparison ? m.comparison.bestPct : null,
     reports: m.reports.length,
     deprecated: m.deprecated,
     text,
@@ -648,28 +672,27 @@ function orderedVariants(m) {
   return m.versions[0].variants.slice().sort((a, b) => Number(b.default) - Number(a.default));
 }
 
-// id, badges and (unless the caller places it elsewhere) hardware on one line.
-function variantLine(v, cls, withHardware = true) {
+// id and badges on one line. The id links to the variant's source, pinned to
+// a commit, when there is one.
+function variantLine(v, cls) {
   const badges = [];
   if (v.default) badges.push("default");
   if (v.isOptimized) badges.push("optimized");
   if (v.isBaseline) badges.push("baseline");
-  const hw = withHardware && v.hardwareShort
-    ? `<span class="variant-hw" title="${escapeHtml(v.requiresSummary)}">${escapeHtml(
-        v.hardwareShort
-      )}</span>`
-    : "";
-  return `<div class="${cls}"><span class="variant-id">${escapeHtml(v.id)}</span>${badges
-    .map((b) => `<span class="badge badge-${b}">${b}</span>`)
-    .join("")}${hw}</div>`;
+  const id = v.source
+    ? `<a class="variant-id variant-src" href="${escapeHtml(v.source)}" target="_blank" rel="noopener" title="Source on GitHub, pinned to commit ${escapeHtml(
+        v.source.split("/blob/")[1].slice(0, 7)
+      )}">${escapeHtml(v.id)}</a>`
+    : `<span class="variant-id">${escapeHtml(v.id)}</span>`;
+  return `<div class="${cls}">${id}${badges.map((b) => `<span class="badge badge-${b}">${b}</span>`).join("")}</div>`;
 }
 
 function upliftBadge(c, cls) {
   const results = c.workloads.map((w) => `${w.upliftLabel} at ${w.name} tokens`).join(", ");
   const title = escapeHtml(
-    `${c.optimizedId} vs ${c.baselineId}, measured on v${c.version}${results ? `: ${results}` : ""}. ${UPLIFT_HELP}`
+    `${c.bestWorkload ? `Best of ${c.workloads.length} workloads. ` : ""}${c.optimizedId} vs ${c.baselineId}, measured on v${c.version}${results ? `: ${results}` : ""}. ${UPLIFT_HELP}`
   );
-  const label = c.upliftLabel ? escapeHtml(c.upliftLabel) : "optimized";
+  const label = c.bestLabel ? escapeHtml(c.bestLabel) : "optimized";
   return `<span class="${cls}" title="${title}">${label}</span>`;
 }
 
@@ -692,7 +715,7 @@ function modelLinks(m, cls, reportLabel) {
   return links;
 }
 
-function renderCard(m, i, scale) {
+function renderCard(m, i) {
   const variants = orderedVariants(m)
     .map((v) => {
       // Cards are narrow, so hardware leads the description line instead of
@@ -709,7 +732,7 @@ function renderCard(m, i, scale) {
               hw && desc ? " · " : ""
             }${desc}</div>`
           : "";
-      return `<li class="variant">${variantLine(v, "variant-line", false)}${sub}</li>`;
+      return `<li class="variant">${variantLine(v, "variant-line")}${sub}</li>`;
     })
     .join("");
   const uplift = m.comparison
@@ -733,15 +756,7 @@ function renderCard(m, i, scale) {
     </div>
     <div class="model-body">
       <div class="model-info">
-        ${
-          m.comparison
-            ? `<div class="workloads"><div class="workloads-cap" title="${escapeHtml(
-                UPLIFT_HELP
-              )}">Per workload · in + out tokens</div>${workloadBars(m.comparison, scale)}</div>`
-            : ""
-        }
         ${m.description ? `<p class="desc clamp" title="${escapeHtml(m.description)}">${escapeHtml(m.description)}</p>` : ""}
-        ${m.tags.length ? `<div class="chips">${m.tags.map((t) => chip("tag", t)).join("")}</div>` : ""}
       </div>
       <div class="model-variants">
         <ul class="variants" aria-label="Variants">${variants}</ul>
@@ -752,7 +767,7 @@ function renderCard(m, i, scale) {
 }
 
 // Compact view: no descriptions (the description is the name's tooltip).
-function renderRow(m, i, scale) {
+function renderRow(m, i) {
   const none = `<span class="none">—</span>`;
   const links = modelLinks(m, "t-link", "Report");
   const title = m.description ? ` title="${escapeHtml(m.description)}"` : "";
@@ -762,11 +777,10 @@ function renderRow(m, i, scale) {
           <div class="t-meta"><code>${escapeHtml(m.name)}</code> · v${escapeHtml(m.latest)}</div>
         </td>
         <td>${m.family ? chip("family", m.family) : none}</td>
-        <td class="t-tags">${m.tags.length ? `<div class="chips">${m.tags.map((t) => chip("tag", t)).join("")}</div>` : none}</td>
         <td class="t-variants">${orderedVariants(m).map((v) => variantLine(v, "t-variant")).join("")}</td>
         <td class="num">${
           m.comparison
-            ? workloadBars(m.comparison, scale) +
+            ? upliftBadge(m.comparison, "uplift uplift-sm") +
               (m.comparison.version !== m.latest
                 ? `<div class="wl-ver">measured on v${escapeHtml(m.comparison.version)}</div>`
                 : "")
@@ -779,7 +793,6 @@ function renderRow(m, i, scale) {
 function renderIndex(catalog) {
   const facets = catalog.models.map(facetsOf);
   const hasDeprecated = facets.some((f) => f.deprecated);
-  const scale = upliftScale(catalog.models);
   // Keep "</script>" in descriptions from closing the data block.
   const dataJson = JSON.stringify(facets).replace(/</g, "\\u003c");
   const sortTh = (col, label, cls, title, sub) =>
@@ -862,7 +875,7 @@ ${renderSummary(computeSummary(facets))}
   </form>
   <div id="results">
     <div id="models" class="models">
-${catalog.models.map((m, i) => renderCard(m, i, scale)).join("\n")}
+${catalog.models.map(renderCard).join("\n")}
     </div>
     <div class="table-view table-wrap">
       <table class="models-table">
@@ -870,14 +883,13 @@ ${catalog.models.map((m, i) => renderCard(m, i, scale)).join("\n")}
           <tr>
             ${sortTh("name", "Model")}
             ${sortTh("family", "Family")}
-            <th scope="col" class="t-tags">Tags</th>
             <th scope="col">Variants (latest)</th>
-            ${sortTh("uplift", "Improvement vs baseline", "num", UPLIFT_HELP, "per workload · in + out tokens")}
+            ${sortTh("uplift", "Improvement vs baseline", "num", UPLIFT_HELP, "best workload")}
             <th scope="col">Links</th>
           </tr>
         </thead>
         <tbody id="table-rows">
-${catalog.models.map((m, i) => renderRow(m, i, scale)).join("\n")}
+${catalog.models.map(renderRow).join("\n")}
         </tbody>
       </table>
     </div>
@@ -1160,8 +1172,6 @@ h1 { font-size: clamp(1.6rem, 3vw, 2.1rem); line-height: 1.15; letter-spacing: -
 .model-variants { display: flex; flex-direction: column; flex: 1; }
 .clamp { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 .desc { margin: 0; color: var(--muted); font-size: 0.9rem; -webkit-line-clamp: 3; line-clamp: 3; }
-.chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.65rem; }
-.model-info .chips:first-child { margin-top: 0; }
 .chip {
   font: inherit;
   font-size: 0.75rem;
@@ -1199,13 +1209,8 @@ h1 { font-size: clamp(1.6rem, 3vw, 2.1rem); line-height: 1.15; letter-spacing: -
 .variant + .variant { border-top: 1px solid var(--line); }
 .variant-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.45rem; }
 .variant-id { font-family: var(--mono); font-size: 0.84rem; overflow-wrap: anywhere; margin-right: 0.15rem; }
-.variant-hw {
-  margin-left: auto;
-  padding-left: 0.5rem;
-  font-size: 0.82rem;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
+a.variant-src { color: inherit; text-decoration: underline dotted var(--line-strong); text-underline-offset: 3px; }
+a.variant-src:hover { color: var(--accent); text-decoration-color: currentColor; }
 .variant-desc { font-size: 0.8rem; color: var(--faint); margin-top: 0.2rem; -webkit-line-clamp: 2; line-clamp: 2; }
 .badge {
   display: inline-block;
@@ -1315,32 +1320,12 @@ th[aria-sort="descending"] .sort-ind::after { content: "↓"; }
 .t-name { font-weight: 600; }
 .t-name .badge { vertical-align: 1px; margin-left: 0.2rem; }
 .t-meta { margin-top: 0.1rem; font-size: 0.8rem; color: var(--muted); }
-.t-variants { min-width: 360px; }
-.t-tags { min-width: 190px; max-width: 280px; }
-.t-tags .chips { margin-top: 0; }
 .models-table td:first-child { min-width: 200px; }
-/* Tags are searchable and filterable; the column only shows when there is room. */
-@media (max-width: 1359px) { .t-tags { display: none; } }
 .t-variant { display: flex; align-items: center; gap: 0.45rem; white-space: nowrap; }
 .t-variant + .t-variant { margin-top: 0.35rem; }
 .t-variant .variant-id { font-size: 0.82rem; }
-/* Workload bars: rows share the container's columns, so labels, bars and
-   digits line up. Bars are one hue, anchored left, rounded at the data end. */
-.wl-bars {
-  display: grid;
-  grid-template-columns: auto minmax(56px, 1fr) minmax(4.6em, auto);
-  align-items: center;
-  column-gap: 0.6rem;
-  row-gap: 0.3rem;
-}
-.wl-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
-.wl-label { font-family: var(--mono); font-size: 0.76rem; color: var(--muted); white-space: nowrap; }
-.wl-track { height: 8px; border-radius: 0 4px 4px 0; background: var(--panel-2); overflow: hidden; }
-.wl-fill { display: block; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--ok); }
-.wl-val { font-size: 0.86rem; font-variant-numeric: tabular-nums; text-align: right; color: var(--text); }
-.wl-head .wl-val { font-weight: 700; }
 .wl-ver { margin-top: 0.3rem; font-size: 0.76rem; color: var(--muted); text-align: right; }
-.models-table .wl-bars { grid-template-columns: auto 64px minmax(4.6em, auto); width: max-content; margin-left: auto; text-align: left; }
+.uplift-sm { font-size: 0.86rem; padding: 0.02rem 0.45rem; border-radius: 6px; }
 .th-sub { display: block; font-size: 0.68rem; font-weight: 400; color: var(--faint); margin-top: 0.1rem; }
 .t-links { display: grid; gap: 0.2rem; justify-items: start; }
 .t-link { display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
@@ -1349,8 +1334,6 @@ th[aria-sort="descending"] .sort-ind::after { content: "↓"; }
 /* footer.wrap, so .wrap's padding shorthand does not zero these. */
 footer.wrap { padding-top: 2.5rem; padding-bottom: 3rem; font-size: 0.84rem; color: var(--faint); }
 .nowrap { white-space: nowrap; }
-.workloads { margin: 0 0 0.75rem; }
-.workloads-cap { font-size: 0.72rem; color: var(--faint); margin-bottom: 0.35rem; }
 footer p { margin: 0; }
 @media (max-width: 560px) {
   .site-header { padding-top: 1.5rem; }
