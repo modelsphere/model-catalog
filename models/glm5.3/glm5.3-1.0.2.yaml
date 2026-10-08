@@ -1,0 +1,176 @@
+apiVersion: catalog.swiss/v1
+name: glm5.3
+version: 1.0.2
+servedName: glm-5.3
+variants:
+  # --quantization=modelopt_fp4 and the EAGLE draft path are both properties of
+  # these weights, not of the node: the repo holds NVFP4 tensors, and an image
+  # or a card without the FP4 kernels cannot load them at all. Image and
+  # extraArgs move together.
+  - id: sglang-tp4-b300
+    default: true
+    engine: sglang
+    description: TP4 on four B300 GPUs. NVFP4 weights, EAGLE speculative decoding, hierarchical KV cache.
+    chart:
+      name: sglang
+      version: ">=0.7.8"
+    image:
+      repository: harbor.4pd.io/hardcore-tech/sglang
+      tag: v0.5.19
+    requires:
+      gpus: 4
+      topology: single-node
+      gpuProduct:
+        - NVIDIA-B300-SXM6-AC
+    values:
+      model:
+        name: glm-5.3
+        localPath: /mnt/disk0/models/GLM-5.3-NVFP4
+        mountPath: /model
+        hostPathType: Directory
+        contextLength: ""
+
+      service:
+        type: ClusterIP
+        port: 8050
+
+      # The shared chart supplies the launcher, model path, served name, host, port
+      # and metrics flags. Model developers own the remaining engine arguments.
+      extraArgs:
+        - "--served-model-name=glm-5.3"
+        - "--quantization=modelopt_fp4"
+        - "--chunked-prefill-size=16384"
+        - "--max-prefill-tokens=16384"
+        - "--max-running-requests=32"
+        - "--cuda-graph-max-bs-decode=32"
+        - "--speculative-algorithm=EAGLE"
+        - "--speculative-num-steps=3"
+        - "--speculative-eagle-topk=1"
+        - "--speculative-num-draft-tokens=4"
+        - "--enable-hierarchical-cache"
+        - "--hicache-size=150"
+        - "--trust-remote-code"
+        - "--tp-size=4"
+        - "--mem-fraction-static=0.85"
+        - "--enable-cache-report"
+        - "--stream-response-default-include-usage"
+        - "--reasoning-parser=glm45"
+        - "--tool-call-parser=glm47"
+        - "--tokenizer-worker-num=4"
+
+      env:
+        - name: NVIDIA_DISABLE_REQUIRE
+          value: "1"
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        - name: TORCHINDUCTOR_COMPILE_THREADS
+          value: "8"
+
+      volumes:
+        - name: dot-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+
+      volumeMounts:
+        - name: dot-cache
+          mountPath: /root/.cache
+        - name: dshm
+          mountPath: /dev/shm
+
+      resources:
+        limits:
+          ephemeral-storage: 16Gi
+        requests:
+          ephemeral-storage: 16Gi
+
+      # GLM loading and long generations need a larger startup and termination budget.
+      progressDeadlineSeconds: 7200
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 180
+      terminationGracePeriodSeconds: 3600
+      lifecycle:
+        forceShutdown: true
+        preStop:
+          drainSeconds: 600
+          pollIntervalSeconds: 5
+        preStopKill: true
+
+  - id: vllm-tp8-pp2-6000d
+    engine: vllm
+    description: TP8 per node, PP2 across two nodes over RoCE, on the same NVFP4 weights as the B300 variant.
+    chart:
+      name: vllm
+      version: ">=0.7.6"
+    image:
+      repository: vllm/vllm-openai
+      tag: v0.30.0
+    requires:
+      gpus: 8 # per pod; 16 across the group
+      nodes: 2
+      topology: lws
+      rdma: true
+      gpuProduct:
+        - NVIDIA-RTX-6000D
+    values:
+      model:
+        localPath: /data/models/GLM-5.3-NVFP4
+        mountPath: /models
+        contextLength: ""
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - "*.safetensors"
+      lws:
+        enabled: true
+        size: 2
+      hostNetwork: true
+      rdma:
+        enabled: true
+      extraArgs:
+        - --tensor-parallel-size=8
+        - --pipeline-parallel-size=2
+        # 0.85, not 0.90: the KV pool fills at 24 concurrent requests and TTFT
+        # goes from 12s to 67s past that, so there is nothing to win by
+        # squeezing the allocator.
+        - --gpu-memory-utilization=0.85
+        - --max-num-batched-tokens=8192
+        - --max-num-seqs=256
+        - --trust-remote-code
+        - --mm-encoder-tp-mode=data
+        - --enable-prompt-tokens-details
+        - --allowed-media-domains=none.invalid
+        - --tool-call-parser=glm47
+        - --enable-auto-tool-choice
+        - --reasoning-parser=glm45
+        - --chat-template-content-format=string
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        # The trtllm fused-MoE autotuner picks shapes that are not built for
+        # sm120; skipping those ops leaves the rest of the autotuner on.
+        - name: VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS
+          value: trtllm::fused_moe::gemm1,trtllm::fused_moe::gemm2,fp8_gemm
+        - name: VLLM_MEDIA_URL_ALLOW_REDIRECTS
+          value: "0"
+        - name: NCCL_DEBUG
+          value: INFO
+        - name: NCCL_SOCKET_IFNAME
+          value: bond0
+        - name: GLOO_SOCKET_IFNAME
+          value: bond0
+        - name: NCCL_NET_GDR_LEVEL
+          value: "1"
+      service:
+        port: 8050
+      hangWatcher:
+        enabled: true
