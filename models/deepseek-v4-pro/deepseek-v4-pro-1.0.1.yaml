@@ -1,0 +1,136 @@
+apiVersion: catalog.swiss/v1
+name: deepseek-v4-pro
+version: 1.0.1
+servedName: deepseek-v4-pro
+variants:
+  - id: vllm-tp8-pp2-6000d
+    default: true
+    engine: vllm
+    description: TP8 per node, PP2 across two nodes over RoCE.
+    chart:
+      name: vllm
+      version: ">=0.7.6"
+    image:
+      repository: vllm/vllm-openai
+      tag: v0.30.0
+    requires:
+      gpus: 8 # per pod; 16 across the group
+      nodes: 2
+      topology: lws
+      rdma: true
+      gpuProduct:
+        - NVIDIA-RTX-6000D
+    values:
+      model:
+        localPath: /data/models/DeepSeek-V4-Pro
+        mountPath: /models
+        contextLength: "1048576"
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - "*.safetensors"
+      lws:
+        enabled: true
+        size: 2
+      hostNetwork: true
+      rdma:
+        enabled: true
+      extraArgs:
+        - --tensor-parallel-size=8
+        - --pipeline-parallel-size=2
+        - --gpu-memory-utilization=0.90
+        - --block-size=256
+        - --max-num-batched-tokens=8192
+        - --max-num-seqs=48
+        - --enable-prefix-caching
+        - --trust-remote-code
+        - --enable-prompt-tokens-details
+        - --allowed-media-domains=none.invalid
+        - --enable-auto-tool-choice
+        - --tool-call-parser=deepseek_v4
+        - --reasoning-parser=deepseek_v4
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        # The trtllm fused-MoE autotuner picks shapes that are not built for
+        # sm120; skipping those ops leaves the rest of the autotuner on.
+        - name: VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS
+          value: trtllm::fused_moe::gemm1,trtllm::fused_moe::gemm2,fp8_gemm
+        - name: VLLM_MEDIA_URL_ALLOW_REDIRECTS
+          value: "0"
+        - name: NCCL_DEBUG
+          value: INFO
+        - name: NCCL_SOCKET_IFNAME
+          value: bond0
+        - name: GLOO_SOCKET_IFNAME
+          value: bond0
+        - name: NCCL_NET_GDR_LEVEL
+          value: "1"
+      service:
+        port: 8050
+      hangWatcher:
+        enabled: true
+
+  - id: sglang-tp8-pp2-6000d
+    engine: sglang
+    description: >-
+      TP8 per node, PP2 across two nodes over RoCE. The fp8 e4m3 weights need no
+      MoE backend override. Measured max_total_num_tokens 2,833,152.
+    chart:
+      name: sglang
+      version: ">=0.7.0"
+    image:
+      repository: lmsysorg/sglang
+      tag: v0.5.20
+    requires:
+      gpus: 8 # per pod; 16 across the group
+      nodes: 2
+      topology: lws
+      rdma: true
+      gpuProduct:
+        - NVIDIA-RTX-6000D
+    values:
+      model:
+        localPath: /data/models/DeepSeek-V4-Pro
+        mountPath: /model
+        contextLength: ""
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - "*.safetensors"
+      lws:
+        enabled: true
+        size: 2
+      hostNetwork: true
+      rdma:
+        enabled: true
+      env:
+        - name: NVIDIA_DISABLE_REQUIRE
+          value: "1"
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        - name: NCCL_DEBUG
+          value: WARN
+        - name: NCCL_IB_DISABLE
+          value: "0"
+        - name: NCCL_NET_GDR_LEVEL
+          value: "1"
+        - name: NCCL_SOCKET_IFNAME
+          value: bond0
+        - name: GLOO_SOCKET_IFNAME
+          value: bond0
+      extraArgs:
+        - --tp-size=8
+        - --pp-size=2
+        - --mem-fraction-static=0.85
+        - --trust-remote-code
+        - --enable-metrics
+        - --enable-cache-report
+        - --reasoning-parser=deepseek-v4
+        - --tool-call-parser=deepseekv4
+      service:
+        port: 8050
+      hangWatcher:
+        enabled: true
