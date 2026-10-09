@@ -24,6 +24,8 @@ variants:
       # Decides the extended resource and the product label; the mapping to
       # huawei.com/Ascend910 lives in swiss, not in this file.
       vendor: ascend
+      gpuProduct:
+        - 910B3
     values:
       model:
         hostPathType: Directory

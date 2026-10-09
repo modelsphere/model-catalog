@@ -18,6 +18,9 @@ variants:
       nodes: 2
       topology: lws
       rdma: true
+      gpuProduct:
+        - NVIDIA-H100-80GB-HBM3
+        - NVIDIA-H800
     values:
       model:
         mountPath: /model

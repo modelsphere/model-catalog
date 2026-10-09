@@ -122,23 +122,42 @@ function requiresSummary(req) {
   return [gpus, topo, product, vendor].filter(Boolean).join(" · ");
 }
 
-// Short labels for the hardware filter: NVIDIA-H100-80GB-HBM3 -> H100.
+// Vendor names as swiss's console shows them.
+const VENDOR_NAMES = { nvidia: "NVIDIA", ascend: "Ascend", cambricon: "Cambricon", hygon: "Hygon", amd: "AMD" };
+
+function vendorName(vendor) {
+  return VENDOR_NAMES[vendor] || vendor;
+}
+
+// Short labels for the hardware filter: NVIDIA-H100-80GB-HBM3 -> H100,
+// NVIDIA-RTX-6000D -> RTX-6000D. NVIDIA cards go bare; another vendor's card
+// reads "<Vendor> <card>", or just <card> when it already names the vendor.
 function hardwareLabels(req) {
   if (!req) return [];
   const vendor = req.vendor || "nvidia";
   const products = Array.isArray(req.gpuProduct) ? req.gpuProduct : [];
-  if (products.length === 0) return [vendor === "nvidia" ? "any GPU" : vendor];
+  if (products.length === 0) return [vendor === "nvidia" ? "any GPU" : vendorName(vendor)];
   return products.map((p) => {
     const m = String(p).match(/(?:^|-)([A-Z]{1,2}\d{2,4}[A-Z]?)(?=-|$)/i);
-    return m ? m[1].toUpperCase() : String(p);
+    const card = m ? m[1].toUpperCase() : String(p).replace(/^NVIDIA-/i, "");
+    if (vendor === "nvidia" || card.toLowerCase().includes(vendor.toLowerCase())) return card;
+    return `${vendorName(vendor)} ${card}`;
   });
+}
+
+// NVIDIA's cards first, then other vendors', then "any GPU". Every other
+// vendor's label carries its name, so the label alone says whose card it is.
+function gpuGroup(label) {
+  if (label === "any GPU") return 2;
+  const l = label.toLowerCase();
+  return Object.keys(VENDOR_NAMES).some((v) => v !== "nvidia" && l.includes(v)) ? 1 : 0;
 }
 
 // Compact hardware line for a variant: "8 × H100", "8 × GPU × 2 nodes".
 function hardwareShort(req) {
   if (!req || req.gpus == null) return "";
   const hasProducts = Array.isArray(req.gpuProduct) && req.gpuProduct.length > 0;
-  const vendor = req.vendor && req.vendor !== "nvidia" ? req.vendor : "GPU";
+  const vendor = req.vendor && req.vendor !== "nvidia" ? vendorName(req.vendor) : "GPU";
   let s = `${req.gpus} × ${hasProducts ? hardwareLabels(req).join(" / ") : vendor}`;
   if (req.nodes > 1) s += ` × ${req.nodes} nodes`;
   return s;
@@ -377,7 +396,6 @@ function facetsOf(m) {
     hardware: [...new Set(latest.variants.flatMap((v) => v.hardware))].sort(),
     hasCmp: !!m.comparison,
     uplift: m.comparison ? m.comparison.bestPct : null,
-    reports: m.reports.length,
     deprecated: m.deprecated,
     text,
   };
@@ -472,7 +490,7 @@ function clientMain() {
   const empty = document.getElementById("empty");
   const count = document.getElementById("result-count");
   const summary = document.getElementById("summary");
-  const fields = ["q", "family", "engine", "hardware", "tag", "cmp", "reports", "hidedep", "sort", "view"];
+  const fields = ["q", "family", "engine", "hardware", "tag", "hidedep", "sort", "view"];
   const defaults = { sort: "uplift", view: "table" };
 
   // The card list and the table carry one node per model, keyed by data-i.
@@ -530,8 +548,6 @@ function clientMain() {
     if (st.engine && !m.engines.includes(st.engine)) return false;
     if (st.hardware && !m.hardware.includes(st.hardware)) return false;
     if (st.tag && !m.tags.includes(st.tag)) return false;
-    if (st.cmp && !m.hasCmp) return false;
-    if (st.reports && !m.reports) return false;
     if (st.hidedep && m.deprecated) return false;
     return true;
   }
@@ -729,13 +745,14 @@ function modelHref(m) {
   return `models/${encodeURIComponent(m.dir)}/index.html`;
 }
 
-// The hardware filter: one toggle per GPU, most models first ("any GPU"
-// last). Radios, so one GPU at a time; clicking the selected one clears it.
+// The hardware filter: one toggle per GPU, grouped by gpuGroup, most models
+// first within a group. Radios, so one GPU at a time; clicking the selected
+// one clears it.
 function gpuToggles(facets) {
   const counts = {};
   for (const h of facets.flatMap((f) => f.hardware)) counts[h] = (counts[h] || 0) + 1;
   const labels = Object.keys(counts).sort(
-    (a, b) => (a === "any GPU") - (b === "any GPU") || counts[b] - counts[a] || a.localeCompare(b)
+    (a, b) => gpuGroup(a) - gpuGroup(b) || counts[b] - counts[a] || a.localeCompare(b)
   );
   return `<fieldset class="gpu-filter">
         <legend class="sr-only">GPU</legend>
@@ -795,7 +812,8 @@ const GPU_HUES = {
   H800: "green",
   B200: "red",
   B300: "purple",
-  "NVIDIA-RTX-6000D": "orange",
+  "RTX-6000D": "orange",
+  "Ascend 910B3": "red",
   "any GPU": "grey",
 };
 
@@ -982,7 +1000,7 @@ function renderRow(m, i, scale) {
           <div class="t-name"${title}><a class="model-link" href="${modelHref(m)}">${escapeHtml(m.displayName)}</a> ${deprecatedBadge(m)}</div>
           ${idIsDisplayName(m) ? "" : `<div class="t-meta"><code>${escapeHtml(m.name)}</code></div>`}
           <div class="t-gpus">${[...new Set(m.versions[0].variants.flatMap((v) => v.hardware))]
-            .sort()
+            .sort((a, b) => gpuGroup(a) - gpuGroup(b) || a.localeCompare(b))
             .map((h) => chip("hardware", h))
             .join("")}</div>
         </td>
@@ -1054,8 +1072,6 @@ ${renderSummary(computeSummary(facets))}
       </label>
     </div>
     <div class="toolbar-row">
-      <label class="toggle tint tint-ok"><input type="checkbox" name="cmp">Optimized vs baseline</label>
-      <label class="toggle tint tint-accent"><input type="checkbox" name="reports">Has perf report</label>
       ${hasDeprecated ? `<label class="toggle tint tint-bad"><input type="checkbox" name="hidedep">Hide deprecated</label>` : ""}
       <span class="toolbar-spacer"></span>
       <p id="result-count" class="result-count" aria-live="polite"></p>
@@ -1552,11 +1568,11 @@ h1 { font-size: clamp(1.6rem, 3vw, 2.1rem); line-height: 1.15; letter-spacing: -
   min-width: 0;
 }
 .gpu-filter-label {
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 700;
   letter-spacing: 0.06em;
-  color: var(--faint);
-  margin-right: 0.2rem;
+  color: var(--text);
+  margin-right: 0.3rem;
 }
 /* One color preset for every colored label -- toggles, chips, badges, GPU
    names. An element only picks a hue (--hue); the preset mixes ink, wash and
@@ -1578,10 +1594,7 @@ h1 { font-size: clamp(1.6rem, 3vw, 2.1rem); line-height: 1.15; letter-spacing: -
   background: color-mix(in oklab, var(--hue) var(--tint-hover-pct), var(--panel));
   border-color: var(--tint-firm);
 }
-/* Toggles: GPU ones take the GPU's hue; the others a meaning-bearing one --
-   optimized green, reports the link blue, deprecated red. */
-.tint-ok { --hue: var(--hue-green); }
-.tint-accent { --hue: var(--hue-blue); }
+/* Toggles: GPU ones take the GPU's hue; hide-deprecated red. */
 .tint-bad { --hue: var(--hue-red); }
 .toggle.tint {
   gap: 0.35rem;
