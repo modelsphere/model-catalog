@@ -85,7 +85,7 @@
             "pattern": "^[a-z0-9][a-z0-9-]*$"
           },
           "uplift": {
-            "description": "The headline result: percent gained over the baseline on the tuning benchmark, 44 meaning +44%. When the benchmark ran several workloads, the one to lead with; all of them go in `workloads`.",
+            "description": "The fallback result when no workloads are recorded: percent gained over the baseline on the tuning benchmark, 44 meaning +44%. When workloads are present, the site leads with their highest result.",
             "type": "number"
           },
           "workloads": {

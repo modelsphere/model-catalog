@@ -11,9 +11,9 @@
  *   index.json            — the index, built from models/
  *   models/<name>/*.yaml  — every version file it names
  *
- * Optimized-vs-baseline pairs and their uplift come from `tuning` in each
- * model's metadata.yaml. Perf HTML is discovered as models/<name>/*.html (and
- * variants[].link when set).
+ * Optimized-vs-baseline pairs and their measured improvement come from
+ * `tuning` in each model's metadata.yaml. Perf HTML is discovered as
+ * models/<name>/*.html (and variants[].link when set).
  */
 "use strict";
 
@@ -368,7 +368,7 @@ function comparisonFor(name, tuning, version) {
   };
 }
 
-// What an uplift number means, for tooltips. Workload names are the report's:
+// What an improvement percentage means, for tooltips. Workload names are the report's:
 // input + output tokens per request.
 const UPLIFT_HELP =
   "Throughput of the tuned variant over its baseline, from the tuning benchmark. " +
@@ -2051,4 +2051,6 @@ async function main() {
   );
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = { comparisonFor };
