@@ -4,9 +4,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const {styleText, stripVTControlCharacters} = require("node:util");
 const YAML = require("yaml");
 const {root, compareVersions, isPrerelease} = require("./lib/catalog");
-const {command, selectFiles, kubeconformArgs, parseVersions} = require("./lib/helm-validation");
+const {command, selectFiles, kubeconformArgs, failureLines, parseVersions} = require("./lib/helm-validation");
 const config = require("../schema/crds/config.json");
 
 function options(args) {
@@ -40,9 +41,44 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
     fs.writeFileSync(path.join(opts.output, "summary.json"), body);
     fs.writeFileSync(path.join(runDir, "summary.json"), body);
   };
-  const log = (message) => {
+  const log = (message = "") => {
     console.log(message);
-    fs.appendFileSync(path.join(runDir, "validation.log"), message + "\n");
+    fs.appendFileSync(path.join(runDir, "validation.log"), stripVTControlCharacters(message) + "\n");
+  };
+  // Color only a terminal; validation.log stays plain.
+  const paint = (format, text) => styleText(format, text, {stream: process.stdout});
+  const marks = {pass: paint("green", "✓"), fail: paint("red", "✗"), warn: paint("yellow", "!"), skip: paint("dim", "-")};
+  // Paths as a terminal in the working directory can open them.
+  const shown = (file) => {
+    const relative = path.relative(process.cwd(), file);
+    return relative.startsWith("..") ? file : relative;
+  };
+  // One line stays beside its label; more go indented beneath it.
+  const detail = (indent, label, text) => {
+    const pad = " ".repeat(indent);
+    const lines = Array.isArray(text) ? text : text.split("\n");
+    if (lines.length === 1) return log(`${pad}${label} ${lines[0]}`);
+    log(`${pad}${label}`);
+    for (const line of lines) log(`${pad}  ${line}`);
+  };
+  // A variant's line: its status, the chart it was checked against and what
+  // it declares; then why it warned, was skipped or failed.
+  const report = (record, variant, width, problems, dir) => {
+    const mark = record.skipped ? marks.skip : !record.ok ? marks.fail : record.warning ? marks.warn : marks.pass;
+    const {chart} = record;
+    const declared = variant.chart?.version;
+    let line = `  ${mark} ${String(variant.id).padEnd(width)}  `;
+    if (chart) {
+      const resolved = [declared, chart.version].includes(chart.declaredVersion) ? "" : ` → ${chart.declaredVersion}`;
+      line += `${chart.name}@${chart.version} ${paint("dim", `· declared ${declared}${resolved}`)}`;
+    } else line += `${variant.chart?.name} ${declared}`;
+    log(line);
+    if (record.warning) {
+      log(`      ${paint("yellow", `${record.warning}; ${record.skipped ? "its legacy chart cannot be rendered here" :
+        "its values are still checked against the latest chart"}`)}`);
+    }
+    for (const [stage, lines] of problems) detail(6, paint("red", `${stage}:`), lines);
+    if (problems.length) log(`      ${paint("dim", `logs: ${shown(dir)}`)}`);
   };
   const bin = (name) => {
     const installed = path.join(root, ".cache/helm-validation/bin", name);
@@ -62,15 +98,18 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
   };
   try {
     if (!["latest", "declared"].includes(chartMode)) throw new Error("chartMode must be latest or declared");
+    log(paint("bold", `Helm validation: chart mode ${chartMode}, Kubernetes ${config.kubernetesVersion}`));
     const selection = selectFiles(root, opts);
     const added = new Set(selection.added);
     Object.assign(summary, selection, {runDirectory: path.relative(root, runDir)});
-    log(`Selection: ${selection.reason}${selection.mergeBase ? ` (${selection.mergeBase})` : ""}`);
-    if (!selection.files.length) {
+    const count = selection.files.length;
+    log(`Selected ${count} version file${count === 1 ? "" : "s"}: ${selection.reason}` +
+      `${selection.mergeBase ? ` (${selection.mergeBase})` : ""}`);
+    if (!count) {
       log("No model version configuration changes (无版本配置变更).");
       return true;
     }
-    log(`Validating ${selection.files.length} version files; chart mode ${chartMode}; Kubernetes ${config.kubernetesVersion}.`);
+    log();
     for (const [name, args] of [["helm", ["version", "--short"]], ["kubeconform", ["-v"]]]) {
       const version = requireSuccess(invoke(bin(name), args, runDir, `${name}-version`), "tools").trim();
       if (!new RegExp(`^v${config[`${name}Version`].replaceAll(".", "\\.")}(?:\\+|$)`).test(version)) {
@@ -81,11 +120,17 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
     // which must not rewrite it.
     const schemaDir = path.join(runDir, "crds");
     // Several downloads, each allowed minutes: outlast them rather than kill the build.
-    requireSuccess(invoke(process.execPath, [path.join(__dirname, "build-crds.js"), "--locked", schemaDir], runDir, "crds",
+    const built = requireSuccess(invoke(process.execPath, [path.join(__dirname, "build-crds.js"), "--locked", schemaDir], runDir, "crds",
       {timeout: 30 * 60 * 1000}), "crds");
     // Each schema is <group>/<kind>_<version>.json: the API versions Helm may render.
     const apis = fs.readdirSync(schemaDir).flatMap((group) => fs.readdirSync(path.join(schemaDir, group))
       .map((file) => `${group}/${file.slice(file.lastIndexOf("_") + 1, -".json".length)}`));
+    log(paint("bold", "CRD schemas"));
+    for (const line of built.split("\n").filter(Boolean)) log(`  ${line}`);
+    log(`  Used by helm template, told these APIs exist (--api-versions): ${[...new Set(apis)].join(", ")}`);
+    log(`  Used by kubeconform, checking custom resources against ` +
+      `${shown(schemaDir)}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json`);
+    log();
     const schemaCache = path.join(runDir, "schema-cache");
     fs.mkdirSync(schemaCache);
     requireSuccess(invoke(bin("helm"), ["repo", "add", "catalog", config.chartRepository], runDir, "chart-repository"), "chart-repository");
@@ -154,21 +199,23 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
       }
     }
     for (const file of selection.files) {
+      log(paint("bold", file));
       let variants;
       try { variants = parseVersions(path.join(root, file)); }
       catch (err) {
-        log(`FAIL ${file} [parse]: ${err.message}`);
+        detail(2, `${marks.fail} ${paint("red", "parse:")}`, err.message);
         summary.results.push({file, stage: "parse", ok: false, error: err.message});
         continue;
       }
+      const width = Math.max(...variants.map((variant) => String(variant.id).length));
       for (const [index, variant] of variants.entries()) {
-        const label = `${file} :: ${variant.id} (variants[${index}])`;
         const hash = crypto.createHash("sha256").update(file).digest("hex").slice(0, 12);
         const dir = path.join(runDir, `${path.basename(file)}-${hash}`, variant.id);
         fs.mkdirSync(dir, {recursive: true});
         const record = {file, variant: variant.id, variantIndex: index, declaredChart: variant.chart,
           artifacts: path.relative(root, dir), stages: {}, ok: false};
         summary.results.push(record);
+        const problems = [];
         let stage = "values";
         try {
           // JSON, not YAML: Helm reads YAML 1.1, where an unquoted on, no or yes is a boolean.
@@ -184,14 +231,11 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
             record.warning = `published version declares ${below}`;
             if (!pkg.archive) {
               record.skipped = true;
-              log(`SKIP ${label}: ${record.warning}; its legacy chart cannot be rendered here`);
               continue;
             }
-            log(`WARN ${label}: ${record.warning}; its values are still checked against the latest chart`);
           }
           record.chart = {name: pkg.name, version: pkg.actualVersion, digest: pkg.digest,
             mode: chartMode, declaredVersion: pkg.declaredVersion, selectionConstraint: pkg.selectionConstraint};
-          log(`${label}: declared ${pkg.name} ${variant.chart.version} -> ${pkg.declaredVersion}; validating ${chartMode} chart ${pkg.name}@${pkg.actualVersion} ${pkg.digest}`);
           fs.writeFileSync(path.join(dir, "chart.json"), JSON.stringify(record.chart, null, 2) + "\n");
           const shared = ["--values", path.join(root, "schema/crds/ci-values.yaml"), "--values", valuesFile,
             "--kube-version", config.kubernetesVersion];
@@ -199,12 +243,12 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
           stage = "lint";
           const lint = invoke(bin("helm"), ["lint", pkg.archive, "--strict", ...shared], dir, "lint");
           record.stages.lint = lint.ok;
-          if (!lint.ok) log(`FAIL ${label} [lint]:\n${lint.log}`);
+          if (!lint.ok) problems.push(["lint", failureLines(lint)]);
           stage = "template";
           const template = invoke(bin("helm"), ["template", "catalog-ci", pkg.archive, "--namespace", "ci", ...shared,
             ...apis.flatMap((api) => ["--api-versions", api])], dir, "template");
           record.stages.template = template.ok;
-          if (!template.ok) log(`FAIL ${label} [template]:\n${template.log}`);
+          if (!template.ok) problems.push(["template", failureLines(template)]);
           const rendered = path.join(dir, "rendered.yaml");
           fs.writeFileSync(rendered, template.stdout);
           if (template.ok) {
@@ -213,31 +257,50 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
             const docs = YAML.parseAllDocuments(template.stdout);
             if (docs.some((d) => d.errors.length) || !docs.some((d) => d.toJS()?.kind)) {
               record.stages.template = false;
-              throw new Error("template: no Kubernetes resources or malformed rendered YAML");
+              throw new Error("no Kubernetes resources or malformed rendered YAML");
             }
             stage = "kubeconform";
             const kube = invoke(bin("kubeconform"), kubeconformArgs(config, schemaDir, schemaCache, rendered), dir, "kubeconform");
             record.stages.kubeconform = kube.ok;
-            if (!kube.ok) log(`FAIL ${label} [kubeconform]:\n${kube.log}`);
+            if (!kube.ok) problems.push(["kubeconform", failureLines(kube)]);
           }
           record.ok = ["lint", "template", "kubeconform"].every((name) => record.stages[name] === true);
-          if (record.ok) log(`PASS ${label}`);
         } catch (err) {
           record.error = err.message;
           record.stage = stage;
           fs.writeFileSync(path.join(dir, "error.log"), `[${stage}] ${err.message}\n`);
-          log(`FAIL ${label} [${stage}]: ${err.message}`);
+          problems.push([stage, err.message.split("\n")]);
+        } finally {
+          report(record, variant, width, problems, dir);
         }
       }
     }
-    const failed = summary.results.filter((r) => !r.ok && !r.skipped).length;
+    const failed = summary.results.filter((r) => !r.ok && !r.skipped);
     const skipped = summary.results.filter((r) => r.skipped).length;
-    log(`${summary.results.length} checks: ${summary.results.length - failed - skipped} passed, ${failed} failed` +
-      `${skipped ? `, ${skipped} skipped` : ""}. Artifacts: ${runDir}`);
-    return failed === 0;
+    const warned = summary.results.filter((r) => r.ok && r.warning).length;
+    if (packages.size) {
+      log();
+      log(paint("bold", "Charts"));
+      const width = Math.max(...[...packages.keys()].map((key) => key.length));
+      for (const [key, pkg] of packages) log(`  ${key.padEnd(width)}  ${pkg.digest}`);
+    }
+    if (failed.length) {
+      log();
+      log(paint("bold", "Failed"));
+      for (const r of failed) {
+        const stages = new Set([...Object.keys(r.stages ?? {}).filter((name) => r.stages[name] === false), ...(r.stage ? [r.stage] : [])]);
+        log(`  ${marks.fail} ${r.file}${r.variant ? ` :: ${r.variant}` : ""} ${paint("dim", `(${[...stages].join(", ")})`)}`);
+      }
+    }
+    const passed = summary.results.length - failed.length - skipped;
+    log();
+    log(paint(failed.length ? "red" : "green", `${summary.results.length} checks: ` +
+      `${passed} passed${warned ? ` (${warned} with warnings)` : ""}, ${failed.length} failed${skipped ? `, ${skipped} skipped` : ""}`));
+    log(`Artifacts: ${shown(runDir)}`);
+    return failed.length === 0;
   } catch (err) {
     summary.error = err.message;
-    log(`FAIL [setup]: ${err.message}`);
+    detail(0, `${marks.fail} ${paint("red", "setup:")}`, err.message);
     return false;
   } finally { writeSummary(); }
 }

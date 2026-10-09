@@ -1,8 +1,15 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 const YAML = require("yaml");
+const {root} = require("./catalog");
 const {download} = require("./download");
+
+// Downloads are kept by sha256, like npm's cache: the lock names the bytes,
+// so a cached copy is used only when it still hashes to the locked digest.
+const cacheDir = path.join(root, ".cache/helm-validation/downloads");
 
 function assertCrdSource(source, crd) {
   if (source.repository.startsWith("modelsphere/") && !source.group?.endsWith(".modelsphere.dev")) {
@@ -90,23 +97,34 @@ function crdSchemas(crd, metadata = {schema: {type: "object"}, definitions: {}})
 
 // A source carrying a sha256 is locked: different bytes are refused, not converted.
 async function fetchPinned({url, sha256}) {
+  const hash = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
+  const cached = sha256 && path.join(cacheDir, sha256);
+  if (cached && fs.existsSync(cached)) {
+    const bytes = fs.readFileSync(cached);
+    if (hash(bytes) === sha256) return {body: bytes.toString("utf8"), sha256, cached: true};
+  }
   const bytes = await download(url);
-  const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+  const digest = hash(bytes);
   if (sha256 && digest !== sha256) throw new Error(`${url}: sha256 ${digest}, locked ${sha256}`);
-  return {body: bytes.toString("utf8"), sha256: digest};
+  fs.mkdirSync(cacheDir, {recursive: true});
+  fs.writeFileSync(path.join(cacheDir, digest), bytes);
+  return {body: bytes.toString("utf8"), sha256: digest, cached: false};
 }
 
 // Download CRD sources at their pinned commits and convert every served version.
-// Returns the schema files and the records that lock them.
-async function buildSchemas(sources, objectMeta) {
+// Returns the schema files and the records that lock them; onFetch hears of
+// each source as it arrives, from the cache or downloaded.
+async function buildSchemas(sources, objectMeta, onFetch = () => {}) {
   const meta = await fetchPinned(objectMeta);
+  onFetch(objectMeta.url, meta.cached);
   const metadata = objectMetaSchema(JSON.parse(meta.body).definitions);
   const files = new Map();
   const records = [];
   for (const source of sources) {
     if (!/^[a-f0-9]{40}$/.test(source.commit)) throw new Error("source must use a full commit SHA");
     const url = `https://raw.githubusercontent.com/${source.repository}/${source.commit}/${source.path}`;
-    const {body, sha256} = await fetchPinned({url, sha256: source.sha256});
+    const {body, sha256, cached} = await fetchPinned({url, sha256: source.sha256});
+    onFetch(url, cached);
     const schemas = YAML.parseAllDocuments(body).flatMap((doc) => {
       if (doc.errors.length) throw doc.errors[0];
       const crd = doc.toJS();
@@ -124,4 +142,4 @@ async function buildSchemas(sources, objectMeta) {
   return {files, objectMeta: {url: objectMeta.url, sha256: meta.sha256}, records};
 }
 
-module.exports = {assertCrdSource, convertSchema, crdSchemas, objectMetaSchema, buildSchemas};
+module.exports = {assertCrdSource, convertSchema, crdSchemas, objectMetaSchema, buildSchemas, cacheDir};

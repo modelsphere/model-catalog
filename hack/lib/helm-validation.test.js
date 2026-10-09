@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const {execFileSync} = require("node:child_process");
-const {selectFiles, kubeconformArgs} = require("./helm-validation");
+const {selectFiles, kubeconformArgs, failureLines} = require("./helm-validation");
 const config = require("../../schema/crds/config.json");
 
 function repository(t) {
@@ -93,4 +93,19 @@ test("strict validation uses full group and pinned native schema without missing
   assert(!args.includes("-ignore-missing-schemas"));
   assert(args.some((arg) => arg.includes("{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}")));
   assert(args.some((arg) => arg.includes(config.kubernetesSchemaCommit)));
+});
+
+test("failure lines keep the invalid resources and the errors, not every resource or the command", () => {
+  const resources = [
+    {kind: "Service", name: "ok", status: "statusValid", msg: ""},
+    {kind: "Deployment", name: "app", status: "statusInvalid", msg: "problem validating schema",
+      validationErrors: [{path: "/spec/replicas", msg: "expected integer"}]},
+    {kind: "Widget", name: "w", status: "statusError", msg: "could not find schema for Widget"}
+  ];
+  assert.deepEqual(failureLines({stdout: JSON.stringify({resources}), stderr: "", log: "$ kubeconform\n"}),
+    ["Deployment/app /spec/replicas: expected integer", "Widget/w: could not find schema for Widget"]);
+  assert.deepEqual(failureLines({stdout: "==> Linting /tmp/chart.tgz\n[INFO] Chart.yaml: icon is recommended\n[ERROR] values.yaml: bad\n\n",
+    stderr: "Error: 1 chart(s) failed\n", log: "$ helm lint\n"}), ["[ERROR] values.yaml: bad", "Error: 1 chart(s) failed"]);
+  // A tool that printed nothing, such as one killed by a timeout, still says why.
+  assert.deepEqual(failureLines({stdout: "", stderr: "", log: "$ helm lint\nspawnSync helm ETIMEDOUT\n"}), ["$ helm lint", "spawnSync helm ETIMEDOUT"]);
 });

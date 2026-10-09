@@ -68,6 +68,20 @@ function kubeconformArgs(config, schemaDir, cacheDir, rendered) {
       "{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json", rendered];
 }
 
+// The lines of a failed tool's output worth reading; its full log stays in the
+// artifacts. kubeconform reports every resource, so keep only the invalid ones.
+function failureLines(result) {
+  try {
+    const lines = JSON.parse(result.stdout).resources.filter((r) => !["statusValid", "statusSkipped"].includes(r.status))
+      .flatMap((r) => r.validationErrors?.length ?
+        r.validationErrors.map((e) => `${r.kind}/${r.name} ${e.path}: ${e.msg}`) : [`${r.kind}/${r.name}: ${r.msg}`]);
+    if (lines.length) return lines;
+  } catch {}
+  const lines = `${result.stdout ?? ""}${result.stderr ?? ""}`.split("\n")
+    .filter((line) => line.trim() && !/^(==> Linting |\[INFO\] )/.test(line));
+  return lines.length ? lines : result.log.trim().split("\n");
+}
+
 // validate:schema owns a version file's shape; this only refuses to pass a file
 // with nothing to render.
 function parseVersions(file) {
@@ -76,4 +90,4 @@ function parseVersions(file) {
   return variants;
 }
 
-module.exports = {command, selectFiles, affectsValidator, kubeconformArgs, parseVersions};
+module.exports = {command, selectFiles, affectsValidator, kubeconformArgs, failureLines, parseVersions};
