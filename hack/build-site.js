@@ -1087,10 +1087,11 @@ ${renderSummary(computeSummary(facets))}
         <label title="Card view"><input type="radio" name="view" value="cards">${ICONS.cards}<span>Cards</span></label>
         <label title="Table view"><input type="radio" name="view" value="table" checked>${ICONS.table}<span>Table</span></label>
       </fieldset>
-      <button type="reset" class="link-btn">Reset</button>
     </div>
     <div class="toolbar-row">
       ${gpuToggles(facets)}
+      <span class="toolbar-spacer"></span>
+      <button type="reset" class="link-btn">Reset</button>
     </div>
   </form>
   <div id="results">
