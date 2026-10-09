@@ -383,25 +383,30 @@ function facetsOf(m) {
   };
 }
 
-// computeSummary, renderSummary and escapeHtml run at build time for the
-// static page and again in the browser (serialized into site.js) for the
+// byUplift, computeSummary, renderSummary and escapeHtml run at build time for
+// the static page and again in the browser (serialized into site.js) for the
 // filtered view, so they must stay self-contained.
+
+// The default order: best improvement first, models without one last.
+function byUplift(a, b) {
+  return (
+    (b.uplift == null ? -Infinity : b.uplift) - (a.uplift == null ? -Infinity : a.uplift) ||
+    a.name.localeCompare(b.name)
+  );
+}
+
 function computeSummary(models) {
   const engines = {};
-  const hardware = {};
   const uplifts = [];
   let variants = 0;
-  let reports = 0;
   let pairs = 0;
   let deprecated = 0;
   for (const m of models) {
     variants += m.engines.length;
-    reports += m.reports;
     if (m.deprecated) deprecated++;
     if (m.hasCmp) pairs++;
     if (m.uplift != null) uplifts.push({ name: m.name, pct: m.uplift });
     for (const e of m.engines) engines[e] = (engines[e] || 0) + 1;
-    for (const h of m.hardware) hardware[h] = (hardware[h] || 0) + 1;
   }
   uplifts.sort((a, b) => a.pct - b.pct);
   const n = uplifts.length;
@@ -416,8 +421,6 @@ function computeSummary(models) {
     deprecated,
     variants,
     engines,
-    hardware,
-    reports,
     pairs,
     median,
     worst: n ? uplifts[0] : null,
@@ -456,8 +459,6 @@ function renderSummary(s) {
       s.best ? escapeHtml(s.best.name) : "",
       s.best ? "pos" : ""
     ),
-    stat("Perf reports", s.reports, ""),
-    stat("Hardware", Object.keys(s.hardware).length, counts(s.hardware)),
   ].join("");
 }
 
@@ -472,7 +473,7 @@ function clientMain() {
   const count = document.getElementById("result-count");
   const summary = document.getElementById("summary");
   const fields = ["q", "family", "engine", "hardware", "tag", "cmp", "reports", "hidedep", "sort", "view"];
-  const defaults = { sort: "name", view: "table" };
+  const defaults = { sort: "uplift", view: "table" };
 
   // The card list and the table carry one node per model, keyed by data-i.
   const views = ["models", "table-rows"].map((id) => {
@@ -485,9 +486,7 @@ function clientMain() {
   const byName = (a, b) => a.name.localeCompare(b.name);
   const sorters = {
     name: byName,
-    uplift: (a, b) =>
-      (b.uplift == null ? -Infinity : b.uplift) - (a.uplift == null ? -Infinity : a.uplift) ||
-      byName(a, b),
+    uplift: byUplift,
     // Models without a family sort last.
     family: (a, b) =>
       !a.family - !b.family || (a.family || "").localeCompare(b.family || "") || byName(a, b),
@@ -542,7 +541,7 @@ function clientMain() {
   function apply() {
     const st = readState();
     hardware = st.hardware;
-    const sorter = sorters[st.sort] || sorters.name;
+    const sorter = sorters[st.sort] || sorters[defaults.sort];
     const order = data.map((_, i) => i).sort((a, b) => sorter(data[a], data[b]));
     const visible = data.map((m) => matches(m, st));
     for (const { el, nodes } of views) {
@@ -967,6 +966,8 @@ function renderRow(m, i, scale) {
 
 function renderIndex(catalog) {
   const facets = catalog.models.map(facetsOf);
+  // Ship the default order; data-i keeps each node's place in the data.
+  const order = facets.map((_, i) => i).sort((a, b) => byUplift(facets[a], facets[b]));
   const hasDeprecated = facets.some((f) => f.deprecated);
   // Every bar in the table is drawn against the catalog's best result.
   const scale =
@@ -974,7 +975,7 @@ function renderIndex(catalog) {
   // Keep "</script>" in descriptions from closing the data block.
   const dataJson = JSON.stringify(facets).replace(/</g, "\\u003c");
   const sortTh = (col, label, cls, title, sub) =>
-    `<th scope="col" data-sort-col="${col}"${cls ? ` class="${cls}"` : ""}${
+    `<th scope="col" data-sort-col="${col}"${col === "uplift" ? ` aria-sort="descending"` : ""}${cls ? ` class="${cls}"` : ""}${
       title ? ` title="${escapeHtml(title)}"` : ""
     }>` +
     `<button type="button" class="sort-btn" data-sort="${col}">${label}<span class="sort-ind" aria-hidden="true"></span></button>` +
@@ -1030,8 +1031,8 @@ ${renderSummary(computeSummary(facets))}
       <p id="result-count" class="result-count" aria-live="polite"></p>
       <label><span class="sr-only">Sort by</span>
         <select name="sort">
-          <option value="name">Sort by name</option>
           <option value="uplift">Sort by improvement</option>
+          <option value="name">Sort by name</option>
           <option value="family">Sort by family</option>
         </select>
       </label>
@@ -1048,7 +1049,7 @@ ${renderSummary(computeSummary(facets))}
   </form>
   <div id="results">
     <div id="models" class="models">
-${catalog.models.map((m, i) => renderCard(m, i, scale)).join("\n")}
+${order.map((i) => renderCard(catalog.models[i], i, scale)).join("\n")}
     </div>
     <div class="table-view table-wrap">
       <table class="models-table">
@@ -1062,7 +1063,7 @@ ${catalog.models.map((m, i) => renderCard(m, i, scale)).join("\n")}
           </tr>
         </thead>
         <tbody id="table-rows">
-${catalog.models.map((m, i) => renderRow(m, i, scale)).join("\n")}
+${order.map((i) => renderRow(catalog.models[i], i, scale)).join("\n")}
         </tbody>
       </table>
     </div>
@@ -1283,7 +1284,7 @@ ${BOOT_SCRIPT}
 }
 
 const SITE_JS =
-  [escapeHtml, computeSummary, renderSummary, clientMain, themeMain]
+  [escapeHtml, byUplift, computeSummary, renderSummary, clientMain, themeMain]
     .map((f) => f.toString())
     .join("\n\n") + "\n\nthemeMain();\nclientMain();\n";
 
