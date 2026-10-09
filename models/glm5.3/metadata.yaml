@@ -1,7 +1,7 @@
 apiVersion: catalog.swiss/v1
 name: glm5.3
 displayName: GLM 5.3 (NVFP4)
-description: GLM-5.3 quantised to NVFP4, served as "glm-5.3" on four B300 GPUs. EAGLE speculative decoding over a 150 GiB hierarchical KV cache. The FP4 kernels are Blackwell-only, so there is no A100 or H100 variant to fall back to.
+description: GLM-5.3 quantised to NVFP4, served as "glm-5.3" with SGLang on four or eight B300 GPUs, or vLLM with TP8 and PP2 across two RTX 6000D nodes. The tuned four-GPU B300 variant uses EAGLE speculative decoding and a 150 GiB hierarchical KV cache. Tuning results compare throughput normalized to eight GPUs. The FP4 kernels require Blackwell GPUs.
 family: glm
 tags:
   - chat
@@ -11,3 +11,14 @@ tags:
   - speculative-decoding
 source:
   hf: nvidia/GLM-5.3-NVFP4
+tuning:
+  - version: 1.0.3
+    baseline: sglang-tp8-b300-baseline
+    optimized: sglang-tp4-b300-optimized
+    uplift: 195.3
+    workloads:
+      - name: 50k + 1.5k
+        uplift: 195.3
+      - name: 8k + 1k
+        uplift: 30.6
+    report: glm5.3-1.0.3-b300-report.html
