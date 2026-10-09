@@ -694,6 +694,16 @@ const ICONS = {
   table: svg('<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 9.5h18M3 14.5h18M9 9.5V20"/>'),
 };
 
+// Where to go to deploy, under each page's title: modelsphere is the complete
+// deployment solution.
+function deployRef(subject) {
+  return (
+    `<p class="deploy-ref">Deploying ${subject}? Start with ` +
+    `<a href="https://github.com/modelsphere/modelsphere" target="_blank" rel="noopener"><code>modelsphere/modelsphere</code>${ICONS.external}</a>, ` +
+    `the complete deployment solution.</p>`
+  );
+}
+
 function themeButton() {
   return `<button type="button" id="theme-toggle" class="theme-toggle" hidden>
       <span data-icon="system">${ICONS.system}</span><span data-icon="light" hidden>${
@@ -840,13 +850,32 @@ function variantLine(v, cls) {
   return `<div class="${cls}">${id}${badges.map((b) => `<span class="badge badge-${b}">${b}</span>`).join("")}</div>`;
 }
 
+// A model's reports in its variants' order, each with its link text: the
+// label alone for one report; for several, the GPUs of the variant each
+// measured, or its file name when those do not tell them apart.
+function reportLinks(m, label) {
+  const variants = orderedVariants(m);
+  const all = m.versions.flatMap((ver) => ver.variants);
+  const items = m.reports.map((r) => {
+    const t = m.tuning.find((x) => x.reportFile === r.file);
+    const v = t && all.find((x) => x.id === t.optimizedId);
+    const at = v ? variants.findIndex((x) => x.id === v.id) : -1;
+    return { r, hw: v && v.hardware.length ? v.hardware.join(" / ") : null, at: at < 0 ? Infinity : at };
+  });
+  const distinct = items.every((x) => x.hw && items.filter((y) => y.hw === x.hw).length === 1);
+  return items
+    .sort((a, b) => a.at - b.at)
+    .map(({ r, hw }) => ({
+      r,
+      text: items.length < 2 ? label : distinct ? `${escapeHtml(hw)} ${label.toLowerCase()}` : escapeHtml(r.title),
+    }));
+}
+
 // Perf reports, then any variants[].link.
 function modelLinks(m, cls, reportLabel) {
-  const links = m.reports.map(
-    (r) =>
-      `<a class="${cls}" href="${escapeHtml(encodePath(r.path))}" title="${escapeHtml(r.file)}">${
-        ICONS.report
-      }${m.reports.length > 1 ? escapeHtml(r.title) : reportLabel}</a>`
+  const links = reportLinks(m, reportLabel).map(
+    ({ r, text }) =>
+      `<a class="${cls}" href="${escapeHtml(encodePath(r.path))}" title="${escapeHtml(r.file)}">${ICONS.report}${text}</a>`
   );
   for (const v of m.versions[0].variants) {
     if (!v.link) continue;
@@ -998,6 +1027,7 @@ ${BOOT_SCRIPT}
     <div>
       <p class="eyebrow">modelsphere / model-catalog</p>
       <h1>Model catalog</h1>
+      ${deployRef("these models")}
     </div>
     ${themeButton()}
   </div>
@@ -1229,10 +1259,9 @@ function renderModelPage(m) {
       value
     )}">${escapeHtml(value)}</a>`;
   const hf = m.source && m.source.hf;
-  const reports = m.reports.map(
-    (r) => `<a class="btn" href="${escapeHtml(encodeURIComponent(r.file))}">${ICONS.report}${
-      m.reports.length > 1 ? escapeHtml(r.title) : "Perf report"
-    }</a>`
+  const reports = reportLinks(m, "Perf report").map(
+    ({ r, text }) =>
+      `<a class="btn" href="${escapeHtml(encodeURIComponent(r.file))}" title="${escapeHtml(r.file)}">${ICONS.report}${text}</a>`
   );
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1250,6 +1279,7 @@ ${BOOT_SCRIPT}
     <div>
       <p class="eyebrow"><a href="${home}">model-catalog</a> / ${escapeHtml(m.name)}</p>
       <h1>${escapeHtml(m.displayName)} ${deprecatedBadge(m)}</h1>
+      ${deployRef("this model")}
     </div>
     ${themeButton()}
   </div>
@@ -1407,6 +1437,9 @@ code { font-family: var(--mono); font-size: 0.86em; }
   margin: 0 0 0.35rem;
 }
 h1 { font-size: clamp(1.6rem, 3vw, 2.1rem); line-height: 1.15; letter-spacing: -0.02em; margin: 0; font-weight: 700; }
+.deploy-ref { margin: 0.6rem 0 0; font-size: 0.92rem; color: var(--muted); }
+.deploy-ref a { white-space: nowrap; font-weight: 650; }
+.deploy-ref svg { width: 0.85em; height: 0.85em; margin-left: 0.2em; vertical-align: -0.05em; }
 .theme-toggle {
   display: inline-flex;
   align-items: center;
