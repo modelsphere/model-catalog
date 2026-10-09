@@ -131,7 +131,8 @@ function vendorName(vendor) {
 
 // Short labels for the hardware filter: NVIDIA-H100-80GB-HBM3 -> H100,
 // NVIDIA-RTX-6000D -> RTX-6000D. NVIDIA cards go bare; another vendor's card
-// reads "<Vendor> <card>", or just <card> when it already names the vendor.
+// reads "<Vendor> <model>" (Ascend-910B3 -> Ascend 910B3), or stays as is when
+// it names the vendor elsewhere.
 function hardwareLabels(req) {
   if (!req) return [];
   const vendor = req.vendor || "nvidia";
@@ -140,8 +141,10 @@ function hardwareLabels(req) {
   return products.map((p) => {
     const m = String(p).match(/(?:^|-)([A-Z]{1,2}\d{2,4}[A-Z]?)(?=-|$)/i);
     const card = m ? m[1].toUpperCase() : String(p).replace(/^NVIDIA-/i, "");
-    if (vendor === "nvidia" || card.toLowerCase().includes(vendor.toLowerCase())) return card;
-    return `${vendorName(vendor)} ${card}`;
+    if (vendor === "nvidia") return card;
+    const model = card.replace(new RegExp(`^${vendor}-`, "i"), "");
+    if (model === card && card.toLowerCase().includes(vendor.toLowerCase())) return card;
+    return `${vendorName(vendor)} ${model}`;
   });
 }
 

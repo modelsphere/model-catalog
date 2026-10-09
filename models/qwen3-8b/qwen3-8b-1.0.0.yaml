@@ -24,8 +24,10 @@ variants:
       # Decides the extended resource and the product label; the mapping to
       # huawei.com/Ascend910 lives in swiss, not in this file.
       vendor: ascend
+      # The catalog's name for the card; swiss maps it to the labels this
+      # cluster's Ascend install publishes.
       gpuProduct:
-        - 910B3
+        - Ascend-910B3
     values:
       model:
         hostPathType: Directory

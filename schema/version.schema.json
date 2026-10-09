@@ -149,7 +149,7 @@
               "default": "single-node"
             },
             "gpuProduct": {
-              "description": "Acceptable product-label values for the declared vendor -- nvidia.com/gpu.product for nvidia, the equivalent label for others. Any one matches. Absent means any card of that vendor.",
+              "description": "Acceptable cards for the declared vendor. Any one matches. Absent means any card of that vendor. Each is the card's canonical name, not a cluster's label value: the nvidia.com/gpu.product value for nvidia (NVIDIA-H100-80GB-HBM3), <Vendor>-<model> for others (Ascend-910B3). The labels that carry a card differ by vendor install, so swiss maps a name to them.",
               "type": "array",
               "items": {
                 "type": "string",
