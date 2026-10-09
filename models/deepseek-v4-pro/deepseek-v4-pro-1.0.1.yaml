@@ -94,7 +94,7 @@ variants:
       model:
         localPath: /data/models/DeepSeek-V4-Pro
         mountPath: /model
-        contextLength: "32768"
+        contextLength: ""
       modelCheck:
         enabled: true
         requiredGlobs:
@@ -127,6 +127,9 @@ variants:
         - --mem-fraction-static=0.85
         - --trust-remote-code
         - --enable-metrics
+        - --enable-cache-report
+        - --reasoning-parser=deepseek-v4
+        - --tool-call-parser=deepseekv4
       service:
         port: 8050
       hangWatcher:

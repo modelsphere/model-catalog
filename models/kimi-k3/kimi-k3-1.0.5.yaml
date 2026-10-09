@@ -431,7 +431,7 @@ variants:
       model:
         localPath: /data/models/Kimi-K3
         mountPath: /model
-        contextLength: "32768"
+        contextLength: ""
       modelCheck:
         enabled: true
         requiredGlobs:
@@ -466,6 +466,7 @@ variants:
         - --mem-fraction-static=0.85
         - --trust-remote-code
         - --enable-metrics
+        - --enable-cache-report
         # Without these the thinking text lands in content, carrying a stray
         # <|clos... token with it. That is a missing flag, not a wrong answer.
         - --reasoning-parser=kimi_k3
@@ -475,12 +476,5 @@ variants:
       # The KDA linear-attention kernels compile on first start, so this model
       # comes up slower under sglang than under vLLM.
       progressDeadlineSeconds: 7200
-      startupProbe:
-        httpGet:
-          path: /health
-          port: http
-        periodSeconds: 30
-        timeoutSeconds: 10
-        failureThreshold: 180
       hangWatcher:
         enabled: true

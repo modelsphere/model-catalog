@@ -215,7 +215,7 @@ variants:
       model:
         localPath: /data/models/DeepSeek-V4-Flash
         mountPath: /model
-        contextLength: "32768"
+        contextLength: ""
       modelCheck:
         enabled: true
         requiredGlobs:
@@ -226,6 +226,9 @@ variants:
         - --mem-fraction-static=0.85
         - --trust-remote-code
         - --enable-metrics
+        - --enable-cache-report
+        - --reasoning-parser=deepseek-v4
+        - --tool-call-parser=deepseekv4
       env:
         - name: NVIDIA_DISABLE_REQUIRE
           value: "1"
@@ -260,7 +263,7 @@ variants:
       model:
         localPath: /data/models/DeepSeek-V4-Flash
         mountPath: /model
-        contextLength: "32768"
+        contextLength: ""
       modelCheck:
         enabled: true
         requiredGlobs:
@@ -271,6 +274,9 @@ variants:
         - --mem-fraction-static=0.85
         - --trust-remote-code
         - --enable-metrics
+        - --enable-cache-report
+        - --reasoning-parser=deepseek-v4
+        - --tool-call-parser=deepseekv4
       env:
         - name: NVIDIA_DISABLE_REQUIRE
           value: "1"
@@ -320,7 +326,7 @@ variants:
         - --enable-prefix-caching
         - --trust-remote-code
         - --enable-prompt-tokens-details
-        - --allowed-media-domains=no-network.invalid
+        - --allowed-media-domains=none.invalid
         - --enable-auto-tool-choice
         - --tool-call-parser=deepseek_v4
         - --reasoning-parser=deepseek_v4
