@@ -1,0 +1,22 @@
+apiVersion: catalog.swiss/v1
+name: gpt-oss-20b
+displayName: gpt-oss-20b
+description: gpt-oss-20b on 1 H100 GPU.
+family: gpt
+tags:
+  - chat
+  - reasoning
+  - tool-use
+source:
+  hf: openai-mirror/gpt-oss-20b
+tuning:
+  - version: 1.0.0
+    baseline: sglang-tp1-h100-baseline
+    optimized: sglang-tp1-h100-optimized
+    uplift: 6.2
+    workloads:
+      - name: 50k + 1.5k
+        uplift: 6.2
+      - name: 8k + 1k
+        uplift: 2.2
+    report: gpt-oss-20b-h100-report.html
