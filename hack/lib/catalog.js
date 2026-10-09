@@ -15,18 +15,18 @@ function readYaml(p) {
 }
 
 // Model directory names, sorted.
-function modelNames() {
+function modelNames(dir = modelsDir) {
   return fs
-    .readdirSync(modelsDir)
-    .filter((name) => fs.statSync(path.join(modelsDir, name)).isDirectory())
+    .readdirSync(dir)
+    .filter((name) => fs.statSync(path.join(dir, name)).isDirectory())
     .sort();
 }
 
 // A model's version files (<name>-<version>.yaml), as repo-relative paths.
 // metadata.yaml has no "-", which is what tells the two apart.
-function versionFiles(name) {
+function versionFiles(name, dir = modelsDir) {
   return fs
-    .readdirSync(path.join(modelsDir, name))
+    .readdirSync(path.join(dir, name))
     .filter((f) => f.endsWith(".yaml") && f.includes("-"))
     .sort()
     .map((f) => `models/${name}/${f}`);

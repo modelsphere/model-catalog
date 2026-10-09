@@ -67,7 +67,7 @@ function detail(err) {
     case "pattern":
       // The chart.version pattern is a generated grammar nobody reads.
       if (err.instancePath.endsWith("/chart/version")) {
-        return `must be a chart version or a range, e.g. 0.7.1, ">=0.7.1", "^0.7.1"${got}`
+        return `must be a chart version or a range, e.g. 0.8.0, ">=0.8.0", "^0.8.0"${got}`
       }
       return `must match /${params.pattern}/${got}`
     case "type":
@@ -129,6 +129,24 @@ for (const check of checks) {
       const text = detail(err)
       return at ? `${at}: ${text}` : text
     }))
+  }
+}
+
+// What the schema cannot see: a variant id is unique within its version. A
+// deploy, a tuning entry and validate:helm all name a variant by it.
+for (const file of versionFilePaths) {
+  let variants
+  try {
+    variants = YAML.parse(fs.readFileSync(file, "utf8"))?.variants
+  } catch {
+    continue // a parse error is already reported above
+  }
+  if (!Array.isArray(variants)) continue
+  const ids = variants.map((v) => v?.id)
+  const twice = [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))]
+  if (twice.length > 0) {
+    failed = true
+    report(path.relative(root, file), twice.map((id) => `variants: id ${JSON.stringify(id)} is used twice`))
   }
 }
 

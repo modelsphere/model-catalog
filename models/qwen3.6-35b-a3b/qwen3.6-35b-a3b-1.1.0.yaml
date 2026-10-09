@@ -62,7 +62,7 @@ variants:
           ephemeral-storage: 16Gi
         limits:
           ephemeral-storage: 16Gi
-      progressDeadlineSeconds: 2000
+      progressDeadlineSeconds: 7200
       startupProbe:
         httpGet:
           path: /health

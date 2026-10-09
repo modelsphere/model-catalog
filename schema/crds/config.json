@@ -1,0 +1,29 @@
+{
+  "helmVersion": "4.3.0",
+  "kubeconformVersion": "0.8.0",
+  "kubernetesVersion": "1.36.3",
+  "chartRepository": "https://modelsphere.github.io/helm-charts/",
+  "minimumChartVersions": {
+    "sglang": "0.8.0",
+    "vllm": "0.5.0"
+  },
+  "kubernetesSchemaCommit": "39a87cd29966bc0b3434e8cfbc2061782c8cb69a",
+  "toolChecksums": {
+    "darwin-arm64": {
+      "helm": "d3870437e1e95b67f8edbde964156c84a26503f560821d40c542441658934fba",
+      "kubeconform": "f84f4dfbebf4a6b0b230385fa065a39ea35e02608c2b50d025dcf64775a69d67"
+    },
+    "darwin-amd64": {
+      "helm": "347a784877e0e20eac865e8d1c36a80f6bb0861d6f29abd34defb6570ef95d92",
+      "kubeconform": "71dbc87ac9f24099a62b93570e65aa06312ba6ac8aea63b7f86e9d999edf5a92"
+    },
+    "linux-amd64": {
+      "helm": "86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb",
+      "kubeconform": "9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883"
+    },
+    "linux-arm64": {
+      "helm": "31c5794dd55c66a51e6b7d2e2ac7a114ae8b1de41ff1d9ba51748ac973b06a08",
+      "kubeconform": "1f53fc8e81258197a35e8603054162a5af1de8c5af13746c71ab680d9534ed87"
+    }
+  }
+}

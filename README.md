@@ -82,7 +82,9 @@ cp -r models/glm5.1 models/my-model  # or models/kimi-k2.5 for a multi-node mode
 3. Check it, and preview the catalog page:
 
    ```sh
-   npm run validate:schema   # the same check CI runs
+   npm run validate:schema   # catalog structure and tuning references
+   npm run helm:install      # pinned Helm and kubeconform (first time)
+   npm run validate:helm -- models/my-model/my-model-1.0.0.yaml
    npm run build:site        # then open site/index.html
    ```
 
@@ -114,6 +116,13 @@ hack/serve.sh                 serve it over HTTP, for local development
 A published catalog is a static site, and `./hack/serve.sh` is the smallest
 thing that behaves like one: it rebuilds the index, then serves the tree.
 
+PRs also run the independent `validate-helm` check on every variant in changed
+version YAMLs, using the latest stable released chart for each engine, Helm's
+values schema and strict Kubernetes/CRD schemas. See [Helm validation](schema/crds/README.md) for
+local commands, schema updates, artifacts, and validation limits.
+Deployment still follows the YAML chart declaration. Use `--chart-mode declared`
+with `npm run validate:helm` to reproduce that release locally.
+
 ## Versions are immutable
 
 A model publishes versions, like a package: `models/qwen3.6-35b-a3b/qwen3.6-35b-a3b-1.2.0.yaml`,
@@ -141,10 +150,10 @@ publishing a new one.
 
 | `chart.version` | means |
 | --- | --- |
-| `0.7.1` | exactly 0.7.1 |
-| `">=0.7.1"` | 0.7.1 or newer (quoted: a bare `>` starts a YAML block scalar) |
-| `"^0.7.1"` | 0.7.x from 0.7.1; in 0.x, a minor bump is the breaking one |
-| `">=0.7.1 <0.9.0"` | both |
+| `0.8.0` | exactly 0.8.0 |
+| `">=0.8.0"` | 0.8.0 or newer (quoted: a bare `>` starts a YAML block scalar) |
+| `"^0.8.0"` | 0.8.x from 0.8.0; in 0.x, a minor bump is the breaking one |
+| `">=0.8.0 <0.9.0"` | both |
 
 A deploy still pins: swissd records the one version the range resolved to (the
 newest in range, or one the operator picks) and an upgrade keeps it until asked
@@ -317,4 +326,3 @@ exist until the site is deployed.
 swissd refuses an index with a field it does not know. A field added to
 `index.json` -- `site` and `tuning` among them -- has to be understood by every
 swissd reading this catalog before it merges: the next deploy publishes it.
-

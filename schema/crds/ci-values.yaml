@@ -1,0 +1,5 @@
+# What a deploy's site profile supplies and CI has no site for. validate:helm
+# layers each variant's values over this file, so a variant's own value wins.
+modelRoute:
+  nginx:
+    outputConfigMap: ci/openresty-conf
