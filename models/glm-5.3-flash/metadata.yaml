@@ -1,7 +1,7 @@
 apiVersion: catalog.swiss/v1
 name: glm-5.3-flash
 displayName: GLM-5.3-Flash
-description: GLM-5.3-Flash TP8 on eight H100 GPUs
+description: GLM-5.3-Flash TP8 on eight H100 or B300 GPUs, with separate hardware-specific serving configurations.
 family: glm
 tags:
   - chat
@@ -20,3 +20,13 @@ tuning:
       - name: 8k + 1k
         uplift: 5.4
     report: glm-5.3-flash-h100-report.html
+  - version: 1.0.1
+    baseline: sglang-tp8-b300-baseline
+    optimized: sglang-tp8-b300-optimized
+    uplift: 12.5
+    workloads:
+      - name: 50k + 1.5k
+        uplift: 12.5
+      - name: 8k + 1k
+        uplift: 8.2
+    report: glm-5.3-flash-b300-report.html
