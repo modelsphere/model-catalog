@@ -3,9 +3,9 @@ name: qwen3-8b
 displayName: Qwen3-8B
 description: Qwen3-8B in bf16 on one Ascend 910B card, served by vLLM's Ascend backend. Small enough for a single card, which is what makes it the model to prove a non-NVIDIA node with.
 family: qwen
+# chat only: Qwen3-8B can reason and call tools, but this variant configures no
+# parser for either, so the entry does not claim capabilities it does not serve.
 tags:
   - chat
-  - reasoning
-  - tool-use
 source:
   hf: Qwen/Qwen3-8B

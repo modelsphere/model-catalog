@@ -34,11 +34,18 @@ variants:
           - config.json
           - '*.safetensors'
       extraArgs:
+        # Deliberately minimal. Everything here is either measured elsewhere or
+        # the convention in this catalog; nothing is guessed.
+        #
+        # No --reasoning-parser / --tool-call-parser: the parser names cannot be
+        # confirmed for the vLLM this image carries (v0.23's vllm/parser holds
+        # only abstract_parser and parser_manager -- the per-model parsers and
+        # their registered names arrived in a later refactor), and a wrong name
+        # fails at startup. They belong here once someone has run the image.
+        #
+        # No --max-model-len either: no other variant sets it, and Qwen3-8B's
+        # config.json already declares 32768.
         - --enable-prompt-tokens-details
-        - --reasoning-parser=qwen3
-        - --enable-auto-tool-choice
-        - --tool-call-parser=hermes
-        - --max-model-len=32768
         - --gpu-memory-utilization=0.9
       env:
         # No NVIDIA_DISABLE_REQUIRE and no PYTORCH_ALLOC_CONF here: the first is
