@@ -29,10 +29,10 @@ and is rebuilt on each push to `master`. For each model it shows:
 - how much faster the tuned variant is than the baseline, and the perf report
   behind that number
 
-You can search, filter by family, engine, hardware or tag, sort by uplift, and
+You can search, filter by family, engine, hardware or tag, sort by improvement, and
 switch between a table and cards. Filters are kept in the URL, so a view can be
 shared. For example:
-[every model with a tuned variant, biggest uplift first](https://modelsphere.github.io/model-catalog/?cmp=1&sort=uplift).
+[every model with a tuned variant, biggest improvement first](https://modelsphere.github.io/model-catalog/?cmp=1&sort=uplift).
 
 ### Use the catalog with swiss
 
@@ -297,7 +297,7 @@ tuning:
   - version: 1.0.0                       # a published version
     baseline: sglang-tp8-h100-baseline   # variant ids in that version
     optimized: sglang-tp8-h100-optimized
-    uplift: 58.0                         # headline: % over the baseline
+    uplift: 58.0                         # fallback when workloads are absent
     workloads:                           # optional: every workload measured
       - name: 50k + 1.5k
         uplift: 58.0
@@ -306,8 +306,9 @@ tuning:
     report: deepseek-v4-flash-0731-h100-report.html   # beside metadata.yaml
 ```
 
-`uplift` is the number the site leads with; when the benchmark ran several
-workloads, list them all under `workloads` and the site shows the rest beside it.
+`uplift` keeps the catalog data contract compatible and supplies the result when
+the benchmark recorded no `workloads`. When workload results are present, the
+site highlights the highest improvement and shows every workload.
 `tuning` lives in `metadata.yaml` rather than the version file because nothing
 composes from it: re-measuring is an edit, not a new version.
 `npm run validate:schema` checks that the version is published, both ids are
