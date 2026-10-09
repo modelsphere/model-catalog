@@ -1,0 +1,246 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v1
+name: glm5.3
+version: 1.0.4
+servedName: glm-5.3
+variants:
+  - id: sglang-tp8-b300-baseline
+    description: 'Baseline: TP8 on eight B300 GPUs, single node, modelopt_fp4 weights.'
+    engine: sglang
+    chart:
+      name: sglang
+      version: ">=0.7.8"
+    image:
+      repository: harbor.4pd.io/hardcore-tech/sglang
+      tag: v0.5.19
+    requires:
+      gpus: 8
+      topology: single-node
+      gpuProduct:
+        - NVIDIA-B300-SXM6-AC
+    values:
+      model:
+        mountPath: /model
+        hostPathType: Directory
+        contextLength: ''
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - '*.safetensors'
+      extraArgs:
+        - --chat-template=/model/chat_template.jinja
+        - --enable-cache-report
+        - --quantization=modelopt_fp4
+        - --reasoning-parser=glm45
+        - --stream-response-default-include-usage
+        - --tool-call-parser=glm47
+        - --tp-size=8
+        - --trust-remote-code
+      env:
+        - name: NVIDIA_DISABLE_REQUIRE
+          value: '1'
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+      volumes:
+        - name: dot-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+      volumeMounts:
+        - name: dot-cache
+          mountPath: /root/.cache
+        - name: dshm
+          mountPath: /dev/shm
+      resources:
+        requests:
+          ephemeral-storage: 16Gi
+        limits:
+          ephemeral-storage: 16Gi
+      progressDeadlineSeconds: 7200
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 180
+      terminationGracePeriodSeconds: 3600
+      lifecycle:
+        preStop:
+          drainSeconds: 600
+          pollIntervalSeconds: 5
+        forceShutdown: true
+        preStopKill: true
+      hangWatcher:
+        enabled: true
+  - id: sglang-tp4-b300-optimized
+    default: true
+    description: 'Tuned by LLM AutoTune: TP4 on four B300 GPUs, single node, modelopt_fp4 weights, EAGLE speculative decoding, hierarchical KV cache. Normalized throughput (8 GPUs) within the SLO vs the baseline variant: +195.3% (50k + 1.5k), +30.6% (8k + 1k).'
+    engine: sglang
+    chart:
+      name: sglang
+      version: ">=0.7.8"
+    image:
+      repository: harbor.4pd.io/hardcore-tech/sglang
+      tag: v0.5.19
+      digest: sha256:88e6445cca3f7f22af819152f0ea5ac94d8702583634ab2d1a2ea2a5b282f986
+    requires:
+      gpus: 4
+      topology: single-node
+      gpuProduct:
+        - NVIDIA-B300-SXM6-AC
+    values:
+      model:
+        mountPath: /model
+        hostPathType: Directory
+        contextLength: ''
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - '*.safetensors'
+      extraArgs:
+        - --chunked-prefill-size=16384
+        - --cuda-graph-max-bs-decode=32
+        - --enable-cache-report
+        - --enable-hierarchical-cache
+        - --hicache-size=150
+        - --max-prefill-tokens=16384
+        - --max-running-requests=32
+        - --mem-fraction-static=0.85
+        - --quantization=modelopt_fp4
+        - --reasoning-parser=glm45
+        - --speculative-algorithm=EAGLE
+        - --speculative-eagle-topk=1
+        - --speculative-num-draft-tokens=4
+        - --speculative-num-steps=3
+        - --stream-response-default-include-usage
+        - --tokenizer-worker-num=4
+        - --tool-call-parser=glm47
+        - --tp-size=4
+        - --trust-remote-code
+      env:
+        - name: NVIDIA_DISABLE_REQUIRE
+          value: '1'
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        - name: TORCHINDUCTOR_COMPILE_THREADS
+          value: '8'
+      volumes:
+        - name: dot-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+      volumeMounts:
+        - name: dot-cache
+          mountPath: /root/.cache
+        - name: dshm
+          mountPath: /dev/shm
+      resources:
+        requests:
+          ephemeral-storage: 16Gi
+        limits:
+          ephemeral-storage: 16Gi
+      progressDeadlineSeconds: 7200
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 180
+      terminationGracePeriodSeconds: 3600
+      lifecycle:
+        preStop:
+          drainSeconds: 600
+          pollIntervalSeconds: 5
+        forceShutdown: true
+        preStopKill: true
+      hangWatcher:
+        enabled: true
+
+  - id: vllm-tp8-pp2-6000d
+    engine: vllm
+    description: TP8 per node, PP2 across two nodes over RoCE, on the same NVFP4 weights as the B300 variant.
+    chart:
+      name: vllm
+      version: ">=0.7.6"
+    image:
+      repository: vllm/vllm-openai
+      tag: v0.30.0
+    requires:
+      gpus: 8 # per pod; 16 across the group
+      nodes: 2
+      topology: lws
+      rdma: true
+      gpuProduct:
+        - NVIDIA-RTX-6000D
+    values:
+      model:
+        localPath: /data/models/GLM-5.3-NVFP4
+        mountPath: /models
+        contextLength: ""
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - "*.safetensors"
+      lws:
+        enabled: true
+        size: 2
+      hostNetwork: true
+      rdma:
+        enabled: true
+      extraArgs:
+        - --tensor-parallel-size=8
+        - --pipeline-parallel-size=2
+        # Raised from 0.85 in 1.0.2. The earlier comment argued there was
+        # nothing to win, because the KV pool fills at 24 concurrent requests
+        # and TTFT goes from 12s to 67s past that. That reasoning was about
+        # concurrency and missed the other axis: 0.90 measured 36.93 GiB of KV
+        # per card and a 1,396,288-token pool, against 1,229,760 at 0.85, which
+        # takes a 1,048,576-token request from 1.17x to 1.33x the pool. It buys
+        # long-context headroom, not more concurrency.
+        #
+        # 0.93 was also measured and gives a further 6.65 GiB per card, but it
+        # leaves ~6 GB of card headroom against ~14 GB at 0.90 and has not been
+        # load-tested; the engine's own suggestion lands at 0.8986.
+        - --gpu-memory-utilization=0.90
+        - --max-num-batched-tokens=8192
+        - --max-num-seqs=256
+        - --trust-remote-code
+        - --mm-encoder-tp-mode=data
+        - --enable-prompt-tokens-details
+        - --allowed-media-domains=none.invalid
+        - --tool-call-parser=glm47
+        - --enable-auto-tool-choice
+        - --reasoning-parser=glm45
+        - --chat-template-content-format=string
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+        # The trtllm fused-MoE autotuner picks shapes that are not built for
+        # sm120; skipping those ops leaves the rest of the autotuner on.
+        - name: VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS
+          value: trtllm::fused_moe::gemm1,trtllm::fused_moe::gemm2,fp8_gemm
+        - name: VLLM_MEDIA_URL_ALLOW_REDIRECTS
+          value: "0"
+        - name: NCCL_DEBUG
+          value: INFO
+        - name: NCCL_SOCKET_IFNAME
+          value: bond0
+        - name: GLOO_SOCKET_IFNAME
+          value: bond0
+        - name: NCCL_NET_GDR_LEVEL
+          value: "1"
+      service:
+        port: 8050
+      hangWatcher:
+        enabled: true
