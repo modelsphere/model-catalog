@@ -6,7 +6,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const YAML = require("yaml");
 const {root, compareVersions, isPrerelease} = require("./lib/catalog");
-const {command, selectFiles, variantValues, kubeconformArgs, parseVersions} = require("./lib/helm-validation");
+const {command, selectFiles, kubeconformArgs, parseVersions} = require("./lib/helm-validation");
 const config = require("../schema/crds/config.json");
 
 function options(args) {
@@ -77,15 +77,15 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
         throw new Error(`${name}: expected ${config[`${name}Version`]}, got ${version}; run npm run helm:install`);
       }
     }
-    const lock = JSON.parse(fs.readFileSync(path.join(root, "schema/crds/crds-lock.json"), "utf8"));
-    if (lock.converterVersion !== config.converterVersion) throw new Error("CRD converter version mismatch");
-    const apis = [...new Set(lock.sources.flatMap((source) => source.schemas.map((s) => `${s.group}/${s.version}`)))];
     // CRD schemas are not committed: build them from the lock for this run,
     // which must not rewrite it.
     const schemaDir = path.join(runDir, "crds");
     // Several downloads, each allowed minutes: outlast them rather than kill the build.
     requireSuccess(invoke(process.execPath, [path.join(__dirname, "build-crds.js"), "--locked", schemaDir], runDir, "crds",
       {timeout: 30 * 60 * 1000}), "crds");
+    // Each schema is <group>/<kind>_<version>.json: the API versions Helm may render.
+    const apis = fs.readdirSync(schemaDir).flatMap((group) => fs.readdirSync(path.join(schemaDir, group))
+      .map((file) => `${group}/${file.slice(file.lastIndexOf("_") + 1, -".json".length)}`));
     const schemaCache = path.join(runDir, "schema-cache");
     fs.mkdirSync(schemaCache);
     requireSuccess(invoke(bin("helm"), ["repo", "add", "catalog", config.chartRepository], runDir, "chart-repository"), "chart-repository");
@@ -171,11 +171,9 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
         summary.results.push(record);
         let stage = "values";
         try {
-          const {values, injected} = variantValues(variant);
-          record.injectedRouteConfig = injected;
-          if (injected) log(`${label}: supplying absent values.modelRoute.nginx.outputConfigMap=ci/openresty-conf`);
-          const valuesFile = path.join(dir, "values.yaml");
-          fs.writeFileSync(valuesFile, YAML.stringify(values));
+          // JSON, not YAML: Helm reads YAML 1.1, where an unquoted on, no or yes is a boolean.
+          const valuesFile = path.join(dir, "values.json");
+          fs.writeFileSync(valuesFile, JSON.stringify(variant.values ?? {}, null, 2) + "\n");
           stage = "chart";
           const pkg = chartFor(variant.chart, dir);
           if (pkg.legacy) {
@@ -195,7 +193,8 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
             mode: chartMode, declaredVersion: pkg.declaredVersion, selectionConstraint: pkg.selectionConstraint};
           log(`${label}: declared ${pkg.name} ${variant.chart.version} -> ${pkg.declaredVersion}; validating ${chartMode} chart ${pkg.name}@${pkg.actualVersion} ${pkg.digest}`);
           fs.writeFileSync(path.join(dir, "chart.json"), JSON.stringify(record.chart, null, 2) + "\n");
-          const shared = ["--values", valuesFile, "--kube-version", config.kubernetesVersion];
+          const shared = ["--values", path.join(root, "schema/crds/ci-values.yaml"), "--values", valuesFile,
+            "--kube-version", config.kubernetesVersion];
           // Run both stages even when lint fails: template can expose separate failures.
           stage = "lint";
           const lint = invoke(bin("helm"), ["lint", pkg.archive, "--strict", ...shared], dir, "lint");

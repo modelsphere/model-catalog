@@ -4,10 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {spawnSync} = require("node:child_process");
 const YAML = require("yaml");
-
-function isVersionFile(file) {
-  return /^models\/[^/]+\/[^/]+\.ya?ml$/.test(file) && !/\/metadata\.ya?ml$/.test(file);
-}
+const {modelNames, versionFiles} = require("./catalog");
 
 function affectsValidator(file) {
   return file.startsWith("schema/crds/") ||
@@ -31,29 +28,18 @@ function git(root, args) {
   return result.stdout;
 }
 
-function allVersionFiles(root) {
-  function walk(dir) {
-    return fs.readdirSync(path.join(root, dir), {withFileTypes: true}).flatMap((entry) => {
-      const file = `${dir}/${entry.name}`;
-      return entry.isDirectory() ? walk(file) : isVersionFile(file) ? [file] : [];
-    });
-  }
-  return walk("models").sort();
-}
-
 // Keep both sides of renames for validator-change detection. NUL delimiters
-// preserve filenames with whitespace; missing old/deleted model paths are excluded.
+// preserve filenames with whitespace; deleted versions are not selected.
 // `added` lists the new versions, held to the chart minimum: a published version
 // keeps the chart it was published with. Explicit files are checked as new.
 function selectFiles(root, {all = false, base = "origin/HEAD", files = []} = {}) {
-  if (all) return {files: allVersionFiles(root), added: [], reason: "--all"};
+  const models = path.join(root, "models");
+  const versions = modelNames(models).flatMap((name) => versionFiles(name, models));
+  if (all) return {files: versions, added: [], reason: "--all"};
   if (files.length) {
-    const selected = files.map((file) => path.relative(root, path.resolve(root, file)).split(path.sep).join("/"));
-    if (selected.some((file) => !isVersionFile(file) || !fs.existsSync(path.join(root, file)))) {
-      throw new Error("explicit files must be existing model version YAMLs under models/");
-    }
-    const unique = [...new Set(selected)].sort();
-    return {files: unique, added: unique, reason: "explicit files"};
+    const selected = [...new Set(files.map((file) => path.relative(root, path.resolve(root, file)).split(path.sep).join("/")))].sort();
+    if (selected.some((file) => !versions.includes(file))) throw new Error("explicit files must be existing model version YAMLs under models/");
+    return {files: selected, added: selected, reason: "explicit files"};
   }
   const mergeBase = git(root, ["merge-base", base, "HEAD"]).trim();
   const tokens = git(root, ["diff", "--name-status", "-z", "--find-renames", mergeBase, "HEAD"]).split("\0");
@@ -65,30 +51,11 @@ function selectFiles(root, {all = false, base = "origin/HEAD", files = []} = {})
     if (/^[RC]/.test(status)) changed.push(tokens[i++]);
     if (/^[ARC]/.test(status)) added.push(changed.at(-1));
   }
-  const versions = (list) => [...new Set(list.filter((file) => isVersionFile(file) && fs.existsSync(path.join(root, file))))].sort();
+  const among = (list) => versions.filter((file) => list.includes(file));
   if (changed.some(affectsValidator)) {
-    return {files: allVersionFiles(root), added: versions(added), reason: "validator/dependency/schema changes", mergeBase};
+    return {files: versions, added: among(added), reason: "validator/dependency/schema changes", mergeBase};
   }
-  return {files: versions(changed), added: versions(added), reason: `changes since merge-base with ${base}`, mergeBase};
-}
-
-function isObject(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function variantValues(variant) {
-  const values = variant.values === undefined ? {} : structuredClone(variant.values);
-  if (!isObject(values)) throw new Error("variants[].values: must be an object");
-  let injected = false;
-  if (values.modelRoute === undefined) values.modelRoute = {};
-  if (isObject(values.modelRoute)) {
-    if (values.modelRoute.nginx === undefined) values.modelRoute.nginx = {};
-    if (isObject(values.modelRoute.nginx) && !Object.hasOwn(values.modelRoute.nginx, "outputConfigMap")) {
-      values.modelRoute.nginx.outputConfigMap = "ci/openresty-conf";
-      injected = true;
-    }
-  }
-  return {values, injected};
+  return {files: among(changed), added: among(added), reason: `changes since merge-base with ${base}`, mergeBase};
 }
 
 function kubeconformArgs(config, schemaDir, cacheDir, rendered) {
@@ -101,22 +68,12 @@ function kubeconformArgs(config, schemaDir, cacheDir, rendered) {
       "{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json", rendered];
 }
 
+// validate:schema owns a version file's shape; this only refuses to pass a file
+// with nothing to render.
 function parseVersions(file) {
-  const doc = YAML.parse(fs.readFileSync(file, "utf8"));
-  if (!Array.isArray(doc?.variants) || !doc.variants.length) throw new Error("variants: expected a nonempty array");
-  const ids = new Set();
-  for (const [index, variant] of doc.variants.entries()) {
-    if (!isObject(variant) || typeof variant.id !== "string" || !/^[a-z0-9][a-z0-9-]*$/.test(variant.id)) {
-      throw new Error(`variants[${index}].id: invalid variant id`);
-    }
-    if (ids.has(variant.id)) throw new Error(`variants[${index}].id: duplicate ${variant.id}`);
-    ids.add(variant.id);
-    if (!/^[a-z0-9][a-z0-9-]*$/.test(variant.chart?.name ?? "") ||
-        typeof variant.chart?.version !== "string" || !variant.chart.version.trim()) {
-      throw new Error(`variants[${index}].chart: expected name and version constraint`);
-    }
-  }
-  return doc.variants;
+  const variants = YAML.parse(fs.readFileSync(file, "utf8"))?.variants;
+  if (!Array.isArray(variants) || !variants.length) throw new Error("variants: expected a nonempty array");
+  return variants;
 }
 
-module.exports = {command, selectFiles, isVersionFile, affectsValidator, variantValues, kubeconformArgs, parseVersions};
+module.exports = {command, selectFiles, affectsValidator, kubeconformArgs, parseVersions};

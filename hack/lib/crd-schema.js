@@ -4,9 +4,6 @@ const crypto = require("node:crypto");
 const YAML = require("yaml");
 const {download} = require("./download");
 
-// Versioned with the repository; changing this contract requires regeneration.
-const CONVERTER_VERSION = "catalog-crd-schema-v1";
-
 function assertCrdSource(source, crd) {
   if (source.repository.startsWith("modelsphere/") && !source.group?.endsWith(".modelsphere.dev")) {
     throw new Error(`${source.repository}: Modelsphere CRDs must use a .modelsphere.dev API group`);
@@ -127,4 +124,4 @@ async function buildSchemas(sources, objectMeta) {
   return {files, objectMeta: {url: objectMeta.url, sha256: meta.sha256}, records};
 }
 
-module.exports = {CONVERTER_VERSION, assertCrdSource, convertSchema, crdSchemas, objectMetaSchema, buildSchemas};
+module.exports = {assertCrdSource, convertSchema, crdSchemas, objectMetaSchema, buildSchemas};

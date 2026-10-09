@@ -8,7 +8,6 @@
     "vllm": "0.5.0"
   },
   "kubernetesSchemaCommit": "39a87cd29966bc0b3434e8cfbc2061782c8cb69a",
-  "converterVersion": "catalog-crd-schema-v1",
   "toolChecksums": {
     "darwin-arm64": {
       "helm": "d3870437e1e95b67f8edbde964156c84a26503f560821d40c542441658934fba",

@@ -36,14 +36,15 @@ directory holding each variant's values, rendered manifests and tool logs.
   first releases on the `*.modelsphere.dev` API groups). A new version below it
   fails. A published version below it only warns, or is skipped in declared mode:
   published versions are never rewritten.
-- **Values**: used as written, except an absent
-  `modelRoute.nginx.outputConfigMap`, which is set to `ci/openresty-conf`.
+- **Values**: each variant's values, layered over
+  [`ci-values.yaml`](ci-values.yaml), which stands in for a deploy's site profile.
 
 ## Files
 
 | File | Holds |
 | --- | --- |
 | [`config.json`](config.json) | tool versions and checksums, Kubernetes version, chart repository, minimum chart versions |
+| [`ci-values.yaml`](ci-values.yaml) | values a site profile supplies, which CI has no site for |
 | [`crds.json`](crds.json) | the CRDs to validate against, each pinned to an upstream commit |
 | [`crds-lock.json`](crds-lock.json) | the sha256 of each pinned CRD and the schemas it yields; written by `build-crds` |
 

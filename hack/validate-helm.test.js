@@ -19,8 +19,6 @@ function fixture(t, failure, {chartName = "sglang", declaredVersion = "0.8.0", l
     {id: "default", default: true, chart: {name: chartName, version: declaredVersion}},
     {id: "other", chart: {name: chartName, version: `>=${config.minimumChartVersions[chartName]}`}, values: {extraArgs: ["--other"]}}
   ]}));
-  fs.mkdirSync(path.join(root, "schema/crds"), {recursive: true});
-  fs.writeFileSync(path.join(root, "schema/crds/crds-lock.json"), JSON.stringify({converterVersion: config.converterVersion, sources: []}));
   const calls = [];
   const bytes = Buffer.from("fixture-package");
   let prereleaseInserted = false;
@@ -51,6 +49,10 @@ function fixture(t, failure, {chartName = "sglang", declaredVersion = "0.8.0", l
     else if (args[0] === "-tzf") stdout = failure === "schema" ? `${chartName}/Chart.yaml\n` : `${chartName}/Chart.yaml\n${chartName}/values.schema.json\n`;
     else if (args[0] === "show") stdout = YAML.stringify({name: chartName,
       version: path.basename(args.at(-1)).slice(chartName.length + 1, -4)});
+    else if (args[0].endsWith("build-crds.js")) {
+      fs.mkdirSync(path.join(args.at(-1), "example.dev"), {recursive: true});
+      fs.writeFileSync(path.join(args.at(-1), "example.dev/widget_v1alpha1.json"), "{}");
+    }
     else if (args[0] === "template") stdout = failure === "empty" ? "" : "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: example\n";
     const stage = args[0] === "-strict" ? "kubeconform" : args[0] === "pull" ? "download" :
       args[0].endsWith("build-crds.js") ? "crds" : args[0];
@@ -70,10 +72,15 @@ test("every variant uses independent values and the resolved package is reused",
   assert.equal(s.results.length, 2);
   assert(s.results.every((r) => r.ok && r.chart.version === "0.8.0" && r.chart.digest.startsWith("sha256:")));
   assert.equal(f.calls.filter((a) => a[0] === "pull").length, 1);
-  const values = s.results.map((r) => YAML.parse(fs.readFileSync(path.join(f.root, r.artifacts, "values.yaml"), "utf8")));
+  const values = s.results.map((r) => JSON.parse(fs.readFileSync(path.join(f.root, r.artifacts, "values.json"), "utf8")));
   assert.equal(values[0].extraArgs, undefined);
   assert.deepEqual(values[1].extraArgs, ["--other"]);
-  assert(f.calls.filter((a) => ["lint", "template"].includes(a[0])).every((a) => a.includes(config.kubernetesVersion)));
+  // CI values come first, so a variant's own value overrides them.
+  const ci = path.join(f.root, "schema/crds/ci-values.yaml");
+  assert(f.calls.filter((a) => ["lint", "template"].includes(a[0])).every((a) => a.includes(config.kubernetesVersion) &&
+    a.indexOf(ci) > 0 && a.indexOf(ci) < a.findIndex((arg) => arg.endsWith("values.json"))));
+  // Helm may render exactly the CRD API versions that were built.
+  assert(f.calls.filter((a) => a[0] === "template").every((a) => a[a.indexOf("--api-versions") + 1] === "example.dev/v1alpha1"));
 });
 
 for (const [chartName, declaredVersion, latestVersion] of [["sglang", "0.8.0", "1.2.0"], ["vllm", "0.5.0", "1.3.0"]]) {

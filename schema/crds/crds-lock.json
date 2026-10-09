@@ -1,5 +1,4 @@
 {
-  "converterVersion": "catalog-crd-schema-v1",
   "objectMeta": {
     "url": "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/39a87cd29966bc0b3434e8cfbc2061782c8cb69a/v1.36.3-standalone-strict/_definitions.json",
     "sha256": "ed76a6bccfa27ff085c390952d64267a18c91beb045b3e33117d482e26510cf3"

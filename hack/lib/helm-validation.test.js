@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const {execFileSync} = require("node:child_process");
-const {selectFiles, variantValues, kubeconformArgs} = require("./helm-validation");
+const {selectFiles, kubeconformArgs} = require("./helm-validation");
 const config = require("../../schema/crds/config.json");
 
 function repository(t) {
@@ -39,11 +39,11 @@ test("add, modify and rename destinations are selected; deletions are excluded",
   const r = repository(t);
   r.write("models/example/example-1.1.0.yaml"); r.commit();
   r.git("branch", "before");
-  r.git("mv", "models/example/example-1.0.0.yaml", "models/example/renamed version-1.0.0.yml");
+  r.git("mv", "models/example/example-1.0.0.yaml", "models/example/renamed version-1.0.0.yaml");
   r.write("models/example/example-1.1.0.yaml", "modified\n");
   r.write("models/example/example-1.2.0.yaml"); r.commit();
   assert.deepEqual(selectFiles(r.dir, {base: "before"}).files, [
-    "models/example/example-1.1.0.yaml", "models/example/example-1.2.0.yaml", "models/example/renamed version-1.0.0.yml"]);
+    "models/example/example-1.1.0.yaml", "models/example/example-1.2.0.yaml", "models/example/renamed version-1.0.0.yaml"]);
   r.git("rm", "models/example/example-1.2.0.yaml"); r.commit();
   assert(!selectFiles(r.dir, {base: "before"}).files.includes("models/example/example-1.2.0.yaml"));
 });
@@ -85,24 +85,6 @@ test("only added versions are held to the chart minimum, also in a full scan", (
 test("unknown base fails rather than reporting no changes", (t) => {
   const r = repository(t);
   assert.throws(() => selectFiles(r.dir, {base: "missing-ref"}));
-});
-
-test("only an absent route output is supplied; explicit invalid values survive", () => {
-  const original = {values: {extraArgs: ["--x"], modelRoute: {nginx: {outputConfigMap: ""}}}};
-  assert.equal(variantValues(original).injected, false);
-  assert.equal(variantValues(original).values.modelRoute.nginx.outputConfigMap, "");
-  for (const value of [null, false, 17]) {
-    assert.equal(variantValues({values: {modelRoute: {nginx: {outputConfigMap: value}}}}).values.modelRoute.nginx.outputConfigMap, value);
-  }
-  const defaults = variantValues({});
-  assert.equal(defaults.values.modelRoute.nginx.outputConfigMap, "ci/openresty-conf");
-  assert.equal(defaults.values.scaler, undefined);
-  assert.equal(defaults.values.cart, undefined);
-  const variant = {values: {env: [{name: "VALUE", value: "test"}]}};
-  variantValues(variant);
-  assert.deepEqual(variant, {values: {env: [{name: "VALUE", value: "test"}]}});
-  assert.throws(() => variantValues({values: null}));
-  assert.equal(variantValues({values: {modelRoute: null}}).values.modelRoute, null);
 });
 
 test("strict validation uses full group and pinned native schema without missing-schema bypass", () => {

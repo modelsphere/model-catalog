@@ -10,7 +10,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const {root} = require("./lib/catalog");
-const {CONVERTER_VERSION, buildSchemas} = require("./lib/crd-schema");
+const {buildSchemas} = require("./lib/crd-schema");
 const config = require("../schema/crds/config.json");
 const {sources} = require("../schema/crds/crds.json");
 
@@ -26,15 +26,13 @@ async function main(args) {
   const locked = args.includes("--locked");
   const rest = args.filter((arg) => arg !== "--locked");
   if (rest.length > 1 || rest.some((arg) => arg.startsWith("-"))) throw new Error("usage: build-crds.js [--locked] [DIR]");
-  if (config.converterVersion !== CONVERTER_VERSION) throw new Error("converter version mismatch");
   const text = fs.existsSync(lockFile) ? fs.readFileSync(lockFile, "utf8") : null;
   const lock = text && JSON.parse(text);
-  const current = lock?.converterVersion === CONVERTER_VERSION && lock.objectMeta?.url === objectMetaUrl &&
-    pins(lock.sources) === pins(sources);
+  const current = lock?.objectMeta?.url === objectMetaUrl && pins(lock.sources) === pins(sources);
   const stale = `${path.relative(root, lockFile)} is out of date; run npm run helm:build-crds and commit it`;
   if (!current && locked) throw new Error(stale);
   const built = current ? await buildSchemas(lock.sources, lock.objectMeta) : await buildSchemas(sources, {url: objectMetaUrl});
-  const next = JSON.stringify({converterVersion: CONVERTER_VERSION, objectMeta: built.objectMeta, sources: built.records}, null, 2) + "\n";
+  const next = JSON.stringify({objectMeta: built.objectMeta, sources: built.records}, null, 2) + "\n";
   if (next !== text) {
     if (locked) throw new Error(stale);
     fs.writeFileSync(lockFile, next);
