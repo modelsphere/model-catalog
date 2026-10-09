@@ -72,12 +72,17 @@ variants:
         periodSeconds: 30
         timeoutSeconds: 10
         failureThreshold: 180
-      terminationGracePeriodSeconds: 3600
+      terminationGracePeriodSeconds: 1200
       lifecycle:
+        # vllm's lifecycle keys, not sglang's: there is no forceShutdown here,
+        # and draining in-flight requests on SIGTERM is what shutdownTimeout
+        # does -- vLLM aborts them outright when it is 0.
         preStop:
+          enabled: true
           drainSeconds: 600
+          endpointSyncSeconds: 10
           pollIntervalSeconds: 5
-        forceShutdown: true
+        shutdownTimeout: 120
         preStopKill: true
       hangWatcher:
         enabled: true
