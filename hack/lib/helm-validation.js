@@ -35,7 +35,7 @@ function git(root, args) {
 function selectFiles(root, {all = false, base = "origin/HEAD", files = []} = {}) {
   const models = path.join(root, "models");
   const versions = modelNames(models).flatMap((name) => versionFiles(name, models));
-  if (all) return {files: versions, added: [], reason: "--all"};
+  if (all) return {files: versions, added: [], reason: "every version file"};
   if (files.length) {
     const selected = [...new Set(files.map((file) => path.relative(root, path.resolve(root, file)).split(path.sep).join("/")))].sort();
     if (selected.some((file) => !versions.includes(file))) throw new Error("explicit files must be existing model version YAMLs under models/");

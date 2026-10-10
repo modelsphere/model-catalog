@@ -114,6 +114,7 @@ linking it.
 | `npm run test:lib` | tests for `hack/lib` |
 | `npm run helm:install` | pinned Helm and kubeconform, once |
 | `npm run validate:helm -- <file>` | render a version's variants against the charts (`--chart-mode declared` for what a deploy uses) |
+| `npm run validate:images -- <file>` | every image is publicly pullable, no login (CI runs it on changed version files) |
 | `npm run build:site` | the site and `index.json` into `site/` |
 | `npm test` | `hack/validate.sh`: naming and layout checks (needs `yq`) |
 | `./hack/serve.sh` | rebuild `index.json` and serve the tree |

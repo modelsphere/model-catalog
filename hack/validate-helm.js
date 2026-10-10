@@ -14,16 +14,15 @@ function options(args) {
   const opts = {files: [], chartMode: "latest", output: path.join(root, "artifacts/helm-validation")};
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--all") opts.all = true;
-    else if (["--base", "--output", "--chart-mode"].includes(arg)) {
+    if (["--base", "--output", "--chart-mode"].includes(arg)) {
       if (!args[i + 1] || args[i + 1].startsWith("--")) throw new Error(`${arg}: missing argument`);
       opts[arg === "--chart-mode" ? "chartMode" : arg.slice(2)] = args[++i];
     } else if (arg.startsWith("-")) throw new Error(`unknown option ${arg}`);
     else opts.files.push(arg);
   }
-  if ([Boolean(opts.all), Boolean(opts.base), Boolean(opts.files.length)].filter(Boolean).length > 1) {
-    throw new Error("choose one of --all, --base REF, or explicit files");
-  }
+  if (opts.base && opts.files.length) throw new Error("choose --base REF or explicit files, not both");
+  // Nothing narrows it: every version file.
+  opts.all = !opts.base && !opts.files.length;
   opts.output = path.resolve(root, opts.output);
   if (!["latest", "declared"].includes(opts.chartMode)) throw new Error("--chart-mode must be latest or declared");
   return opts;
