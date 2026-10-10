@@ -11,9 +11,9 @@ variants:
       name: sglang
       version: ">=0.7.1"
     image:
-      repository: harbor.4pd.io/hardcore-tech/sglang
+      repository: lmsysorg/sglang
       tag: v0.5.19-cu129
-      digest: sha256:b7a3051b9e15939a5afc74de3564a72fd5b0b42bef80bbaacea9649d09f63d76
+      digest: sha256:59e11312666e1c5c155210ea335589b91daa0d70848521b390b93b1b1e8fb0ef
     requires:
       gpus: 2
       topology: single-node
@@ -82,9 +82,9 @@ variants:
       name: sglang
       version: ">=0.7.1"
     image:
-      repository: harbor.4pd.io/hardcore-tech/sglang
+      repository: lmsysorg/sglang
       tag: v0.5.19-cu129
-      digest: sha256:b7a3051b9e15939a5afc74de3564a72fd5b0b42bef80bbaacea9649d09f63d76
+      digest: sha256:59e11312666e1c5c155210ea335589b91daa0d70848521b390b93b1b1e8fb0ef
     requires:
       gpus: 2
       topology: single-node

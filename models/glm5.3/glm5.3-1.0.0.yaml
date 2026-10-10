@@ -15,7 +15,7 @@ variants:
       name: sglang
       version: 0.7.1
     image:
-      repository: harbor.4pd.io/hardcore-tech/sglang
+      repository: lmsysorg/sglang
       tag: v0.5.19
     requires:
       gpus: 4

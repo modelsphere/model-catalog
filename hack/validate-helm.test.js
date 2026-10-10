@@ -147,11 +147,19 @@ for (const failure of ["crds", "resolution", "download", "schema", "lint", "temp
 }
 
 test("CLI rejects ambiguous selectors and incomplete arguments", () => {
-  assert.throws(() => options(["--all", "--base", "main"]));
+  assert.throws(() => options(["--base", "main", "models/m/m-1.0.0.yaml"]));
+  assert.throws(() => options(["--all"]));
   assert.throws(() => options(["--base"]));
   assert.throws(() => options(["--unknown"]));
   assert.throws(() => options(["--chart-mode", "invalid"]));
   assert.throws(() => options(["--chart-mode"]));
   assert.equal(options([]).chartMode, "latest");
-  assert.equal(options(["--all", "--chart-mode", "declared"]).chartMode, "declared");
+  assert.equal(options(["--chart-mode", "declared"]).chartMode, "declared");
+});
+
+test("CLI checks every version file unless files or --base narrow it", () => {
+  assert.equal(options([]).all, true);
+  assert.equal(options(["--chart-mode", "declared"]).all, true);
+  assert.equal(options(["--base", "main"]).all, false);
+  assert.equal(options(["models/m/m-1.0.0.yaml"]).all, false);
 });

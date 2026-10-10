@@ -11,7 +11,7 @@ variants:
       name: sglang
       version: ">=0.7.1"
     image:
-      repository: harbor.4pd.io/hardcore-tech/sglang
+      repository: lmsysorg/sglang
       tag: qwen38flashnext
     requires:
       gpus: 8
@@ -83,7 +83,7 @@ variants:
       name: sglang
       version: ">=0.7.1"
     image:
-      repository: harbor.4pd.io/hardcore-tech/sglang
+      repository: lmsysorg/sglang
       tag: qwen38flashnext
     requires:
       gpus: 8

@@ -16,8 +16,10 @@
   "main": "index.js",
   "scripts": {
     "test": "./hack/validate.sh",
+    "validate": "npm run validate:schema && npm run validate:helm && npm run validate:images",
     "validate:schema": "node hack/validate-schema.js",
     "validate:helm": "node hack/validate-helm.js",
+    "validate:images": "node hack/validate-images.js",
     "helm:install": "node hack/install-helm-tools.js",
     "helm:build-crds": "node hack/build-crds.js",
     "test:helm": "node --test hack/lib/helm-validation.test.js hack/lib/crd-schema.test.js hack/validate-helm.test.js",

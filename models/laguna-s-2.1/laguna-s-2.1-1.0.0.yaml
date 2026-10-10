@@ -11,7 +11,7 @@ variants:
       name: sglang
       version: ">=0.7.1"
     image:
-      repository: harbor.4pd.io/hardcore-tech/sglang
+      repository: lmsysorg/sglang
       tag: dev-dsv41
     requires:
       gpus: 4
@@ -84,7 +84,7 @@ variants:
       name: sglang
       version: ">=0.7.1"
     image:
-      repository: harbor.4pd.io/hardcore-tech/sglang
+      repository: lmsysorg/sglang
       tag: dev-dsv41
     requires:
       gpus: 8
