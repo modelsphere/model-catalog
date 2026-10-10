@@ -32,6 +32,7 @@ const {
   buildIndex,
   serializeIndex,
 } = require("./lib/catalog");
+const { reportProblem } = require("./lib/report");
 
 const outDir = path.join(root, "site");
 
@@ -206,6 +207,14 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+// Whether the site may link a report: any other is left out with a warning.
+// validate:schema fails on the same ones.
+function linkable(rel) {
+  const problem = reportProblem(path.join(root, rel));
+  if (problem) console.warn(`${rel}: ${problem} -- not linked`);
+  return !problem;
+}
+
 function loadCatalog() {
   const models = [];
   const repo = sourceRepo();
@@ -217,16 +226,24 @@ function loadCatalog() {
       process.exit(1);
     }
     const meta = readYaml(metaPath);
-    const tuning = Array.isArray(meta.tuning) ? meta.tuning : [];
-    const reports = fs
+    const htmlFiles = fs
       .readdirSync(dir)
       .filter((f) => f.endsWith(".html"))
-      .sort()
+      .sort();
+    const reports = htmlFiles
+      .filter((f) => linkable(`models/${name}/${f}`))
       .map((f) => ({
         file: f,
         path: `models/${name}/${f}`,
         title: f.replace(/\.html$/i, ""),
       }));
+    // A tuning entry whose report is skipped keeps its numbers; only the link goes.
+    const linked = new Set(reports.map((r) => r.file));
+    const tuning = (Array.isArray(meta.tuning) ? meta.tuning : []).map((t) => {
+      if (!t || !t.report || linked.has(t.report)) return t;
+      if (!htmlFiles.includes(t.report)) linkable(`models/${name}/${t.report}`);
+      return { ...t, report: undefined };
+    });
 
     const versions = [];
     for (const rel of versionFiles(name)) {
@@ -661,6 +678,47 @@ function clientMain() {
 
 // Theme button: cycles system -> light -> dark. The choice is stored per
 // browser; the boot script in <head> applies it before first paint.
+// Browser entry point for a model page: a GPU tag shows only the variants
+// that run on it. Serialized into assets/model.js, so it must stay
+// self-contained.
+function modelMain() {
+  const form = document.getElementById("gpu-select");
+  const count = document.getElementById("variant-count");
+  if (!form || !count) return;
+  const radios = [...form.querySelectorAll('input[name="hardware"]')];
+  const variants = [...document.querySelectorAll("article.vd[data-gpus]")];
+  const total = variants.length;
+  const noun = total === 1 ? "variant" : "variants";
+  let selected = "";
+
+  function apply() {
+    const r = radios.find((x) => x.checked);
+    selected = r ? r.value : "";
+    let shown = 0;
+    for (const a of variants) {
+      a.hidden = selected !== "" && !a.dataset.gpus.split("|").includes(selected);
+      if (!a.hidden) shown++;
+    }
+    count.textContent = selected ? `${shown} of ${total} ${noun}` : `${total} ${noun}`;
+    const qs = selected ? `?hardware=${encodeURIComponent(selected)}` : "";
+    history.replaceState(null, "", location.pathname + qs + location.hash);
+  }
+
+  const want = new URLSearchParams(location.search).get("hardware");
+  for (const r of radios) r.checked = r.value === want;
+  form.addEventListener("change", apply);
+  form.addEventListener("submit", (e) => e.preventDefault());
+  // Clicking the selected GPU clears it; an already-checked radio fires click
+  // but no change.
+  form.addEventListener("click", (e) => {
+    if (e.target.name === "hardware" && e.target.value === selected) {
+      e.target.checked = false;
+      apply();
+    }
+  });
+  if (want) apply();
+}
+
 function themeMain() {
   const btn = document.getElementById("theme-toggle");
   const root = document.documentElement;
@@ -748,12 +806,10 @@ function modelHref(m) {
   return `models/${encodeURIComponent(m.dir)}/index.html`;
 }
 
-// The hardware filter: one toggle per GPU, grouped by gpuGroup, most models
-// first within a group. Radios, so one GPU at a time; clicking the selected
-// one clears it.
-function gpuToggles(facets) {
-  const counts = {};
-  for (const h of facets.flatMap((f) => f.hardware)) counts[h] = (counts[h] || 0) + 1;
+// The hardware filter: one toggle per GPU, grouped by gpuGroup, most first
+// within a group. Radios, so one GPU at a time; clicking the selected one
+// clears it. counts is per GPU; what says what is counted, for the tooltip.
+function gpuToggles(counts, what) {
   const labels = Object.keys(counts).sort(
     (a, b) => gpuGroup(a) - gpuGroup(b) || counts[b] - counts[a] || a.localeCompare(b)
   );
@@ -763,12 +819,18 @@ function gpuToggles(facets) {
         ${labels
           .map(
             (h) =>
-              `<label class="toggle tint hue-${gpuHue(h)}" title="Models with a variant for ${escapeHtml(h)}">` +
+              `<label class="toggle tint hue-${gpuHue(h)}" title="${what} ${escapeHtml(h)}">` +
               `<input type="radio" name="hardware" value="${escapeHtml(h)}">` +
               `${escapeHtml(h)}<span class="gpu-n">${counts[h]}</span></label>`
           )
           .join("\n        ")}
       </fieldset>`;
+}
+
+function countBy(values) {
+  const counts = {};
+  for (const v of values) counts[v] = (counts[v] || 0) + 1;
+  return counts;
 }
 
 function renderOptions(values, allLabel) {
@@ -873,7 +935,8 @@ function variantLine(v, cls) {
 
 // A model's reports in its variants' order, each with its link text: the
 // label alone for one report; for several, the GPUs of the variant each
-// measured, or its file name when those do not tell them apart.
+// measured, or its file name when those do not tell them apart. A report
+// measured on an earlier version than the latest says which.
 function reportLinks(m, label) {
   const variants = orderedVariants(m);
   const all = m.versions.flatMap((ver) => ver.variants);
@@ -881,22 +944,34 @@ function reportLinks(m, label) {
     const t = m.tuning.find((x) => x.reportFile === r.file);
     const v = t && all.find((x) => x.id === t.optimizedId);
     const at = v ? variants.findIndex((x) => x.id === v.id) : -1;
-    return { r, hw: v && v.hardware.length ? v.hardware.join(" / ") : null, at: at < 0 ? Infinity : at };
+    return {
+      r,
+      older: t && t.version !== m.latest ? t.version : null,
+      hw: v && v.hardware.length ? v.hardware.join(" / ") : null,
+      at: at < 0 ? Infinity : at,
+    };
   });
   const distinct = items.every((x) => x.hw && items.filter((y) => y.hw === x.hw).length === 1);
   return items
     .sort((a, b) => a.at - b.at)
-    .map(({ r, hw }) => ({
+    .map(({ r, older, hw }) => ({
       r,
-      text: items.length < 2 ? label : distinct ? `${escapeHtml(hw)} ${label.toLowerCase()}` : escapeHtml(r.title),
+      title: escapeHtml(older ? `${r.file}, measured on v${older}` : r.file),
+      text:
+        (items.length < 2 ? label : distinct ? `${escapeHtml(hw)} ${label.toLowerCase()}` : escapeHtml(r.title)) +
+        olderTag(older),
     }));
+}
+
+function olderTag(version) {
+  return version ? `<span class="link-ver">v${escapeHtml(version)}</span>` : "";
 }
 
 // Perf reports, then any variants[].link.
 function modelLinks(m, cls, reportLabel) {
   const links = reportLinks(m, reportLabel).map(
-    ({ r, text }) =>
-      `<a class="${cls}" href="${escapeHtml(encodePath(r.path))}" title="${escapeHtml(r.file)}">${ICONS.report}${text}</a>`
+    ({ r, title, text }) =>
+      `<a class="${cls}" href="${escapeHtml(encodePath(r.path))}" title="${title}">${ICONS.report}${text}</a>`
   );
   for (const v of m.versions[0].variants) {
     if (!v.link) continue;
@@ -1092,7 +1167,7 @@ ${renderSummary(computeSummary(facets))}
       </fieldset>
     </div>
     <div class="toolbar-row">
-      ${gpuToggles(facets)}
+      ${gpuToggles(countBy(facets.flatMap((f) => f.hardware)), "Models with a variant for")}
       <span class="toolbar-spacer"></span>
       <button type="reset" class="link-btn">Reset</button>
     </div>
@@ -1184,8 +1259,11 @@ function tuningBars(t, scale) {
 }
 
 function tuningBlock(m, ver, t, scale) {
+  const older = t.version !== ver.version ? t.version : null;
   const report = t.reportFile
-    ? `<a class="tn-report" href="${escapeHtml(encodeURIComponent(t.reportFile))}">${ICONS.report}Perf report</a>`
+    ? `<a class="tn-report" href="${escapeHtml(encodeURIComponent(t.reportFile))}"${
+        older ? ` title="Measured on v${escapeHtml(older)}"` : ""
+      }>${ICONS.report}Perf report${olderTag(older)}</a>`
     : "";
   return `<div class="tn">
           <div class="tn-head"><span>Improvement vs ${baselineRef(ver, t)}<span class="tn-sub"> · per workload, in + out tokens</span></span>${report}</div>
@@ -1218,7 +1296,7 @@ function variantDetail(m, ver, v, scale) {
   const link = v.link
     ? `<a class="btn btn-sm" href="${escapeHtml(v.link)}" target="_blank" rel="noopener">${ICONS.external}Link</a>`
     : "";
-  return `<article class="vd" id="${escapeHtml(anchorOf(ver.version, v.id))}">
+  return `<article class="vd" id="${escapeHtml(anchorOf(ver.version, v.id))}" data-gpus="${escapeHtml(v.hardware.join("|"))}">
         <div class="vd-head">
           <h3 class="vd-id"><a href="#${escapeHtml(anchorOf(ver.version, v.id))}">${escapeHtml(v.id)}</a></h3>
           ${badges.map((b) => `<span class="badge badge-${b}">${b}</span>`).join("")}
@@ -1251,7 +1329,7 @@ function versionSection(m, ver, scale) {
   return `<section class="ver" id="v${escapeHtml(ver.version)}">
       <div class="ver-head">
         <h2>Variants</h2>
-        <span class="ver-meta">${ver.variants.length} variant${ver.variants.length === 1 ? "" : "s"}${
+        <span class="ver-meta"><span id="variant-count">${ver.variants.length} variant${ver.variants.length === 1 ? "" : "s"}</span>${
           ver.servedName ? ` · served as <code>${escapeHtml(ver.servedName)}</code>` : ""
         }</span>
         ${
@@ -1280,8 +1358,8 @@ function renderModelPage(m) {
     )}">${escapeHtml(value)}</a>`;
   const hf = m.source && m.source.hf;
   const reports = reportLinks(m, "Perf report").map(
-    ({ r, text }) =>
-      `<a class="btn" href="${escapeHtml(encodeURIComponent(r.file))}" title="${escapeHtml(r.file)}">${ICONS.report}${text}</a>`
+    ({ r, title, text }) =>
+      `<a class="btn" href="${escapeHtml(encodeURIComponent(r.file))}" title="${title}">${ICONS.report}${text}</a>`
   );
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1317,9 +1395,12 @@ ${BOOT_SCRIPT}
           : ""
       }
     </div>
+    ${m.tags.length ? `<div class="mp-tags">${m.tags.map((t) => filterLink("tag", t, `chip hue-${tagHue(t)}`)).join("")}</div>` : ""}
     ${m.deprecatedReason ? `<p class="mp-dep">Deprecated: ${escapeHtml(m.deprecatedReason)}</p>` : ""}
     ${m.description ? `<p class="mp-desc">${escapeHtml(m.description)}</p>` : ""}
-    ${m.tags.length ? `<div class="mp-tags">${m.tags.map((t) => filterLink("tag", t, `chip hue-${tagHue(t)}`)).join("")}</div>` : ""}
+    <form id="gpu-select">
+      ${gpuToggles(countBy(latest.variants.flatMap((v) => [...new Set(v.hardware)])), "Variants for")}
+    </form>
     ${reports.length ? `<div class="links">${reports.join("")}</div>` : ""}
   </section>
   ${versionSection(m, latest, scale)}
@@ -1328,6 +1409,7 @@ ${BOOT_SCRIPT}
   <p>Generated from <code>models/${escapeHtml(m.dir)}/</code> by <code>hack/build-site.js</code>.</p>
 </footer>
 <script src="../../assets/theme.js"></script>
+<script src="../../assets/model.js"></script>
 </body>
 </html>
 `;
@@ -1339,6 +1421,8 @@ const SITE_JS =
     .join("\n\n") + "\n\nthemeMain();\nclientMain();\n";
 
 const THEME_JS = themeMain.toString() + "\n\nthemeMain();\n";
+
+const MODEL_JS = modelMain.toString() + "\n\nmodelMain();\n";
 
 // Colors are Sonokai's (github.com/sainnhe/sonokai, default style), tuned for
 // high contrast. Against the panel: text >= 15:1, muted >= 7:1, faint >= 4.5:1
@@ -1859,7 +1943,7 @@ a.chip:hover { text-decoration: none; }
 .ver-src svg, .tn-report svg { width: 14px; height: 14px; flex-shrink: 0; }
 .ver-body { display: grid; }
 .vd { padding: 1rem 1.1rem; scroll-margin-top: 1rem; }
-.vd + .vd { border-top: 1px solid var(--line); }
+.vd:not([hidden]) ~ .vd:not([hidden]) { border-top: 1px solid var(--line); }
 .vd:target { background: var(--accent-soft); }
 .vd-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem; }
 .vd-id { margin: 0; font-family: var(--mono); font-size: 0.95rem; font-weight: 600; overflow-wrap: anywhere; }
@@ -1881,6 +1965,8 @@ a.chip:hover { text-decoration: none; }
 .tn-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.3rem 1rem; font-size: 0.88rem; }
 .tn-sub { color: var(--faint); font-size: 0.8rem; }
 .tn-report { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.84rem; }
+/* The version an older report was measured on, beside its link. */
+.link-ver { font-size: 0.74em; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
 /* Rows share the container's columns, so labels, bars and digits line up.
    Bars are one hue, anchored left, rounded at the data end. */
 .tn-bars {
@@ -2027,6 +2113,7 @@ async function main() {
   fs.writeFileSync(path.join(outDir, "assets/site.css"), CSS);
   fs.writeFileSync(path.join(outDir, "assets/site.js"), SITE_JS);
   fs.writeFileSync(path.join(outDir, "assets/theme.js"), THEME_JS);
+  fs.writeFileSync(path.join(outDir, "assets/model.js"), MODEL_JS);
   fs.writeFileSync(path.join(outDir, "index.html"), renderIndex(catalog));
   for (const m of catalog.models) {
     mkdirp(path.join(outDir, "models", m.dir));

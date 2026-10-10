@@ -10,6 +10,7 @@ const Ajv2020 = require("ajv/dist/2020")
 const addFormats = require("ajv-formats")
 const YAML = require("yaml")
 const {root, modelsDir, modelNames, versionFiles} = require("./lib/catalog")
+const {reportProblem} = require("./lib/report")
 
 const metadataFiles = modelNames()
   .map((name) => path.join(modelsDir, name, "metadata.yaml"))
@@ -226,6 +227,20 @@ for (const meta of metadataFiles) {
   if (lines.length > 0) {
     failed = true
     report(path.relative(root, meta), lines)
+  }
+}
+
+// The site links every HTML file beside a model's metadata and skips one it
+// cannot show. Here that is an error, so a broken report gets fixed rather
+// than quietly going missing from the site.
+for (const name of modelNames()) {
+  const dir = path.join(modelsDir, name)
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".html")).sort()) {
+    const problem = reportProblem(path.join(dir, file))
+    if (problem) {
+      failed = true
+      report(path.relative(root, path.join(dir, file)), [problem])
+    }
   }
 }
 

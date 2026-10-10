@@ -29,6 +29,7 @@
   "devDependencies": {
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
+    "html-validate": "^11.16.2",
     "husky": "^9.1.7",
     "yaml": "^2.8.1"
   }
