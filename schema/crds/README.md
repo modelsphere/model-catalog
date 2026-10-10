@@ -13,11 +13,10 @@ Needs Node.js 24, `git`, `tar` and network access. Downloads honor
 ```sh
 npm ci
 npm run helm:install                                   # pinned helm and kubeconform
-npm run validate:helm                                  # versions changed since origin/HEAD
-npm run validate:helm -- --base origin/master
-npm run validate:helm -- --all
+npm run validate:helm                                  # every version file
+npm run validate:helm -- --base origin/master          # what a branch changes
 npm run validate:helm -- models/glm5.3/glm5.3-1.0.1.yaml
-npm run validate:helm -- --all --chart-mode declared
+npm run validate:helm -- --chart-mode declared
 npm run test:helm
 npm run test:helm:integration                          # against released charts
 ```
@@ -63,8 +62,8 @@ then:
 
 ```sh
 npm run helm:build-crds   # rewrites crds-lock.json; commit it
-npm run validate:helm -- --all
-npm run validate:helm -- --all --chart-mode declared
+npm run validate:helm
+npm run validate:helm -- --chart-mode declared
 ```
 
 ## Limits
