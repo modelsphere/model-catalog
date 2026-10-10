@@ -510,7 +510,8 @@ function clientMain() {
   const empty = document.getElementById("empty");
   const count = document.getElementById("result-count");
   const summary = document.getElementById("summary");
-  const fields = ["q", "family", "engine", "hardware", "tag", "hidedep", "sort", "view"];
+  // hardware is several checkboxes, read and written apart from these.
+  const fields = ["q", "family", "engine", "tag", "hidedep", "sort", "view"];
   const defaults = { sort: "uplift", view: "table" };
 
   // The card list and the table carry one node per model, keyed by data-i.
@@ -545,12 +546,15 @@ function clientMain() {
     else if (v != null && (el.tagName !== "SELECT" || [...el.options].some((o) => o.value === v))) el.value = v;
   }
 
+  const gpus = () => [...form.querySelectorAll('input[name="hardware"]')];
+
   function readState() {
     const st = {};
     for (const k of fields) {
       const el = form.elements[k];
       if (el) st[k] = getField(el);
     }
+    st.hardware = gpus().filter((x) => x.checked).map((x) => x.value);
     return st;
   }
 
@@ -559,6 +563,8 @@ function clientMain() {
       const el = form.elements[k];
       if (el) setField(el, params.get(k));
     }
+    const want = params.getAll("hardware");
+    for (const x of gpus()) x.checked = want.includes(x.value);
   }
 
   function matches(m, st) {
@@ -566,17 +572,14 @@ function clientMain() {
     if (!terms.every((t) => m.text.includes(t))) return false;
     if (st.family && m.family !== st.family) return false;
     if (st.engine && !m.engines.includes(st.engine)) return false;
-    if (st.hardware && !m.hardware.includes(st.hardware)) return false;
+    if (st.hardware.length && !st.hardware.some((h) => m.hardware.includes(h))) return false;
     if (st.tag && !m.tags.includes(st.tag)) return false;
     if (st.hidedep && m.deprecated) return false;
     return true;
   }
 
-  let hardware = "";
-
   function apply() {
     const st = readState();
-    hardware = st.hardware;
     const sorter = sorters[st.sort] || sorters[defaults.sort];
     const order = data.map((_, i) => i).sort((a, b) => sorter(data[a], data[b]));
     const visible = data.map((m) => matches(m, st));
@@ -606,6 +609,7 @@ function clientMain() {
       if (v === true) params.set(k, "1");
       else if (v && v !== defaults[k]) params.set(k, v);
     }
+    for (const h of st.hardware) params.append("hardware", h);
     const qs = params.toString();
     history.replaceState(null, "", qs ? `?${qs}` : location.pathname);
   }
@@ -626,15 +630,6 @@ function clientMain() {
     apply();
   });
   form.addEventListener("submit", (e) => e.preventDefault());
-  // A GPU toggle is a radio: clicking the selected one clears the filter.
-  // Clicking an already-checked radio fires click but no change.
-  form.addEventListener("click", (e) => {
-    const r = e.target;
-    if (r.name === "hardware" && r.type === "radio" && r.value === hardware) {
-      r.checked = false;
-      apply();
-    }
-  });
   // Reset clears the filters but keeps the view. The reset event fires before
   // the controls are reset.
   form.addEventListener("reset", () => {
@@ -646,10 +641,14 @@ function clientMain() {
   });
 
   results.addEventListener("click", (e) => {
-    // Tag and family chips set the matching filter.
+    // Tag and family chips set the matching filter; a GPU chip adds its GPU.
     const chip = e.target.closest("[data-filter]");
     if (chip) {
-      setField(form.elements[chip.dataset.filter], chip.dataset.value);
+      if (chip.dataset.filter === "hardware") {
+        for (const x of gpus()) if (x.value === chip.dataset.value) x.checked = true;
+      } else {
+        setField(form.elements[chip.dataset.filter], chip.dataset.value);
+      }
       apply();
       form.scrollIntoView({ block: "nearest" });
       return;
@@ -678,45 +677,38 @@ function clientMain() {
 
 // Theme button: cycles system -> light -> dark. The choice is stored per
 // browser; the boot script in <head> applies it before first paint.
-// Browser entry point for a model page: a GPU tag shows only the variants
-// that run on it. Serialized into assets/model.js, so it must stay
-// self-contained.
+// Browser entry point for a model page: checked GPU tags show only the
+// variants that run on one of them. Serialized into assets/model.js, so it
+// must stay self-contained.
 function modelMain() {
   const form = document.getElementById("gpu-select");
   const count = document.getElementById("variant-count");
   if (!form || !count) return;
-  const radios = [...form.querySelectorAll('input[name="hardware"]')];
+  const boxes = [...form.querySelectorAll('input[name="hardware"]')];
   const variants = [...document.querySelectorAll("article.vd[data-gpus]")];
   const total = variants.length;
   const noun = total === 1 ? "variant" : "variants";
-  let selected = "";
 
   function apply() {
-    const r = radios.find((x) => x.checked);
-    selected = r ? r.value : "";
+    const selected = boxes.filter((x) => x.checked).map((x) => x.value);
     let shown = 0;
     for (const a of variants) {
-      a.hidden = selected !== "" && !a.dataset.gpus.split("|").includes(selected);
+      const on = a.dataset.gpus.split("|");
+      a.hidden = selected.length > 0 && !selected.some((h) => on.includes(h));
       if (!a.hidden) shown++;
     }
-    count.textContent = selected ? `${shown} of ${total} ${noun}` : `${total} ${noun}`;
-    const qs = selected ? `?hardware=${encodeURIComponent(selected)}` : "";
-    history.replaceState(null, "", location.pathname + qs + location.hash);
+    count.textContent = selected.length ? `${shown} of ${total} ${noun}` : `${total} ${noun}`;
+    const params = new URLSearchParams();
+    for (const h of selected) params.append("hardware", h);
+    const qs = params.toString();
+    history.replaceState(null, "", location.pathname + (qs ? `?${qs}` : "") + location.hash);
   }
 
-  const want = new URLSearchParams(location.search).get("hardware");
-  for (const r of radios) r.checked = r.value === want;
+  const want = new URLSearchParams(location.search).getAll("hardware");
+  for (const x of boxes) x.checked = want.includes(x.value);
   form.addEventListener("change", apply);
   form.addEventListener("submit", (e) => e.preventDefault());
-  // Clicking the selected GPU clears it; an already-checked radio fires click
-  // but no change.
-  form.addEventListener("click", (e) => {
-    if (e.target.name === "hardware" && e.target.value === selected) {
-      e.target.checked = false;
-      apply();
-    }
-  });
-  if (want) apply();
+  if (want.length) apply();
 }
 
 function themeMain() {
@@ -807,8 +799,8 @@ function modelHref(m) {
 }
 
 // The hardware filter: one toggle per GPU, grouped by gpuGroup, most first
-// within a group. Radios, so one GPU at a time; clicking the selected one
-// clears it. counts is per GPU; what says what is counted, for the tooltip.
+// within a group. Checkboxes: anything on any checked GPU matches. counts is
+// per GPU; what says what is counted, for the tooltip.
 function gpuToggles(counts, what) {
   const labels = Object.keys(counts).sort(
     (a, b) => gpuGroup(a) - gpuGroup(b) || counts[b] - counts[a] || a.localeCompare(b)
@@ -820,7 +812,7 @@ function gpuToggles(counts, what) {
           .map(
             (h) =>
               `<label class="toggle tint hue-${gpuHue(h)}" title="${what} ${escapeHtml(h)}">` +
-              `<input type="radio" name="hardware" value="${escapeHtml(h)}">` +
+              `<input type="checkbox" name="hardware" value="${escapeHtml(h)}">` +
               `${escapeHtml(h)}<span class="gpu-n">${counts[h]}</span></label>`
           )
           .join("\n        ")}
@@ -913,9 +905,20 @@ function deprecatedBadge(m) {
   return `<span class="badge badge-deprecated"${title}>deprecated</span>`;
 }
 
-// Default variant first; the rest keep file order.
-function orderedVariants(m) {
-  return m.versions[0].variants.slice().sort((a, b) => Number(b.default) - Number(a.default));
+// Optimized variants first, the biggest improvement first, then the rest.
+// Ties go to the default, then file order (sort is stable). The catalog page
+// and the model page list variants in this one order.
+function orderedVariants(m, variants = m.versions[0].variants) {
+  const best = new Map(variants.map((v) => [v.id, (v.isOptimized && variantBest(m, v.id)) || null]));
+  const gain = (v) => (best.get(v.id) ? best.get(v.id).upliftPct : -Infinity);
+  return variants
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(b.isOptimized) - Number(a.isOptimized) ||
+        (gain(a) === gain(b) ? 0 : gain(b) - gain(a)) ||
+        Number(b.default) - Number(a.default)
+    );
 }
 
 // id and badges on one line. The id links to the variant's source, pinned to
@@ -936,7 +939,7 @@ function variantLine(v, cls) {
 // A model's reports in its variants' order, each with its link text: the
 // label alone for one report; for several, the GPUs of the variant each
 // measured, or its file name when those do not tell them apart. A report
-// measured on an earlier version than the latest says which.
+// measured on an earlier version than the latest says which in its tooltip.
 function reportLinks(m, label) {
   const variants = orderedVariants(m);
   const all = m.versions.flatMap((ver) => ver.variants);
@@ -946,6 +949,7 @@ function reportLinks(m, label) {
     const at = v ? variants.findIndex((x) => x.id === v.id) : -1;
     return {
       r,
+      id: v ? v.id : null,
       older: t && t.version !== m.latest ? t.version : null,
       hw: v && v.hardware.length ? v.hardware.join(" / ") : null,
       at: at < 0 ? Infinity : at,
@@ -954,34 +958,52 @@ function reportLinks(m, label) {
   const distinct = items.every((x) => x.hw && items.filter((y) => y.hw === x.hw).length === 1);
   return items
     .sort((a, b) => a.at - b.at)
-    .map(({ r, older, hw }) => ({
+    .map(({ r, id, older, hw }) => ({
       r,
+      id,
       title: escapeHtml(older ? `${r.file}, measured on v${older}` : r.file),
-      text:
-        (items.length < 2 ? label : distinct ? `${escapeHtml(hw)} ${label.toLowerCase()}` : escapeHtml(r.title)) +
-        olderTag(older),
+      text: items.length < 2 ? label : distinct ? `${escapeHtml(hw)} ${label.toLowerCase()}` : escapeHtml(r.title),
     }));
 }
 
-function olderTag(version) {
-  return version ? `<span class="link-ver">v${escapeHtml(version)}</span>` : "";
-}
+// Reports open in a new tab, so the catalog stays where it was.
+const NEW_TAB = `target="_blank" rel="noopener"`;
 
-// Perf reports, then any variants[].link.
-function modelLinks(m, cls, reportLabel) {
-  const links = reportLinks(m, reportLabel).map(
-    ({ r, title, text }) =>
-      `<a class="${cls}" href="${escapeHtml(encodePath(r.path))}" title="${title}">${ICONS.report}${text}</a>`
-  );
+// Perf reports, then any variants[].link, each with the id of the variant it
+// belongs to: a report's tuned variant, a link's own.
+function linkItems(m, cls, reportLabel) {
+  const items = reportLinks(m, reportLabel).map(({ r, id, title, text }) => ({
+    id,
+    html: `<a class="${cls}" href="${escapeHtml(encodePath(r.path))}" title="${title}" ${NEW_TAB}>${ICONS.report}${text}</a>`,
+  }));
   for (const v of m.versions[0].variants) {
     if (!v.link) continue;
-    links.push(
-      `<a class="${cls}" href="${escapeHtml(v.link)}" target="_blank" rel="noopener">${
-        ICONS.external
-      }${escapeHtml(v.id)}</a>`
-    );
+    items.push({
+      id: v.id,
+      html: `<a class="${cls}" href="${escapeHtml(v.link)}" ${NEW_TAB}>${ICONS.external}${escapeHtml(v.id)}</a>`,
+    });
   }
-  return links;
+  return items;
+}
+
+function modelLinks(m, cls, reportLabel) {
+  return linkItems(m, cls, reportLabel).map((x) => x.html);
+}
+
+// The table's links sit on the row of the variant each belongs to, like the
+// bars beside them; any no listed variant owns go below.
+function linksCell(m) {
+  const items = linkItems(m, "t-link", "Report");
+  if (!items.length) return null;
+  const variants = orderedVariants(m);
+  const ids = new Set(variants.map((v) => v.id));
+  const rest = items.filter((x) => !ids.has(x.id)).map((x) => x.html);
+  if (rest.length === items.length) return `<div class="t-links">${rest.join("")}</div>`;
+  const rows = variants.map((v) => {
+    const own = items.filter((x) => x.id === v.id).map((x) => x.html);
+    return own.length ? `<div class="t-link-row">${own.join("")}</div>` : `<div class="t-link-row" aria-hidden="true"></div>`;
+  });
+  return rows.join("") + (rest.length ? `<div class="t-links t-links-rest">${rest.join("")}</div>` : "");
 }
 
 function renderCard(m, i, scale) {
@@ -1071,7 +1093,6 @@ function improvementCell(m, scale) {
 // Compact view: no descriptions (the description is the name's tooltip).
 function renderRow(m, i, scale) {
   const none = `<span class="none">—</span>`;
-  const links = modelLinks(m, "t-link", "Report");
   const title = ` title="${escapeHtml(m.description ? `${m.name} — ${m.description}` : m.name)}"`;
   return `<tr data-i="${i}">
         <td>
@@ -1085,7 +1106,7 @@ function renderRow(m, i, scale) {
         <td>${m.family ? chip("family", m.family) : none}</td>
         <td class="t-variants">${orderedVariants(m).map((v) => variantLine(v, "t-variant")).join("")}</td>
         <td class="num">${improvementCell(m, scale) || none}</td>
-        <td>${links.length ? `<div class="t-links">${links.join("")}</div>` : none}</td>
+        <td>${linksCell(m) || none}</td>
       </tr>`;
 }
 
@@ -1235,10 +1256,14 @@ function baselineRef(ver, t) {
     : code;
 }
 
+// What the benchmark's workloads stand for; the token shape moves to the
+// row's tooltip.
+const WORKLOAD_NAMES = { "50k + 1.5k": "Agentic", "8k + 1k": "Long-Context QA" };
+
 // One bar per workload, drawn against the model's largest result so bars
 // compare across its variants. The best row is bold; a regression draws no bar.
-//   50k + 1.5k  ██████████  +64.2%
-//   8k + 1k     █            +7.6%
+//   Agentic          ██████████  +64.2%
+//   Long-Context QA  █            +7.6%
 function tuningBars(t, scale) {
   const rows = t.workloads.length
     ? t.workloads
@@ -1249,8 +1274,10 @@ function tuningBars(t, scale) {
   return `<div class="tn-bars" title="${escapeHtml(UPLIFT_HELP)}">${rows
     .map((w) => {
       const width = Math.max(0, Math.min(100, (w.upliftPct / scale) * 100));
-      return `<div class="tn-row${w.upliftPct === best ? " tn-best" : ""}"><span class="tn-label">${escapeHtml(
-        w.name
+      const named = WORKLOAD_NAMES[w.name];
+      const tip = named ? ` title="${escapeHtml(`${w.name} tokens, in + out`)}"` : "";
+      return `<div class="tn-row${w.upliftPct === best ? " tn-best" : ""}"${tip}><span class="tn-label">${escapeHtml(
+        named || w.name
       )}</span><span class="tn-track"><span class="tn-fill" style="width:${width.toFixed(
         1
       )}%"></span></span><span class="tn-val">${escapeHtml(w.upliftLabel)}</span></div>`;
@@ -1263,10 +1290,10 @@ function tuningBlock(m, ver, t, scale) {
   const report = t.reportFile
     ? `<a class="tn-report" href="${escapeHtml(encodeURIComponent(t.reportFile))}"${
         older ? ` title="Measured on v${escapeHtml(older)}"` : ""
-      }>${ICONS.report}Perf report${olderTag(older)}</a>`
+      } ${NEW_TAB}>${ICONS.report}Perf report</a>`
     : "";
   return `<div class="tn">
-          <div class="tn-head"><span>Improvement vs ${baselineRef(ver, t)}<span class="tn-sub"> · per workload, in + out tokens</span></span>${report}</div>
+          <div class="tn-head"><span>Improvement vs ${baselineRef(ver, t)}<span class="tn-sub"> · per workload</span></span>${report}</div>
           ${tuningBars(t, scale)}
         </div>`;
 }
@@ -1324,8 +1351,7 @@ function variantDetail(m, ver, v, scale) {
 // The latest version only: what a deploy gets. Earlier versions stay in git
 // and index.json.
 function versionSection(m, ver, scale) {
-  // Default first; the rest keep file order, as on the catalog page.
-  const variants = ver.variants.slice().sort((a, b) => Number(b.default) - Number(a.default));
+  const variants = orderedVariants(m, ver.variants);
   return `<section class="ver" id="v${escapeHtml(ver.version)}">
       <div class="ver-head">
         <h2>Variants</h2>
@@ -1359,7 +1385,7 @@ function renderModelPage(m) {
   const hf = m.source && m.source.hf;
   const reports = reportLinks(m, "Perf report").map(
     ({ r, title, text }) =>
-      `<a class="btn" href="${escapeHtml(encodeURIComponent(r.file))}" title="${title}">${ICONS.report}${text}</a>`
+      `<a class="btn" href="${escapeHtml(encodeURIComponent(r.file))}" title="${title}" ${NEW_TAB}>${ICONS.report}${text}</a>`
   );
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1398,10 +1424,10 @@ ${BOOT_SCRIPT}
     ${m.tags.length ? `<div class="mp-tags">${m.tags.map((t) => filterLink("tag", t, `chip hue-${tagHue(t)}`)).join("")}</div>` : ""}
     ${m.deprecatedReason ? `<p class="mp-dep">Deprecated: ${escapeHtml(m.deprecatedReason)}</p>` : ""}
     ${m.description ? `<p class="mp-desc">${escapeHtml(m.description)}</p>` : ""}
+    ${reports.length ? `<div class="links">${reports.join("")}</div>` : ""}
     <form id="gpu-select">
       ${gpuToggles(countBy(latest.variants.flatMap((v) => [...new Set(v.hardware)])), "Variants for")}
     </form>
-    ${reports.length ? `<div class="links">${reports.join("")}</div>` : ""}
   </section>
   ${versionSection(m, latest, scale)}
 </main>
@@ -1900,9 +1926,12 @@ th[aria-sort="descending"] .sort-ind::after { content: "↓"; }
 .t-meta { margin-top: 0.1rem; font-size: 0.8rem; color: var(--muted); }
 .models-table td:first-child { min-width: 200px; }
 .t-variant { display: flex; align-items: center; gap: 0.45rem; white-space: nowrap; }
-/* Improvement rows mirror the variant lines, so a bar sits on its variant's line. */
-.t-variant, .t-imp-row { height: 1.45rem; }
-.t-variant + .t-variant, .t-imp-row + .t-imp-row { margin-top: 0.35rem; }
+/* Improvement and link rows mirror the variant lines, so a bar or a report
+   sits on its variant's line. */
+.t-variant, .t-imp-row, .t-link-row { height: 1.45rem; }
+.t-variant + .t-variant, .t-imp-row + .t-imp-row, .t-link-row + .t-link-row { margin-top: 0.35rem; }
+.t-link-row { display: flex; align-items: center; gap: 0.75rem; }
+.t-links-rest { margin-top: 0.35rem; }
 /* Improvement bar: one hue, anchored left, rounded at the data end; the number
    in text ink beside it. */
 .imp { display: grid; grid-template-columns: 72px minmax(4.6em, auto); justify-content: end; align-items: center; column-gap: 0.6rem; }
@@ -1924,27 +1953,40 @@ a.model-link:hover { color: var(--accent); }
 .mp-about { display: grid; gap: 0.75rem; }
 .mp-about .model-meta { margin-top: 0; }
 .mp-about .links { margin-top: 0; padding-top: 0; }
-.mp-desc { margin: 0; color: var(--muted); max-width: 72ch; }
+.mp-desc { margin: 0; color: var(--muted); }
 .mp-dep { margin: 0; color: var(--bad); font-size: 0.9rem; }
 .mp-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 a.chip:hover { text-decoration: none; }
-.ver { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); }
+/* Variants: a heading, then one card per variant, so where one ends is
+   never in doubt. The card border sits between --line and --line-strong. */
+.ver { --vd-line: color-mix(in oklab, var(--line) 35%, var(--line-strong)); }
 .ver-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem 0.75rem;
-  padding: 0.9rem 1.1rem;
-  border-bottom: 1px solid var(--line);
+  padding: 0.25rem 0.1rem 0.75rem;
 }
 .ver-head h2 { font-size: 1.05rem; margin: 0; font-variant-numeric: tabular-nums; }
 .ver-meta { font-size: 0.84rem; color: var(--muted); }
 .ver-src { margin-left: auto; display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.84rem; }
 .ver-src svg, .tn-report svg { width: 14px; height: 14px; flex-shrink: 0; }
-.ver-body { display: grid; }
-.vd { padding: 1rem 1.1rem; scroll-margin-top: 1rem; }
-.vd:not([hidden]) ~ .vd:not([hidden]) { border-top: 1px solid var(--line); }
-.vd:target { background: var(--accent-soft); }
+.ver-body { display: grid; gap: 0.85rem; }
+.vd {
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--vd-line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  scroll-margin-top: 1rem;
+}
+.vd:target { background: var(--accent-soft); border-color: var(--accent); }
+/* Phones: variant cards run edge to edge, text lined up with the page's, so
+   the facts and bars get the whole screen width. */
+@media (max-width: 719px) {
+  .vd { margin: 0 -16px; padding: 1rem 16px; border-radius: 0; border-left: 0; border-right: 0; }
+  .tn { padding: 0.65rem 0.7rem; }
+}
 .vd-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem; }
 .vd-id { margin: 0; font-family: var(--mono); font-size: 0.95rem; font-weight: 600; overflow-wrap: anywhere; }
 .vd-id a { color: inherit; }
@@ -1965,8 +2007,6 @@ a.chip:hover { text-decoration: none; }
 .tn-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.3rem 1rem; font-size: 0.88rem; }
 .tn-sub { color: var(--faint); font-size: 0.8rem; }
 .tn-report { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.84rem; }
-/* The version an older report was measured on, beside its link. */
-.link-ver { font-size: 0.74em; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
 /* Rows share the container's columns, so labels, bars and digits line up.
    Bars are one hue, anchored left, rounded at the data end. */
 .tn-bars {
