@@ -135,13 +135,18 @@ async function checkImage(image, { matchDigest = false, ...opts } = {}) {
   return { level: "warning", message: `${pinned}: ${moved}; both are pullable` };
 }
 
-// The images a perf report's benchmark ran, from the JSON it embeds: the
-// baseline's, and each tuning attempt's. Empty sets when it records none.
+// The data block an AutoTune report renders from: its page mounts with
+// AutotuneReport.mountStandalone("autotune-report", "autotune-report-data").
+const REPORT_DATA = "autotune-report-data";
+
+// The images a perf report's benchmark ran, from the block it renders from:
+// the baseline's, and each tuning attempt's, which the page shows as its Image
+// row. Empty sets when it records none.
 function reportImages(html) {
   const out = { baseline: new Set(), attempts: new Set() };
   let data;
   try {
-    data = JSON.parse(jsonBlocks(html)[0].text);
+    data = JSON.parse(jsonBlocks(html).find((block) => block.id === REPORT_DATA).text);
   } catch {
     return out;
   }

@@ -109,7 +109,7 @@ const report = (baseline, ...attempts) => {
   const run = (image) => ({ launch: { config: { image } } });
   const comparison = { baseline: run(baseline), attempts: attempts.map(run) };
   const data = { reports: [{ lang: "en", comparison }, { lang: "zh", comparison }] };
-  return `<!doctype html><html><body><script type="application/json" id="d">${JSON.stringify(data)}</script></body></html>`;
+  return `<!doctype html><html><body><script type="application/json" id="autotune-report-data">${JSON.stringify(data)}</script></body></html>`;
 };
 
 test("an image is its registry, repository and tag", () => {
@@ -149,4 +149,12 @@ test("the tuned image need only be among the attempts", () => {
 test("a report that records no images says so", () => {
   const got = reportMismatches("<!doctype html><html><body></body></html>", { baseline: "a:1", optimized: "a:1" });
   assert.deepEqual(got, ["records no baseline image", "records no tuned image"]);
+});
+
+test("only the block the report renders from is read", () => {
+  const runs = { baseline: "x/sglang:a", optimized: "x/sglang:b" };
+  const decoy = report("y/sglang:a", "y/sglang:b").replace("autotune-report-data", "other-data");
+  const decoyBlock = decoy.match(/<script[\s\S]*<\/script>/)[0];
+  assert.deepEqual(reportMismatches(report("x/sglang:a", "x/sglang:b").replace("<body>", `<body>${decoyBlock}`), runs), []);
+  assert.deepEqual(reportMismatches(decoy, runs), ["records no baseline image", "records no tuned image"]);
 });

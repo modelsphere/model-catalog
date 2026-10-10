@@ -46,13 +46,13 @@ test("JSON blocks are the script elements a browser would read as data", () => {
     `<!doctype html><html><head><title>r</title></head><body>\n` +
     `<!-- <script type="application/json">{"commented": 1}</script> -->\n` +
     `<div title='<script type="application/json">{"attribute": 1}</script>'></div>\n` +
-    `<script type=application/json>{"a": 1}</script>\n` +
+    `<script type=application/json id=a>{"a": 1}</script>\n` +
     `<script TYPE="Application/JSON">{"b": 2}</script>\n` +
     `<script type="application/ld+json">{"c": 3}</script>\n` +
     `<script>var d = 4;</script>\n</body></html>\n`;
   assert.deepEqual(jsonBlocks(html), [
-    { text: '{"a": 1}', line: 4 },
-    { text: '{"b": 2}', line: 5 },
-    { text: '{"c": 3}', line: 6 },
+    { id: "a", text: '{"a": 1}', line: 4 },
+    { id: undefined, text: '{"b": 2}', line: 5 },
+    { id: undefined, text: '{"c": 3}', line: 6 },
   ]);
 });

@@ -12,7 +12,7 @@ const validator = new HtmlValidate(
 );
 
 // The JSON data blocks of an HTML document, <script type="application/json">
-// (or ld+json), as { text, line }. Read with an HTML parser rather than a
+// (or ld+json), as { id, text, line }. Read with an HTML parser rather than a
 // pattern, so a block commented out or quoted inside an attribute is not one.
 // Throws on markup the parser cannot read, such as a file cut off mid-script.
 function jsonBlocks(html) {
@@ -20,7 +20,7 @@ function jsonBlocks(html) {
   return root
     .querySelectorAll("script")
     .filter((el) => /^application\/(?:ld\+)?json$/i.test(String(el.getAttribute("type")?.value ?? "").trim()))
-    .map((el) => ({ text: el.textContent, line: el.location.line }));
+    .map((el) => ({ id: el.getAttribute("id")?.value, text: el.textContent, line: el.location.line }));
 }
 
 // Why the report at file cannot be linked, or null when it can.
