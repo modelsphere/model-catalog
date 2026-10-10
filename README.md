@@ -4,7 +4,7 @@
 [![lints](https://github.com/modelsphere/model-catalog/actions/workflows/lint.yml/badge.svg)](https://github.com/modelsphere/model-catalog/actions/workflows/lint.yml)
 [![pages](https://github.com/modelsphere/model-catalog/actions/workflows/pages.yml/badge.svg?branch=master)](https://github.com/modelsphere/model-catalog/actions/workflows/pages.yml)
 [![License](https://img.shields.io/github/license/modelsphere/model-catalog)](LICENSE)
-[![stars](https://img.shields.io/github/stars/modelsphere/swiss?style=flat&logo=github)](https://github.com/modelsphere/swiss/stargazers)
+[![stars](https://img.shields.io/github/stars/modelsphere/model-catalog?style=flat&logo=github)](https://github.com/modelsphere/model-catalog/stargazers)
 
 The models [Swiss](https://github.com/modelsphere/swiss) can deploy, and **how to serve
 each one**: engine, image, flags, the GPUs it needs, and a tuned variant where
