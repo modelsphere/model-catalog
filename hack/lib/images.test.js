@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { parseRepository, isPrivateAddress, manifestProblem, imageProblem } = require("./images");
+const { parseRepository, isPrivateAddress, manifestProblem, imageProblem, buildOf, reportMismatches } = require("./images");
 
 const publicDns = async () => [{ address: "52.45.125.121" }];
 
@@ -67,4 +67,43 @@ test("a dropped connection is retried", async () => {
   assert.equal(await manifestProblem("org/app", "v1", { fetch, lookup: publicDns }), null);
   const down = registry({ failures: 10 });
   assert.match(await manifestProblem("org/app", "v1", { fetch: down.fetch, lookup: publicDns, attempts: 2 }), /could not reach registry-1\.docker\.io: ECONNRESET/);
+});
+
+// A perf report as AutoTune writes it: each language carries the comparison.
+const report = (baseline, ...attempts) => {
+  const run = (image) => ({ launch: { config: { image } } });
+  const comparison = { baseline: run(baseline), attempts: attempts.map(run) };
+  const data = { reports: [{ lang: "en", comparison }, { lang: "zh", comparison }] };
+  return `<!doctype html><html><body><script type="application/json" id="d">${JSON.stringify(data)}</script></body></html>`;
+};
+
+test("a build is the image's own name and tag, wherever it is pulled from", () => {
+  assert.equal(buildOf("harbor.example.io/team/sglang:v0.5.19"), "sglang:v0.5.19");
+  assert.equal(buildOf("lmsysorg/sglang:v0.5.19"), "sglang:v0.5.19");
+  assert.equal(buildOf("harbor.example.io/team/vllm/vllm-openai:v0.30.0"), buildOf("vllm/vllm-openai:v0.30.0"));
+  assert.equal(buildOf("quay.io/ascend/vllm-ascend:v1@sha256:ff"), "vllm-ascend:v1");
+  assert.equal(buildOf("localhost:5000/app"), "app:latest");
+});
+
+test("a report that measured its variants' builds passes, from any registry", () => {
+  const html = report("harbor.example.io/team/sglang:v0.5.19", "harbor.example.io/team/sglang:v0.5.19");
+  assert.deepEqual(reportMismatches(html, { baseline: "lmsysorg/sglang:v0.5.19", optimized: "lmsysorg/sglang:v0.5.19" }), []);
+});
+
+test("a report that measured another build fails, per side", () => {
+  const html = report("x/sglang:v0.5.18", "x/sglang:v0.5.19");
+  const got = reportMismatches(html, { baseline: "lmsysorg/sglang:v0.5.19", optimized: "lmsysorg/sglang:v0.5.20" });
+  assert.equal(got.length, 2);
+  assert.match(got[0], /baseline variant runs lmsysorg\/sglang:v0\.5\.19, but the report measured x\/sglang:v0\.5\.18/);
+  assert.match(got[1], /tuned variant runs lmsysorg\/sglang:v0\.5\.20/);
+});
+
+test("the tuned build need only be among the attempts", () => {
+  const html = report("x/sglang:a", "x/sglang:b", "x/sglang:c");
+  assert.deepEqual(reportMismatches(html, { baseline: "y/sglang:a", optimized: "y/sglang:c" }), []);
+});
+
+test("a report that records no images says so", () => {
+  const got = reportMismatches("<!doctype html><html><body></body></html>", { baseline: "a:1", optimized: "a:1" });
+  assert.deepEqual(got, ["records no baseline image", "records no tuned image"]);
 });

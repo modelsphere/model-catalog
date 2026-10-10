@@ -67,6 +67,7 @@ models/<name>/
    ```sh
    npm run validate:schema
    npm run helm:install && npm run validate:helm -- models/my-model/my-model-1.0.0.yaml
+   npm run validate:images -- models/my-model/my-model-1.0.0.yaml
    PUBLISHED_INDEX=none npm run build:site   # open site/index.html
    ```
 
@@ -83,6 +84,7 @@ What a variant needs to know:
 | `requires.gpus` | per pod; `nodes` + `topology: lws` for multi-node, with `values.lws.size` equal to `nodes` |
 | `requires.vendor` | `nvidia` (default), `ascend`, `cambricon`, `hygon` or `amd`; one vendor per variant |
 | `requires.gpuProduct` | canonical card names, any one matches: the `nvidia.com/gpu.product` value for NVIDIA (`NVIDIA-H100-80GB-HBM3`), `<Vendor>-<model>` otherwise (`Ascend-910B3`). swiss maps names to each cluster's node labels |
+| `image` | on a public registry, pullable without a login |
 | `chart.version` | exact (`0.8.0`) or a [semver range](https://github.com/Masterminds/semver#checking-version-constraints), quoted (`">=0.8.0"`, `"^0.8.0"`) |
 | `values` | chart values. Site-specific keys (namespace, host paths, registry, route ConfigMaps) are refused by the schema |
 
@@ -104,7 +106,8 @@ tuning:
 
 A report must be a complete HTML document whose embedded JSON parses.
 `validate:schema` fails on a missing, empty or invalid one; the site skips
-linking it.
+linking it. The images it records must be the same builds (name and tag) as the
+two variants', which `validate:images` checks.
 
 ## Development
 
@@ -113,18 +116,23 @@ linking it.
 | `npm run validate:schema` | schemas, tuning references, report HTML (pre-commit and CI) |
 | `npm run test:lib` | tests for `hack/lib` |
 | `npm run helm:install` | pinned Helm and kubeconform, once |
-| `npm run validate:helm -- <file>` | render a version's variants against the charts (`--chart-mode declared` for what a deploy uses) |
-| `npm run validate:images -- <file>` | every image is publicly pullable, no login (CI runs it on changed version files) |
+| `npm run validate:helm` | render every variant against the charts (`--chart-mode declared` for what a deploy uses) |
+| `npm run validate:images` | every image is publicly pullable without a login, and every perf report measured its variants' builds |
+| `npm run validate` | `validate:schema`, `validate:helm` and `validate:images` |
 | `npm run build:site` | the site and `index.json` into `site/` |
 | `npm test` | `hack/validate.sh`: naming and layout checks (needs `yq`) |
 | `./hack/serve.sh` | rebuild `index.json` and serve the tree |
 
+`validate:helm` and `validate:images` check every version file; pass files, or
+`--base REF` for what a branch changes, to narrow them.
+
 Needs Node.js 24.
 
-- **CI.** `lints` runs on pull requests: `validate:schema`, `test:lib`, and
-  `validate-helm` on changed version files against the latest stable charts
-  ([Helm validation](schema/crds/README.md)). `pages` builds the site on pull
-  requests and deploys it on push to `master`.
+- **CI.** `lints` runs on pull requests: `validate:schema`, `test:lib`,
+  `test:helm`, then `validate:helm` against the latest stable charts
+  ([Helm validation](schema/crds/README.md)) and `validate:images`, both on every
+  version file. `pages` builds the site on pull requests and deploys it on push
+  to `master`.
 - **`index.json` is generated, not committed.** It is a pure function of
   `models/` and `catalog.yaml`, with no timestamp, so the same tree gives the
   same catalog ref in swiss.

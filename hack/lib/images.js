@@ -114,8 +114,55 @@ async function imageProblem(image, opts = {}) {
   return null;
 }
 
-// Version files a branch adds or changes since its merge-base with base;
-// deleted ones have nothing left to pull.
+// The images a perf report's benchmark ran, from the JSON it embeds: the
+// baseline's, and each tuning attempt's. Empty sets when it records none.
+function reportImages(html) {
+  const out = { baseline: new Set(), attempts: new Set() };
+  const block = /<script\b[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script\s*>/i.exec(html);
+  let data;
+  try {
+    data = JSON.parse(block[1]);
+  } catch {
+    return out;
+  }
+  const image = (run) => run && run.launch && run.launch.config && run.launch.config.image;
+  for (const r of data.reports || []) {
+    const c = r && r.comparison;
+    if (!c) continue;
+    if (image(c.baseline)) out.baseline.add(image(c.baseline));
+    for (const a of c.attempts || []) if (image(a)) out.attempts.add(image(a));
+  }
+  return out;
+}
+
+// A build, wherever it is pulled from: the image's own name, which a registry
+// mirror keeps (swiss's does), and its tag.
+function buildOf(ref) {
+  const name = String(ref).split("@")[0];
+  const slash = name.lastIndexOf("/");
+  const colon = name.lastIndexOf(":");
+  const repo = colon > slash ? name.slice(0, colon) : name;
+  return `${repo.split("/").pop()}:${colon > slash ? name.slice(colon + 1) : "latest"}`;
+}
+
+// Why a tuned pair's report did not measure the builds its two variants run.
+// The tuned build need only be among the attempts: a tuning run may try more
+// than one, and its best overall can be the baseline.
+function reportMismatches(html, { baseline, optimized }) {
+  const ran = reportImages(html);
+  const out = [];
+  for (const [role, want, got] of [["baseline", baseline, ran.baseline], ["tuned", optimized, ran.attempts]]) {
+    if (!got.size) out.push(`records no ${role} image`);
+    else if (![...got].some((x) => buildOf(x) === buildOf(want))) {
+      out.push(`the ${role} variant runs ${want}, but the report measured ${[...got].join(", ")}`);
+    }
+  }
+  return out;
+}
+
+// Version files a branch adds or changes since its merge-base with base, and
+// every version of a model whose metadata or perf report changed. Deleted
+// files have nothing left to check.
 function changedVersionFiles(root, base) {
   const git = (args) => {
     const result = command("git", args, { cwd: root });
@@ -124,9 +171,10 @@ function changedVersionFiles(root, base) {
   };
   const mergeBase = git(["merge-base", base, "HEAD"]).trim();
   const changed = git(["diff", "--name-only", "-z", "--diff-filter=AMR", mergeBase, "HEAD"]).split("\0").filter(Boolean);
+  const touched = new Set(changed.filter((f) => /^models\/[^/]+\/(metadata\.yaml|[^/]+\.html)$/.test(f)).map((f) => f.split("/")[1]));
   const models = path.join(root, "models");
   const versions = modelNames(models).flatMap((name) => versionFiles(name, models));
-  return versions.filter((file) => changed.includes(file));
+  return versions.filter((file) => changed.includes(file) || touched.has(file.split("/")[1]));
 }
 
-module.exports = { parseRepository, isPrivateAddress, manifestProblem, imageProblem, changedVersionFiles };
+module.exports = { parseRepository, isPrivateAddress, manifestProblem, imageProblem, reportImages, buildOf, reportMismatches, changedVersionFiles };

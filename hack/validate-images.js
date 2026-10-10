@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Check every image the catalog names can be pulled anonymously.
+// Check every image the catalog names can be pulled anonymously, and that each
+// tuned pair's perf report measured the builds its two variants run.
 //
 //   npm run validate:images                           # the whole catalog
 //   npm run validate:images -- models/x/x-1.0.0.yaml  # only these files
@@ -10,7 +11,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const YAML = require("yaml");
 const {root, modelNames, versionFiles} = require("./lib/catalog");
-const {imageProblem, changedVersionFiles} = require("./lib/images");
+const {imageProblem, reportMismatches, changedVersionFiles} = require("./lib/images");
 
 function select(args) {
   const files = [];
@@ -38,10 +39,12 @@ async function main() {
     return 0;
   }
 
+  const docs = new Map(files.map((file) => [file, YAML.parse(fs.readFileSync(path.join(root, file), "utf8"))]));
+
   // Each distinct image once, however many variants share it.
   const uses = new Map();
-  for (const file of files) {
-    for (const v of YAML.parse(fs.readFileSync(path.join(root, file), "utf8")).variants ?? []) {
+  for (const [file, doc] of docs) {
+    for (const v of doc.variants ?? []) {
       if (!v?.image?.repository) continue;
       const key = JSON.stringify([v.image.repository, String(v.image.tag ?? "latest"), v.image.digest ?? ""]);
       if (!uses.has(key)) uses.set(key, []);
@@ -62,11 +65,32 @@ async function main() {
   }
 
   const byFile = new Map();
+  const note = (file, line) => {
+    if (!byFile.has(file)) byFile.set(file, []);
+    byFile.get(file).push(line);
+  };
   for (const [key, problem] of problems) {
-    for (const {file, id} of uses.get(key)) {
-      if (!byFile.has(file)) byFile.set(file, []);
-      byFile.get(file).push(`${id}: ${problem}`);
-    }
+    for (const {file, id} of uses.get(key)) note(file, `${id}: ${problem}`);
+  }
+
+  // Tuned pairs of the selected versions. A missing report or variant is
+  // validate:schema's to report.
+  let reports = 0;
+  for (const name of new Set([...docs.keys()].map((file) => file.split("/")[1]))) {
+    const meta = `models/${name}/metadata.yaml`;
+    const tuning = YAML.parse(fs.readFileSync(path.join(root, meta), "utf8"))?.tuning ?? [];
+    tuning.forEach((t, i) => {
+      const doc = [...docs].find(([file, d]) => file.split("/")[1] === name && String(d?.version) === String(t?.version))?.[1];
+      const variant = (id) => doc?.variants?.find((v) => v?.id === id);
+      const [b, o] = [variant(t?.baseline), variant(t?.optimized)];
+      const html = path.join(root, "models", name, String(t?.report ?? ""));
+      if (!t?.report || !b?.image || !o?.image || !fs.existsSync(html)) return;
+      reports++;
+      const image = (v) => `${v.image.repository}:${v.image.tag ?? "latest"}`;
+      for (const m of reportMismatches(fs.readFileSync(html, "utf8"), {baseline: image(b), optimized: image(o)})) {
+        note(meta, `tuning[${i}] (${t.report}): ${m}`);
+      }
+    });
   }
   [...byFile.keys()].sort().forEach((file, i) => {
     if (i) console.error("");
@@ -74,8 +98,10 @@ async function main() {
     for (const line of byFile.get(file)) console.error(`  ${line}`);
   });
   const ok = keys.length - problems.size;
+  const bad = [...byFile.keys()].filter((f) => f.endsWith("metadata.yaml")).reduce((n, f) => n + byFile.get(f).length, 0);
   console.log(`${ok} of ${keys.length} images publicly pullable, in ${files.length} version file${files.length === 1 ? "" : "s"}`);
-  return problems.size ? 1 : 0;
+  console.log(`${reports} perf report${reports === 1 ? "" : "s"} checked against their variants' builds, ${bad} mismatch${bad === 1 ? "" : "es"}`);
+  return problems.size || bad ? 1 : 0;
 }
 
 main().then((code) => process.exit(code), (err) => {
