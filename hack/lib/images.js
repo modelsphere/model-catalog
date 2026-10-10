@@ -3,11 +3,13 @@
 // the registry it names. A catalog is public; an image only one site can pull
 // is a variant only that site can deploy.
 
+const crypto = require("crypto");
 const dns = require("dns").promises;
 const net = require("net");
 const path = require("path");
 const { command } = require("./helm-validation");
 const { modelNames, versionFiles } = require("./catalog");
+const { jsonBlocks } = require("./report");
 
 const ACCEPT = [
   "application/vnd.oci.image.index.v1+json",
@@ -16,15 +18,16 @@ const ACCEPT = [
   "application/vnd.docker.distribution.manifest.v2+json",
 ].join(", ");
 
-// A repository the way containerd reads it: no registry host means Docker Hub,
-// and a bare name is an official image under library/.
+// A repository the way containerd reads it: no registry host (or docker.io)
+// means Docker Hub, and a bare name there is an official image under library/.
 function parseRepository(repository) {
   const parts = repository.split("/");
   const first = parts[0];
   if (parts.length > 1 && (first.includes(".") || first.includes(":") || first === "localhost")) {
-    return { registry: first, host: first, name: parts.slice(1).join("/") };
+    if (first !== "docker.io" && first !== "index.docker.io") return { registry: first, host: first, name: parts.slice(1).join("/") };
+    parts.shift();
   }
-  return { registry: "docker.io", host: "registry-1.docker.io", name: parts.length === 1 ? `library/${repository}` : repository };
+  return { registry: "docker.io", host: "registry-1.docker.io", name: parts.length === 1 ? `library/${parts[0]}` : parts.join("/") };
 }
 
 // RFC 1918, loopback, link-local and unique-local: nobody outside reaches them.
@@ -59,12 +62,13 @@ function bearerChallenge(header) {
   return params.realm ? params : null;
 }
 
-// Why ref (a tag or digest) cannot be pulled anonymously from repository, or
-// null when it can. HEAD first: Docker Hub does not count it against pulls.
-async function manifestProblem(repository, ref, { fetch = globalThis.fetch, lookup, tokens = new Map(), attempts = 3 } = {}) {
+// The manifest digest ref (a tag or digest) names in repository, pulled
+// anonymously, as { digest }; or why it cannot be pulled, as { problem }.
+// HEAD first: Docker Hub does not count it against pulls.
+async function resolveManifest(repository, ref, { fetch = globalThis.fetch, lookup, tokens = new Map(), attempts = 3 } = {}) {
   const { host, name } = parseRepository(repository);
   const internal = await privateNetwork(host, lookup);
-  if (internal) return `${host} is on a private network (${internal})`;
+  if (internal) return { problem: `${host} is on a private network (${internal})` };
   const url = `https://${host}/v2/${name}/manifests/${ref}`;
   const request = async (method) => {
     const token = tokens.get(`${host}/${name}`);
@@ -77,51 +81,67 @@ async function manifestProblem(repository, ref, { fetch = globalThis.fetch, look
       if (r.status === 405) r = await request("GET");
       if (r.status === 401 && !tokens.has(`${host}/${name}`)) {
         const challenge = bearerChallenge(r.headers.get("www-authenticate"));
-        if (!challenge) return "the registry requires a login";
+        if (!challenge) return { problem: "the registry requires a login" };
         const q = new URLSearchParams({ scope: `repository:${name}:pull` });
         if (challenge.service) q.set("service", challenge.service);
         const t = await fetch(`${challenge.realm}?${q}`);
         const body = t.ok ? await t.json() : {};
-        if (!(body.token || body.access_token)) return "the registry gives no anonymous pull token";
+        if (!(body.token || body.access_token)) return { problem: "the registry gives no anonymous pull token" };
         tokens.set(`${host}/${name}`, body.token || body.access_token);
         r = await request("HEAD");
         if (r.status === 405) r = await request("GET");
       }
-      if (r.ok) return null;
-      if (r.status === 401 || r.status === 403) return "not pullable without a login (private, or no such repository)";
-      if (r.status === 404) return "no such manifest";
+      if (r.ok) {
+        // Registries name the digest in a header; for one that does not, it is
+        // the digest of the manifest's bytes.
+        let digest = r.headers.get("docker-content-digest");
+        if (!digest) {
+          const body = await request("GET");
+          if (!body.ok) throw new Error(`HTTP ${body.status}`);
+          digest = `sha256:${crypto.createHash("sha256").update(Buffer.from(await body.arrayBuffer())).digest("hex")}`;
+        }
+        return { digest };
+      }
+      if (r.status === 401 || r.status === 403) return { problem: "not pullable without a login (private, or no such repository)" };
+      if (r.status === 404) return { problem: "no such manifest" };
       if (r.status === 429 || r.status >= 500) throw new Error(`HTTP ${r.status}`);
-      return `HTTP ${r.status}`;
+      return { problem: `HTTP ${r.status}` };
     } catch (err) {
       lastError = err;
       await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** i));
     }
   }
   const reason = lastError && lastError.cause ? lastError.cause.code || lastError.cause.message : lastError && lastError.message;
-  return `could not reach ${host}: ${reason}`;
+  return { problem: `could not reach ${host}: ${reason}` };
 }
 
-// Why an image block cannot be pulled anonymously, or null when it can: its
-// tag must resolve, and a pinned digest must exist in the same repository.
-async function imageProblem(image, opts = {}) {
+// How an image block fares pulled anonymously, as { level, message }. "error"
+// when its tag or pinned digest cannot be pulled; "warning" when the tag has
+// moved off a pinned digest that is still pullable; else "ok". With
+// matchDigest a moved tag is an error: a runtime pulls the digest and ignores
+// the tag, so the two name different builds. Tags move, so only a change
+// being made can be held to that.
+async function checkImage(image, { matchDigest = false, ...opts } = {}) {
   const ref = `${image.repository}:${image.tag}`;
-  const tag = await manifestProblem(image.repository, image.tag, opts);
-  if (tag) return `${ref}: ${tag}`;
-  if (image.digest) {
-    const pinned = await manifestProblem(image.repository, image.digest, opts);
-    if (pinned) return `${ref}@${image.digest}: ${pinned}`;
-  }
-  return null;
+  const tag = await resolveManifest(image.repository, image.tag, opts);
+  if (tag.problem) return { level: "error", message: `${ref}: ${tag.problem}` };
+  if (!image.digest) return { level: "ok", message: `${ref}: pullable, resolves to ${tag.digest}` };
+  const pinned = `${ref}@${image.digest}`;
+  if (tag.digest === image.digest) return { level: "ok", message: `${pinned}: pullable, tag matches the pinned digest` };
+  const moved = `the tag resolves to ${tag.digest} now, not the pinned digest`;
+  if (matchDigest) return { level: "error", message: `${pinned}: ${moved}` };
+  const digest = await resolveManifest(image.repository, image.digest, opts);
+  if (digest.problem) return { level: "error", message: `${pinned}: ${digest.problem}` };
+  return { level: "warning", message: `${pinned}: ${moved}; both are pullable` };
 }
 
 // The images a perf report's benchmark ran, from the JSON it embeds: the
 // baseline's, and each tuning attempt's. Empty sets when it records none.
 function reportImages(html) {
   const out = { baseline: new Set(), attempts: new Set() };
-  const block = /<script\b[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script\s*>/i.exec(html);
   let data;
   try {
-    data = JSON.parse(block[1]);
+    data = JSON.parse(jsonBlocks(html)[0].text);
   } catch {
     return out;
   }
@@ -135,17 +155,18 @@ function reportImages(html) {
   return out;
 }
 
-// A build, wherever it is pulled from: the image's own name, which a registry
-// mirror keeps (swiss's does), and its tag.
-function buildOf(ref) {
+// An image reference in full, the way containerd reads it, digest aside:
+// registry, repository and tag, so nginx and docker.io/library/nginx:latest are
+// one image, and the same tag on another registry or namespace is another.
+function imageRef(ref) {
   const name = String(ref).split("@")[0];
   const slash = name.lastIndexOf("/");
   const colon = name.lastIndexOf(":");
-  const repo = colon > slash ? name.slice(0, colon) : name;
-  return `${repo.split("/").pop()}:${colon > slash ? name.slice(colon + 1) : "latest"}`;
+  const { registry, name: repository } = parseRepository(colon > slash ? name.slice(0, colon) : name);
+  return `${registry}/${repository}:${colon > slash ? name.slice(colon + 1) : "latest"}`;
 }
 
-// Why a tuned pair's report did not measure the builds its two variants run.
+// Why a tuned pair's report did not measure the images its two variants run.
 // The tuned build need only be among the attempts: a tuning run may try more
 // than one, and its best overall can be the baseline.
 function reportMismatches(html, { baseline, optimized }) {
@@ -153,7 +174,7 @@ function reportMismatches(html, { baseline, optimized }) {
   const out = [];
   for (const [role, want, got] of [["baseline", baseline, ran.baseline], ["tuned", optimized, ran.attempts]]) {
     if (!got.size) out.push(`records no ${role} image`);
-    else if (![...got].some((x) => buildOf(x) === buildOf(want))) {
+    else if (![...got].some((x) => imageRef(x) === imageRef(want))) {
       out.push(`the ${role} variant runs ${want}, but the report measured ${[...got].join(", ")}`);
     }
   }
@@ -177,4 +198,4 @@ function changedVersionFiles(root, base) {
   return versions.filter((file) => changed.includes(file) || touched.has(file.split("/")[1]));
 }
 
-module.exports = { parseRepository, isPrivateAddress, manifestProblem, imageProblem, reportImages, buildOf, reportMismatches, changedVersionFiles };
+module.exports = { parseRepository, isPrivateAddress, resolveManifest, checkImage, reportImages, imageRef, reportMismatches, changedVersionFiles };

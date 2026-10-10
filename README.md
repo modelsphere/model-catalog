@@ -104,10 +104,8 @@ tuning:
     report: my-model-h100-report.html
 ```
 
-A report must be a complete HTML document whose embedded JSON parses.
-`validate:schema` fails on a missing, empty or invalid one; the site skips
-linking it. The images it records must be the same builds (name and tag) as the
-two variants', which `validate:images` checks.
+A report must be a complete HTML document whose embedded JSON parses. `validate:schema` fails on a missing, empty or invalid one; the site skips
+linking it. The images it records must be the two variants' own (registry, repository and tag), which `validate:images` checks.
 
 ## Development
 
@@ -117,7 +115,7 @@ two variants', which `validate:images` checks.
 | `npm run test:lib` | tests for `hack/lib` |
 | `npm run helm:install` | pinned Helm and kubeconform, once |
 | `npm run validate:helm` | render every variant against the charts (`--chart-mode declared` for what a deploy uses) |
-| `npm run validate:images` | every image is publicly pullable without a login, and every perf report measured its variants' builds |
+| `npm run validate:images` | every image is publicly pullable without a login, by tag and by any pinned `digest`, and every perf report measured its variants' builds<br> a tag that has moved off its pinned digest is a warning; `--match-digest` makes it an error |
 | `npm run validate` | `validate:schema`, `validate:helm` and `validate:images` |
 | `npm run build:site` | the site and `index.json` into `site/` |
 | `npm test` | `hack/validate.sh`: naming and layout checks (needs `yq`) |
@@ -130,9 +128,9 @@ Needs Node.js 24.
 
 - **CI.** `lints` runs on pull requests: `validate:schema`, `test:lib`,
   `test:helm`, then `validate:helm` against the latest stable charts
-  ([Helm validation](schema/crds/README.md)) and `validate:images`, both on every
-  version file. `pages` builds the site on pull requests and deploys it on push
-  to `master`.
+  ([Helm validation](schema/crds/README.md)) and `validate:images --match-digest`,
+  both on every version file. `pages` builds the site on pull requests and
+  deploys it on push to `master`.
 - **`index.json` is generated, not committed.** It is a pure function of
   `models/` and `catalog.yaml`, with no timestamp, so the same tree gives the
   same catalog ref in swiss.

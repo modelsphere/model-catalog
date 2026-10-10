@@ -11,7 +11,7 @@ variants:
       name: sglang
       version: ">=0.7.1"
     image:
-      repository: harbor.4pd.io/hardcore-tech/sglang
+      repository: 4pdosc/sglang
       tag: glm-5.3-flash
     requires:
       gpus: 8
@@ -83,7 +83,7 @@ variants:
       name: sglang
       version: ">=0.7.1"
     image:
-      repository: harbor.4pd.io/hardcore-tech/sglang
+      repository: 4pdosc/sglang
       tag: glm-5.3-flash
     requires:
       gpus: 8
@@ -157,7 +157,7 @@ variants:
       name: sglang
       version: ">=0.7.1"
     image:
-      repository: harbor.4pd.io/hardcore-tech/sglang
+      repository: 4pdosc/sglang
       tag: glm-5.3-flash
     requires:
       gpus: 8
@@ -230,7 +230,7 @@ variants:
       name: sglang
       version: ">=0.7.1"
     image:
-      repository: harbor.4pd.io/hardcore-tech/sglang
+      repository: 4pdosc/sglang
       tag: glm-5.3-flash
       digest: sha256:127b3812d892ee1a4cce74475e1e6b645e74de5c67204b34615bc6279c84a539
     requires:

@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
-const { reportProblem } = require("./report");
+const { reportProblem, jsonBlocks } = require("./report");
 
 function file(content) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "report-"));
@@ -39,4 +39,20 @@ test("a report cut off mid-file is not", () => {
 
 test("valid HTML carrying broken JSON is not", () => {
   assert.match(reportProblem(file(page('{"rows": [1, 2'))), /^6: the JSON .* does not parse/);
+});
+
+test("JSON blocks are the script elements a browser would read as data", () => {
+  const html =
+    `<!doctype html><html><head><title>r</title></head><body>\n` +
+    `<!-- <script type="application/json">{"commented": 1}</script> -->\n` +
+    `<div title='<script type="application/json">{"attribute": 1}</script>'></div>\n` +
+    `<script type=application/json>{"a": 1}</script>\n` +
+    `<script TYPE="Application/JSON">{"b": 2}</script>\n` +
+    `<script type="application/ld+json">{"c": 3}</script>\n` +
+    `<script>var d = 4;</script>\n</body></html>\n`;
+  assert.deepEqual(jsonBlocks(html), [
+    { text: '{"a": 1}', line: 4 },
+    { text: '{"b": 2}', line: 5 },
+    { text: '{"c": 3}', line: 6 },
+  ]);
 });

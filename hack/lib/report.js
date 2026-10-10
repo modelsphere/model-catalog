@@ -3,7 +3,7 @@
 // and validate:schema fails on any other, so the two cannot disagree.
 
 const fs = require("fs");
-const { HtmlValidate, StaticConfigLoader } = require("html-validate");
+const { HtmlValidate, Parser, StaticConfigLoader } = require("html-validate");
 
 // Conformance to the HTML standard for a whole document, without style rules:
 // a cut-off file fails as an unclosed element, a non-HTML one on its doctype.
@@ -11,9 +11,17 @@ const validator = new HtmlValidate(
   new StaticConfigLoader({ extends: ["html-validate:standard", "html-validate:document"] })
 );
 
-// A report renders from the JSON it embeds, so a page that is valid HTML but
-// carries broken JSON still shows nothing.
-const JSON_BLOCK = /<script\b[^>]*\btype\s*=\s*["']?application\/(?:ld\+)?json["']?[^>]*>([\s\S]*?)<\/script\s*>/gi;
+// The JSON data blocks of an HTML document, <script type="application/json">
+// (or ld+json), as { text, line }. Read with an HTML parser rather than a
+// pattern, so a block commented out or quoted inside an attribute is not one.
+// Throws on markup the parser cannot read, such as a file cut off mid-script.
+function jsonBlocks(html) {
+  const root = new Parser(validator.getConfigForSync("report.html")).parseHtml(html);
+  return root
+    .querySelectorAll("script")
+    .filter((el) => /^application\/(?:ld\+)?json$/i.test(String(el.getAttribute("type")?.value ?? "").trim()))
+    .map((el) => ({ text: el.textContent, line: el.location.line }));
+}
 
 // Why the report at file cannot be linked, or null when it can.
 function reportProblem(file) {
@@ -32,15 +40,16 @@ function reportProblem(file) {
     return `not valid HTML: ${shown.join("; ")}`;
   }
 
-  for (const block of text.matchAll(JSON_BLOCK)) {
+  // A report renders from the JSON it embeds, so a page that is valid HTML but
+  // carries broken JSON still shows nothing.
+  for (const block of jsonBlocks(text)) {
     try {
-      JSON.parse(block[1]);
+      JSON.parse(block.text);
     } catch (err) {
-      const line = text.slice(0, block.index).split("\n").length;
-      return `${line}: the JSON in <script type="application/json"> does not parse: ${err.message}`;
+      return `${block.line}: the JSON in <script type="application/json"> does not parse: ${err.message}`;
     }
   }
   return null;
 }
 
-module.exports = { reportProblem };
+module.exports = { reportProblem, jsonBlocks };

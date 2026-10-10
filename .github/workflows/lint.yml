@@ -38,6 +38,7 @@ jobs:
         run: npm run validate:helm
 
       # A catalog is public, so every image must be pullable by anyone. The
-      # runner is the outside world: no login, no VPN.
+      # runner is the outside world: no login, no VPN. A pull request also
+      # holds each pinned digest to what its tag resolves to now.
       - name: Check every image is publicly pullable
-        run: npm run validate:images
+        run: npm run validate:images -- --match-digest
