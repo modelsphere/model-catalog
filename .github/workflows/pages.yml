@@ -34,6 +34,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install pinned Helm and kubeconform
+        run: npm run helm:install
+
       - name: validate
         run: npm run validate
 
