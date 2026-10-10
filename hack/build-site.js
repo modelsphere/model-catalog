@@ -1260,14 +1260,14 @@ function baselineRef(ver, t) {
     : code;
 }
 
-// What the benchmark's workloads stand for; the token shape moves to the
-// row's tooltip.
-const WORKLOAD_NAMES = { "50k + 1.5k": "Agentic", "8k + 1k": "Long-Context QA" };
+// The perf reports' own English names for the benchmark's workloads; the
+// token shape moves to the row's tooltip.
+const WORKLOAD_NAMES = { "50k + 1.5k": "Agent long-context", "8k + 1k": "Document QA" };
 
 // One bar per workload, drawn against the model's largest result so bars
 // compare across its variants. The best row is bold; a regression draws no bar.
-//   Agentic          ██████████  +64.2%
-//   Long-Context QA  █            +7.6%
+//   Agent long-context  ██████████  +64.2%
+//   Document QA         █            +7.6%
 function tuningBars(t, scale) {
   const rows = t.workloads.length
     ? t.workloads

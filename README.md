@@ -95,9 +95,9 @@ tuning:
     optimized: sglang-tp8-h100-optimized
     uplift: 58.0                         # headline % over the baseline
     workloads:                           # optional: every workload measured
-      - name: 50k + 1.5k                 # shown as "Agentic"
+      - name: 50k + 1.5k                 # shown as "Agent long-context"
         uplift: 58.0
-      - name: 8k + 1k                    # shown as "Long-Context QA"
+      - name: 8k + 1k                    # shown as "Document QA"
         uplift: 23.4
     report: my-model-h100-report.html
 ```
