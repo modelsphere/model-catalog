@@ -1951,8 +1951,6 @@ a.model-link:hover { color: var(--accent); }
 
 /* Model page */
 .eyebrow a { color: inherit; }
-/* Header, content and footer share one narrower column. */
-.mp-page .wrap { max-width: 1180px; }
 .mp { display: grid; gap: 1rem; }
 .mp-about { display: grid; gap: 0.75rem; }
 .mp-about .model-meta { margin-top: 0; }
