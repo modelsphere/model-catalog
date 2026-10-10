@@ -1,0 +1,23 @@
+apiVersion: catalog.swiss/v1
+name: mistral-small-4-119b-2603
+displayName: Mistral-Small-4-119B-2603
+description: Mistral-Small-4-119B-2603 on 2 H100 GPUs. Configs require the
+  measured tokenizer at /tokenizer.
+family: mistral
+tags:
+  - chat
+  - reasoning
+  - tool-use
+source:
+  hf: mistralai/Mistral-Small-4-119B-2603
+tuning:
+  - version: 1.0.0
+    baseline: sglang-tp2-h100-baseline
+    optimized: sglang-tp2-h100-optimized
+    uplift: 52.5
+    workloads:
+      - name: 50k + 1.5k
+        uplift: 52.5
+      - name: 8k + 1k
+        uplift: 32.1
+    report: mistral-small-4-119b-2603-h100-report.html
