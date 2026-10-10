@@ -969,12 +969,16 @@ function reportLinks(m, label) {
 // Reports open in a new tab, so the catalog stays where it was.
 const NEW_TAB = `target="_blank" rel="noopener"`;
 
+// The site is in English; an AutoTune report picks its language from the URL
+// fragment, falling back to its own default when it has no such language.
+const REPORT_LANG = "#en";
+
 // Perf reports, then any variants[].link, each with the id of the variant it
 // belongs to: a report's tuned variant, a link's own.
 function linkItems(m, cls, reportLabel) {
   const items = reportLinks(m, reportLabel).map(({ r, id, title, text }) => ({
     id,
-    html: `<a class="${cls}" href="${escapeHtml(encodePath(r.path))}" title="${title}" ${NEW_TAB}>${ICONS.report}${text}</a>`,
+    html: `<a class="${cls}" href="${escapeHtml(encodePath(r.path) + REPORT_LANG)}" title="${title}" ${NEW_TAB}>${ICONS.report}${text}</a>`,
   }));
   for (const v of m.versions[0].variants) {
     if (!v.link) continue;
@@ -1288,7 +1292,7 @@ function tuningBars(t, scale) {
 function tuningBlock(m, ver, t, scale) {
   const older = t.version !== ver.version ? t.version : null;
   const report = t.reportFile
-    ? `<a class="tn-report" href="${escapeHtml(encodeURIComponent(t.reportFile))}"${
+    ? `<a class="tn-report" href="${escapeHtml(encodeURIComponent(t.reportFile) + REPORT_LANG)}"${
         older ? ` title="Measured on v${escapeHtml(older)}"` : ""
       } ${NEW_TAB}>${ICONS.report}Perf report</a>`
     : "";
@@ -1385,7 +1389,7 @@ function renderModelPage(m) {
   const hf = m.source && m.source.hf;
   const reports = reportLinks(m, "Perf report").map(
     ({ r, title, text }) =>
-      `<a class="btn" href="${escapeHtml(encodeURIComponent(r.file))}" title="${title}" ${NEW_TAB}>${ICONS.report}${text}</a>`
+      `<a class="btn" href="${escapeHtml(encodeURIComponent(r.file) + REPORT_LANG)}" title="${title}" ${NEW_TAB}>${ICONS.report}${text}</a>`
   );
   return `<!DOCTYPE html>
 <html lang="en">
