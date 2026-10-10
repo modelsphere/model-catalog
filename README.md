@@ -1,328 +1,143 @@
 # swiss-catalog
 
-![GitHub License](https://img.shields.io/github/license/:modelsphere/model-catalog)
-
+[![catalog](https://img.shields.io/badge/catalog-modelsphere.github.io%2Fmodel--catalog-6E40C9)](https://modelsphere.github.io/model-catalog/)
+[![lints](https://github.com/modelsphere/model-catalog/actions/workflows/lint.yml/badge.svg)](https://github.com/modelsphere/model-catalog/actions/workflows/lint.yml)
+[![pages](https://github.com/modelsphere/model-catalog/actions/workflows/pages.yml/badge.svg?branch=master)](https://github.com/modelsphere/model-catalog/actions/workflows/pages.yml)
+[![License](https://img.shields.io/github/license/modelsphere/model-catalog)](LICENSE)
+[![stars](https://img.shields.io/github/stars/modelsphere/swiss?style=flat&logo=github)](https://github.com/modelsphere/swiss/stargazers)
 
 The models [Swiss](https://github.com/modelsphere/swiss) can deploy, and **how to serve
 each one**: engine, image, flags, the GPUs it needs, and a tuned variant where
 we have one. Nothing here says *where* a model runs; that belongs to each site's
 private profile.
 
-**Browse the catalog: <https://modelsphere.github.io/model-catalog/>**
-
 ## Get started
 
-| You want to… | Start here |
-| --- | --- |
-| Find a model and see what hardware it needs | [Browse the catalog](#browse-the-catalog) |
-| Try a model with `swiss` | [Use the catalog with swiss](#use-the-catalog-with-swiss) |
-| Add a model, or publish a new version | [Add a model](#add-a-model) |
-| Understand why the catalog is shaped this way | [Versions are immutable](#versions-are-immutable) and the sections after it |
+**Browse** <https://modelsphere.github.io/model-catalog/>, rebuilt on every push
+to `master`. Each model lists its variants, the GPUs they need, the tuned
+variant's improvement over its baseline, and the perf report behind it. Filters
+live in the URL, so a view can be shared, e.g.
+[models on B300](https://modelsphere.github.io/model-catalog/?hardware=B300).
 
-### Browse the catalog
-
-<https://modelsphere.github.io/model-catalog/> lists every model in this repo
-and is rebuilt on each push to `master`. For each model it shows:
-
-- its variants, and the GPUs each one needs (`8 × H100`, `8 × GPU × 2 nodes`)
-- which variant is the default
-- how much faster the tuned variant is than the baseline, and the perf report
-  behind that number
-
-You can search, filter by family, engine, hardware or tag, sort by uplift, and
-switch between a table and cards. Filters are kept in the URL, so a view can be
-shared. For example:
-[every model with a tuned variant, biggest uplift first](https://modelsphere.github.io/model-catalog/?cmp=1&sort=uplift).
-
-### Use the catalog with swiss
-
-`swiss` and `swissd` read the catalog through `index.json`. The published
-catalog is the site itself, <https://modelsphere.github.io/model-catalog/>:
+**Use it with swiss.** The site is also the catalog swiss reads (`index.json`):
 
 ```sh
 swiss catalog list --catalog https://modelsphere.github.io/model-catalog/
 ```
 
-or, in a swissd site profile:
-
 ```yaml
+# swissd site profile
 catalogs:
   - name: public
     url: https://modelsphere.github.io/model-catalog/
     default: true
 ```
 
-A deploy records the model version and the sha256 of its file, so it can be
-reproduced months later: a published version never changes. To point swiss at
-this checkout instead (needs `npm install` and `python3`):
+To try this checkout instead, serve it locally (needs `npm install` and `python3`):
 
 ```sh
-./hack/serve.sh                                      # http://127.0.0.1:8000
-swiss catalog list --catalog http://127.0.0.1:8000
-swiss plan --catalog http://127.0.0.1:8000 --model glm5.1
+./hack/serve.sh                                   # http://127.0.0.1:8000
+swiss plan --catalog http://127.0.0.1:8000 --model qwen3.6-35b-a3b   # also needs a site profile
 ```
 
-`swiss plan` renders a real deploy, so it also needs a site profile (namespace,
-model paths, registry mirror). That lives outside this repo.
-
-### Add a model
-
-You need Node.js. Start from the closest existing model:
-
-```sh
-npm install                          # schema checker, plus a pre-commit hook that runs it
-cp -r models/glm5.1 models/my-model  # or models/kimi-k2.5 for a multi-node model
-```
-
-1. In `models/my-model/`, rename the version file to `my-model-1.0.0.yaml`, and
-   set `name: my-model` in it and in `metadata.yaml`.
-2. Edit `metadata.yaml` for what the model *is* (Hugging Face repo, display
-   name, description, tags), and the version file for how it is *served*
-   (image, engine flags, GPUs).
-3. Check it, and preview the catalog page:
-
-   ```sh
-   npm run validate:schema   # catalog structure and tuning references
-   npm run helm:install      # pinned Helm and kubeconform (first time)
-   npm run validate:helm -- models/my-model/my-model-1.0.0.yaml
-   npm run build:site        # then open site/index.html
-   ```
-
-4. Open a pull request. `index.json` is not committed: the Pages build makes it
-   from `models/` when the change reaches `master`.
-
-If you tuned it, record the result as `tuning` in `metadata.yaml`; see
-[GitHub Pages](#github-pages). A published version never changes. To fix one,
-add `my-model-1.0.1.yaml` instead of editing it. Every field is described in
-[docs/authoring.md](docs/authoring.md).
-
-## Development
-
-```
-index.json                    generated, not committed: the published surface
-catalog.yaml                  catalog-wide settings: where the site is published
-schema/metadata.schema.json   what a model is
-schema/version.schema.json    what a version and its variants are
-models/<name>/metadata.yaml         shared by every version, editable
-models/<name>/<name>-<version>.yaml one version and its variants, immutable
-docs/authoring.md             schema reference, and how to add a model
-hack/build-index.js           regenerate index.json (npm run build:index)
-hack/lib/catalog.js           what every step reads the catalog through
-hack/build-site.js            build the GitHub Pages site into site/
-hack/validate.sh              CI
-hack/serve.sh                 serve it over HTTP, for local development
-```
-
-A published catalog is a static site, and `./hack/serve.sh` is the smallest
-thing that behaves like one: it rebuilds the index, then serves the tree.
-
-PRs also run the independent `validate-helm` check on every variant in changed
-version YAMLs, using the latest stable released chart for each engine, Helm's
-values schema and strict Kubernetes/CRD schemas. See [Helm validation](schema/crds/README.md) for
-local commands, schema updates, artifacts, and validation limits.
-Deployment still follows the YAML chart declaration. Use `--chart-mode declared`
-with `npm run validate:helm` to reproduce that release locally.
-
-## Versions are immutable
-
-A model publishes versions, like a package: `models/qwen3.6-35b-a3b/qwen3.6-35b-a3b-1.2.0.yaml`,
-named the way helm names a chart archive. A deploy
-pins one or takes the latest, and records **the version and a sha256 of the entry
-file**. `index.json` carries that digest, and a consumer refuses an entry whose
-bytes no longer match it.
-
-Nothing parses that filename back apart. Model names carry dots and hyphens, so
-`qwen3.6-35b-a3b-glm-5-1.0.0.yaml` has no unambiguous split — and both
-`qwen3.6-35b-a3b` and `qwen3.6-35b-a3b-glm-5` are published here. The document
-declares its own `name` and `version`; the filename is checked against them, not
-read for them.
-
-So a published version is frozen. Fix a mistake by publishing `1.2.1`, never by
-editing `1.2.0` — a rewritten version silently changes what every existing deploy
-would recompose to, which is exactly what the digest exists to catch.
-`hack/validate.sh` refuses a commit that edits an already-published file.
-
-## Chart versions
-
-`variants[].chart.version` is one chart version or a range, in helm's constraint
-syntax. A range is how a chart fix reaches a published model version without
-publishing a new one.
-
-| `chart.version` | means |
-| --- | --- |
-| `0.8.0` | exactly 0.8.0 |
-| `">=0.8.0"` | 0.8.0 or newer (quoted: a bare `>` starts a YAML block scalar) |
-| `"^0.8.0"` | 0.8.x from 0.8.0; in 0.x, a minor bump is the breaking one |
-| `">=0.8.0 <0.9.0"` | both |
-
-A deploy still pins: swissd records the one version the range resolved to (the
-newest in range, or one the operator picks) and an upgrade keeps it until asked
-to move. Prereleases match only a range that names one.
-
-## What belongs here
-
-A model, and the variants it can be served as. A **variant** is a hardware and
-parallelism decision: `--tp-size=8` on an 8-GPU B300 node is one variant, the
-same weights at `--tp-size=2` on two GPUs is another. The fields that distinguish
-them (`extraArgs`, `requires.gpus`, `lws.size`) only ever move together, so they
-are one object. A form that let someone pick TP8 and a 2-GPU node independently
-would eventually be used to do exactly that, and the failure arrives forty
-minutes later as an OOM in a log nobody is watching.
-
-## What does not belong here, and cannot be written
-
-This repo is public. A namespace, a host path, a registry mirror or a route
-ConfigMap is not public information, and is not the same for two readers — so
-those keys are absent from the schema, not merely discouraged:
-
-| layer | owns | lives in |
-| --- | --- | --- |
-| **catalog** | model identity, parallelism, engine flags, probes | here |
-| **site profile** | `model.localPath`, `cache.hostPath`, registry rewrite, `scaler.serverAddress`, `modelRoute.*.outputConfigMap`, namespace | the private charts repo, next to `deploys/` |
-| **deploy form** | `replicaCount`, `scaler.*`, scheduling, `modelRoute.*`, `cart.*`, `sloRequirement.*` | `swiss` flags, or the web UI |
-
-Both schemas are closed (`additionalProperties: false`) for the entry's own
-fields. `variants[].values` is the exception: it is chart values, any object,
-because restating the chart's schema here would be a second copy to keep in step.
-
-Probes are here, not in the deploy form, because cold-load time is a property of
-the model: 1.9 TiB over two nodes is a 40-minute load, and a default
-`failureThreshold: 3` kills it after 45 seconds with no error anywhere.
-
-## Adding a model
-
-The steps are under [Get started](#add-a-model), and every field is described
-in [docs/authoring.md](docs/authoring.md). The name and version inside a version
-file must match its directory and filename.
-
-`index.json` is not committed. It is a function of `models/` and
-`catalog.yaml`, which are what review covers, and the Pages build makes it on
-every deploy (`npm run build:index` makes the same file locally). It carries no
-build timestamp, so the same tree always gives the same bytes -- and the same
-catalog ref in swiss.
-
-Needs `npm install`, plus `yq` for `validate.sh`'s naming and layout checks. `npm install` installs a pre-commit hook that runs the Node schema check.
-
-## Not settled
-
-- **Signing.** Pinning by SHA and requiring a chart digest covers accidents, not
-  a compromised repo.
-- **Image digests.** `image.digest` is accepted but unused; nothing resolves tags
-  to digests yet, so a moved tag still moves.
-- **`servedName` is treated as a model property**, but the fallback release
-  serves Qwen under the name `kimi` so callers do not change. That is a deploy
-  decision wearing a catalog field; see the note in
-  `../swiss/docs/swiss-design.md`.
-
-## Layout
+## Add a model or variant
 
 ```
 models/<name>/
-  metadata.yaml              what the model IS: source.hf, displayName,
-                             description, family, tags, license, and
-                             measured tuning results
-  <name>-<version>.yaml      how it is SERVED: servedName, variants
+  metadata.yaml            what the model IS: source.hf, displayName, description,
+                           family, tags, tuning results. Editable.
+  <name>-<version>.yaml    how it is SERVED: servedName, variants. Immutable once published.
+  *-report.html            perf reports, linked from tuning
 ```
 
-| file | holds | mutable |
-| --- | --- | --- |
-| `metadata.yaml` | model identity and description, shared by every version | yes — inlined into `index.json` and never fetched by a consumer |
-| `<name>-<version>.yaml` | the serving config: engine image, flags, probes, hardware | no — consumers pin the version and verify its sha256 |
+1. Start from the closest model: `models/qwen3.6-35b-a3b` (single node) or
+   `models/kimi-k2.5` (multi-node, lws).
 
-`source.hf` is in metadata because a different repo id is a different model, not
-a new version of this one. Editing it cannot change an already-deployed release
-— that plan carries the resolved `model.localPath` — it changes the catalog ref,
-which the reconciliation view reports, and shows up in the next diff.
+   ```sh
+   npm install                  # also installs the pre-commit hook (validate:schema)
+   cp -r models/qwen3.6-35b-a3b models/my-model
+   ```
 
-A version file carrying its own `source:` is refused: the split is enforced, not
-a convention.
+2. Keep one version file, renamed `my-model-1.0.0.yaml`, and delete the copied
+   reports and `tuning`. Set `name: my-model` there and in `metadata.yaml`: the
+   name and version inside a file must match its directory and filename.
+3. Edit `metadata.yaml` for the model and the version file for how it is served.
+4. Check and preview, then open a pull request:
 
-## Accelerator vendors
+   ```sh
+   npm run validate:schema
+   npm run helm:install && npm run validate:helm -- models/my-model/my-model-1.0.0.yaml
+   PUBLISHED_INDEX=none npm run build:site   # open site/index.html
+   ```
 
-`requires.vendor` names the brand a variant is built for, defaulting to
-`nvidia`. It decides the extended resource the pod requests and the node label
-its product is published under — not merely which card matches.
+**A new variant, or a fix to a published one, is a new version file**
+(`my-model-1.0.1.yaml`): deploys pin a version and its sha256. Editing a
+published file in place needs a manual Pages run with *allow rewrites*.
 
-| vendor | resource | product label |
-| --- | --- | --- |
-| `nvidia` | `nvidia.com/gpu` | `nvidia.com/gpu.product` |
-| `ascend` | `huawei.com/Ascend910` | `accelerator/huawei-ascend910` |
-| `cambricon` | `cambricon.com/mlu` | `cambricon.com/mlu.product` |
-| `hygon` | `hygon.com/dcu` | `hygon.com/dcu.product` |
-| `amd` | `amd.com/gpu` | `amd.com/gpu.device-id` |
+What a variant needs to know:
 
-The mapping lives in swiss, not here: a public catalog should not carry
-Kubernetes resource strings, and every site would otherwise repeat the same
-well-known table.
+| field | rule |
+| --- | --- |
+| `id` | unique in the version; an id with an `optimized` segment must have a `tuning` entry |
+| `default` | at most one variant per version |
+| `requires.gpus` | per pod; `nodes` + `topology: lws` for multi-node, with `values.lws.size` equal to `nodes` |
+| `requires.vendor` | `nvidia` (default), `ascend`, `cambricon`, `hygon` or `amd`; one vendor per variant |
+| `requires.gpuProduct` | canonical card names, any one matches: the `nvidia.com/gpu.product` value for NVIDIA (`NVIDIA-H100-80GB-HBM3`), `<Vendor>-<model>` otherwise (`Ascend-910B3`). swiss maps names to each cluster's node labels |
+| `chart.version` | exact (`0.8.0`) or a [semver range](https://github.com/Masterminds/semver#checking-version-constraints), quoted (`">=0.8.0"`, `"^0.8.0"`) |
+| `values` | chart values. Site-specific keys (namespace, host paths, registry, route ConfigMaps) are refused by the schema |
 
-One vendor per variant. A CANN build of an engine is a different image with
-different `extraArgs` than a CUDA build, so a model that runs on both publishes
-two variants — `sglang-tp8-b300` and `sglang-tp8-910b` — and the deploy form
-picks one. `gpuProduct` then narrows within the declared vendor.
-
-## GitHub Pages
-
-The [catalog site](#browse-the-catalog) is built by `hack/build-site.js` and
-deployed by `.github/workflows/pages.yml` on every push to `master`. Pull
-requests build it without deploying. It is two things at one URL:
-
-- **the page**, built from `models/`, so it shows a model as soon as it merges;
-- **the catalog** swiss reads: `index.json`, built from `models/`, and every
-  version file it names, at the same paths.
-
-A published version must not change: deploys pinned its digest. So the build
-compares against the `index.json` live on the site, and a version listed there
-that is now edited or deleted is handled by `REWRITES`:
-
-| `REWRITES` | when | does |
-| --- | --- | --- |
-| `refuse` | a push to `master` | fails the deploy |
-| `warn` | a pull request | reports it; the live site is `master`'s, not the PR's base |
-| `allow` | **Run workflow** with *allow rewrites* | publishes it: a deliberate in-place edit |
-
-`PUBLISHED_INDEX` points the comparison at another URL or file, or `none` to
-skip it (an offline build).
-
-```sh
-npm ci
-npm run build:site   # writes site/; open site/index.html to preview
-```
-
-Every `models/<name>/*.html` perf report is copied into the site and linked from
-its model. A tuned pair, and how much faster it is, is declared in the model's
-`metadata.yaml`:
+**Tuned?** Record the result in `metadata.yaml` and put the report beside it:
 
 ```yaml
 tuning:
   - version: 1.0.0                       # a published version
     baseline: sglang-tp8-h100-baseline   # variant ids in that version
     optimized: sglang-tp8-h100-optimized
-    uplift: 58.0                         # headline: % over the baseline
+    uplift: 58.0                         # headline % over the baseline
     workloads:                           # optional: every workload measured
-      - name: 50k + 1.5k
+      - name: 50k + 1.5k                 # shown as "Agentic"
         uplift: 58.0
-      - name: 8k + 1k
+      - name: 8k + 1k                    # shown as "Long-Context QA"
         uplift: 23.4
-    report: deepseek-v4-flash-0731-h100-report.html   # beside metadata.yaml
+    report: my-model-h100-report.html
 ```
 
-`uplift` is the number the site leads with; when the benchmark ran several
-workloads, list them all under `workloads` and the site shows the rest beside it.
-`tuning` lives in `metadata.yaml` rather than the version file because nothing
-composes from it: re-measuring is an edit, not a new version.
-`npm run validate:schema` checks that the version is published, both ids are
-variants of it, and the report exists, and it fails when a variant named
-`…-optimized` has no `tuning` entry, so a tuned pair cannot be left
-unrecorded. The site reads this field only; variant ids and descriptions are
-not parsed for it.
+A report must be a complete HTML document whose embedded JSON parses.
+`validate:schema` fails on a missing, empty or invalid one; the site skips
+linking it.
 
-Every entry names its `report`, and that is the tuned variant's link: the site
-serves it at `<site>models/<name>/<report>`, where `site` comes from
-`catalog.yaml`. `index.json` carries both `site` and each model's `tuning`, so a
-consumer such as swiss builds the link itself. No variant carries it: a version
-file is immutable once published, and would have to name a page that does not
-exist until the site is deployed.
+## Development
 
-swissd refuses an index with a field it does not know. A field added to
-`index.json` -- `site` and `tuning` among them -- has to be understood by every
-swissd reading this catalog before it merges: the next deploy publishes it.
+| command | does |
+| --- | --- |
+| `npm run validate:schema` | schemas, tuning references, report HTML (pre-commit and CI) |
+| `npm run test:lib` | tests for `hack/lib` |
+| `npm run helm:install` | pinned Helm and kubeconform, once |
+| `npm run validate:helm -- <file>` | render a version's variants against the charts (`--chart-mode declared` for what a deploy uses) |
+| `npm run build:site` | the site and `index.json` into `site/` |
+| `npm test` | `hack/validate.sh`: naming and layout checks (needs `yq`) |
+| `./hack/serve.sh` | rebuild `index.json` and serve the tree |
+
+Needs Node.js 24.
+
+- **CI.** `lints` runs on pull requests: `validate:schema`, `test:lib`, and
+  `validate-helm` on changed version files against the latest stable charts
+  ([Helm validation](schema/crds/README.md)). `pages` builds the site on pull
+  requests and deploys it on push to `master`.
+- **`index.json` is generated, not committed.** It is a pure function of
+  `models/` and `catalog.yaml`, with no timestamp, so the same tree gives the
+  same catalog ref in swiss.
+- **Published versions don't change.** `hack/validate.sh` refuses edits to a
+  committed version file, and the Pages build compares against the live
+  `index.json`:
+
+  | `REWRITES` | when | does |
+  | --- | --- | --- |
+  | `refuse` | push to `master` | fails the deploy |
+  | `warn` | pull request | reports it |
+  | `allow` | manual run with *allow rewrites* | publishes the in-place edit |
+
+  `PUBLISHED_INDEX=<url|file|none>` changes what the build compares against;
+  `none` builds offline.
+- **swissd refuses an `index.json` field it does not know.** A new field must
+  be understood by every swissd reading this catalog before it merges.
