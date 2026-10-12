@@ -2,6 +2,7 @@
 // and the theme button, and the footer.
 import { useEffect, useState, type ReactNode } from "react";
 import { StarIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { icons } from "./icons";
 
@@ -96,28 +97,49 @@ function GitHubLink({ repo, title }: { repo: string; title: string }) {
   );
 }
 
-// A page's header: its title centered, with a breadcrumb above when the page
-// is not the catalog itself, then what it is. The GitHub links -- modelsphere,
-// then the catalog's source -- and the theme sit top right: beside the title
-// on a wide screen, above it on a narrow one.
-export function SiteHeader({ eyebrow, title, description }: { eyebrow?: ReactNode; title: ReactNode; description?: ReactNode }) {
+// A page's header: its title centered, then what it is. The GitHub links --
+// modelsphere, then the catalog's source -- and the theme sit top right, with
+// the breadcrumb, when the page is not the catalog itself, top left on their
+// line -- or, on a screen too narrow for both, on a line of its own below
+// them. Without one, on a wide screen, the buttons sit beside the title.
+// children follow the description, centered too.
+export function SiteHeader({
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  eyebrow?: ReactNode;
+  title: ReactNode;
+  description?: ReactNode;
+  children?: ReactNode;
+}) {
   return (
-    <header className="pt-5 pb-6 min-[1024px]:pt-12 min-[1024px]:pb-8">
+    <header className={cn("pt-5 pb-6 min-[1024px]:pb-8", !eyebrow && "min-[1024px]:pt-12")}>
       <div className="wrap">
         <div className="relative">
-          <div className="mb-4 flex justify-end gap-2 min-[1024px]:absolute min-[1024px]:-top-6 min-[1024px]:right-0 min-[1024px]:mb-0">
-            <GitHubLink repo={MODELSPHERE} title="modelsphere, the deployment solution, on GitHub" />
-            <GitHubLink repo={__REPO__} title="This catalog's source on GitHub" />
-            <ThemeButton />
+          <div
+            className={cn(
+              "mb-4 flex flex-wrap-reverse items-center justify-end gap-x-2 gap-y-3",
+              eyebrow ? "min-[1024px]:mb-6" : "min-[1024px]:absolute min-[1024px]:-top-6 min-[1024px]:right-0 min-[1024px]:mb-0"
+            )}
+          >
+            {eyebrow && (
+              <p className="mr-auto text-[0.75rem] tracking-[0.08em] text-muted-foreground uppercase [&_a]:text-inherit">{eyebrow}</p>
+            )}
+            {/* The buttons wrap together, never one by one. */}
+            <div className="flex gap-2">
+              <GitHubLink repo={MODELSPHERE} title="modelsphere, the deployment solution, on GitHub" />
+              <GitHubLink repo={__REPO__} title="This catalog's source on GitHub" />
+              <ThemeButton />
+            </div>
           </div>
           <div className="text-center">
-            {eyebrow && (
-              <p className="mb-2 text-[0.75rem] tracking-[0.08em] text-muted-foreground uppercase [&_a]:text-inherit">{eyebrow}</p>
-            )}
             <h1 className="font-display text-[clamp(2.5rem,7vw,3.75rem)] leading-[1.05] font-semibold tracking-[-0.02em] [&_em]:text-primary [&_em]:italic">
               {title}
             </h1>
             {description && <p className="mx-auto mt-4 max-w-[52rem] text-[1.05rem] text-balance text-foreground/80">{description}</p>}
+            {children && <div className="mt-5 flex flex-col items-center gap-4">{children}</div>}
           </div>
         </div>
       </div>

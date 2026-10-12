@@ -188,8 +188,22 @@ function VariantDetail({ m, ver, v, scale, yaml, targeted }: { m: Model; ver: Ve
   );
 }
 
-function Facts({ children }: { children: ReactNode }) {
-  return <div className="flex flex-wrap items-center gap-x-[0.6rem] gap-y-[0.3rem] text-[0.84rem] text-muted-foreground">{children}</div>;
+// The model's facts on a centered line, a dot between each.
+function Facts({ items }: { items: ReactNode[] }) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-[0.6rem] gap-y-[0.3rem] text-[0.86rem] text-muted-foreground">
+      {items.map((x, i) => (
+        <Fragment key={i}>
+          {i > 0 && (
+            <span aria-hidden="true" className="text-faint">
+              ·
+            </span>
+          )}
+          {x}
+        </Fragment>
+      ))}
+    </div>
+  );
 }
 
 export function ModelRoute() {
@@ -204,7 +218,8 @@ export function ModelRoute() {
   }, [m]);
 
   // Checked GPU toggles show only the variants that run on one of them; the
-  // choice lives in the query, beside the fragment.
+  // choice lives in the query, beside the fragment. A model on one GPU has
+  // nothing to filter, so no toggles.
   const labels = new Set(latest.variants.flatMap((v) => v.hardware));
   const selected = params.getAll("hardware").filter((h) => labels.has(h));
   const setSelected = (next: string[]) => {
@@ -244,14 +259,15 @@ export function ModelRoute() {
             {m.displayName} <DeprecatedBadge m={m} className="align-[2px]" />
           </>
         }
-      />
-      <main className="wrap grid gap-4">
-        <section className="grid gap-3">
-          <Facts>
-            <code>{m.name}</code>
-            {m.family && filterLink("family", m.family, "")}
-            {hf && (
-              <>
+        description={m.description}
+      >
+        {m.deprecatedReason && <p className="text-[0.9rem] text-destructive">Deprecated: {m.deprecatedReason}</p>}
+        <Facts
+          items={[
+            <code key="name">{m.name}</code>,
+            m.family && filterLink("family", m.family, ""),
+            hf && (
+              <span key="hf">
                 <a href={`https://huggingface.co/${hf}`} {...NEW_TAB}>
                   <code>{hf}</code>
                 </a>
@@ -261,28 +277,27 @@ export function ModelRoute() {
                     <code>{m.source!.revision}</code>
                   </>
                 )}
-              </>
-            )}
-          </Facts>
-          {m.tags.length > 0 && <div className="flex flex-wrap gap-[0.3rem]">{m.tags.map((t) => filterLink("tag", t, `hue-${tagHue(t)}`))}</div>}
-          {m.deprecatedReason && <p className="text-[0.9rem] text-destructive">Deprecated: {m.deprecatedReason}</p>}
-          {m.description && <p className="text-muted-foreground">{m.description}</p>}
-          {reports.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {reports.map(({ r, title, text }) => (
-                <Button key={r.file} asChild>
-                  <a href={ROOT + encodePath(r.path) + REPORT_LANG} title={title} {...NEW_TAB}>
-                    {icons.report}
-                    {text}
-                  </a>
-                </Button>
-              ))}
-            </div>
-          )}
-          <GpuToggles counts={countBy(latest.variants.flatMap((v) => [...new Set(v.hardware)]))} what="Recipes for" selected={selected} onChange={setSelected} />
-        </section>
+              </span>
+            ),
+          ].filter(Boolean)}
+        />
+        {m.tags.length > 0 && <div className="flex flex-wrap justify-center gap-[0.3rem]">{m.tags.map((t) => filterLink("tag", t, `hue-${tagHue(t)}`))}</div>}
+        {reports.length > 0 && (
+          <div className="flex flex-wrap justify-center gap-2">
+            {reports.map(({ r, title, text }) => (
+              <Button key={r.file} asChild>
+                <a href={ROOT + encodePath(r.path) + REPORT_LANG} title={title} {...NEW_TAB}>
+                  {icons.report}
+                  {text}
+                </a>
+              </Button>
+            ))}
+          </div>
+        )}
+      </SiteHeader>
+      <main className="wrap">
         <section id={`v${latest.version}`}>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-[0.4rem] px-[0.1rem] pt-1 pb-3">
+          <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-[0.1rem] pb-2">
             <h2 className="text-[1.05rem] font-bold tabular-nums">Recipes</h2>
             <span className="text-[0.84rem] text-muted-foreground">
               <span>{selected.length ? `${shown} of ${total} ${noun}` : `${total} ${noun}`}</span>
@@ -302,6 +317,11 @@ export function ModelRoute() {
               </Button>
             )}
           </div>
+          {labels.size > 1 && (
+            <div className="mb-4">
+              <GpuToggles counts={countBy(latest.variants.flatMap((v) => [...new Set(v.hardware)]))} what="Recipes for" selected={selected} onChange={setSelected} />
+            </div>
+          )}
           <div className="grid gap-[0.85rem]">
             {variants.filter(shows).map((v) => (
               <VariantDetail
