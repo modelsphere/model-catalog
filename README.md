@@ -130,7 +130,8 @@ Needs Node.js 24.
 
 - **Backend and frontend, one GitHub Pages site.**
 - **`index.json` is generated, not committed.** It is a pure function of `models/` and `catalog.yaml`, with no timestamp, so the same tree gives the same catalog ref in swiss.
-- **Published versions don't change.** The Pages build compares every version file against the live `index.json`:
+- **Published versions don't change.** The Pages build compares every version file against the live `index.json`,
+  by model and version as swiss looks it up; one moved with its bytes unchanged is listed, not a rewrite. An edit or a deletion:
 
   | `REWRITES` | when | does |
   | --- | --- | --- |

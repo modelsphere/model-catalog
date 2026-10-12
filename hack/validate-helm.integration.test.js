@@ -26,7 +26,7 @@ for (const chartMode of ["latest", "declared"]) {
     const read = (file) => YAML.parse(fs.readFileSync(path.join(root, file), "utf8"));
     for (const [name, file] of [
       ["valid-range", "models/glm5.3/glm5.3-1.0.1.yaml"],
-      ["valid-gemma", "models/gemma-4-31b-it/google-gemma-4-31b-it-1.0.0.yaml"],
+      ["valid-gemma", "models/google-gemma-4-31b-it/google-gemma-4-31b-it-1.0.0.yaml"],
       ["valid-lws", "models/kimi-k2.5/kimi-k2.5-1.0.0.yaml"]
     ]) write(name, read(file));
     // Published fixed pins predate the minimum; pin these copies to it.

@@ -334,16 +334,23 @@ async function publishedIndex() {
   return res.json();
 }
 
+// A published version is found again as swiss finds it: by its model and
+// version, then its digest. Its path is only where it is fetched from, so a
+// version file moved with its bytes unchanged (its directory renamed to its
+// model's name) is a move, listed but not a rewrite.
 function rewritesOf(published, index) {
-  const now = new Map(index.models.flatMap((m) => m.versions.map((v) => [v.path, v.digest])));
-  const out = [];
+  const now = new Map(index.models.flatMap((m) => m.versions.map((v) => [`${m.name}@${v.version}`, v])));
+  const rewrites = [];
+  const moves = [];
   for (const m of published?.models ?? []) {
     for (const v of m.versions) {
-      if (!now.has(v.path)) out.push(`${v.path}: published, now deleted -- deprecate the model instead`);
-      else if (now.get(v.path) !== v.digest) out.push(`${v.path}: published, now edited -- publish a new version instead`);
+      const cur = now.get(`${m.name}@${v.version}`);
+      if (!cur) rewrites.push(`${v.path}: published, now deleted -- deprecate the model instead`);
+      else if (cur.digest !== v.digest) rewrites.push(`${v.path}: published, now edited -- publish a new version instead`);
+      else if (cur.path !== v.path) moves.push(`${v.path}: moved to ${cur.path}, unchanged`);
     }
   }
-  return out;
+  return { rewrites, moves };
 }
 
 // The index to publish, once checked against the published one: throws when
@@ -352,7 +359,8 @@ async function checkedIndex() {
   const index = buildIndex();
   const mode = process.env.REWRITES || "refuse";
   if (!["refuse", "warn", "allow"].includes(mode)) throw new Error(`REWRITES=${mode}: want refuse, warn or allow`);
-  const rewrites = rewritesOf(await publishedIndex(), index);
+  const { rewrites, moves } = rewritesOf(await publishedIndex(), index);
+  if (moves.length) console.log(moves.join("\n"));
   if (rewrites.length && mode !== "allow") {
     const text = rewrites.join("\n");
     if (mode === "refuse") throw new Error(`${text}\n(REWRITES=allow publishes them: a deliberate in-place edit)`);
@@ -394,4 +402,4 @@ function writeSiteData(outDir, { index, rewrites }) {
   );
 }
 
-module.exports = { loadCatalog, checkedIndex, writeSiteData, buildIndex, serializeIndex };
+module.exports = { loadCatalog, checkedIndex, rewritesOf, writeSiteData, buildIndex, serializeIndex };

@@ -151,26 +151,32 @@ for (const file of versionFilePaths) {
   }
 }
 
-// What the schema cannot see, per model: it has a version to publish, each
-// version file declares the model's name (metadata.yaml's) and is named
+// What the schema cannot see, per model: it lives in models/<name>/, named
+// after metadata.yaml's name -- the index gives a perf report as a bare file
+// name, and consumers fetch it from models/<name>/<report> -- it has a version
+// to publish, each version file declares the model's name and is named
 // <name>-<version>.yaml, at most one variant is the default, and an LWS group
 // is as many pods as its variant requires nodes -- a group that disagrees
-// hangs at rendezvous instead of failing. The directory need not be the name:
-// published paths cannot move, and two models (gemma-4-26b-a4b,
-// gemma-4-31b-it) were published under other names.
+// hangs at rendezvous instead of failing.
 for (const name of modelNames()) {
   const dir = path.join(modelsDir, name)
-  const files = versionFiles(name)
-  if (files.length === 0) {
-    failed = true
-    report(path.relative(root, dir), ["no version files: publish one, or remove the directory"])
-    continue
-  }
   let model
   try {
     model = YAML.parse(fs.readFileSync(path.join(dir, "metadata.yaml"), "utf8"))?.name
   } catch {
     // reported by the schema check above
+  }
+  if (typeof model === "string" && model !== name) {
+    failed = true
+    report(path.relative(root, dir), [
+      `must be named models/${model}/, after its model (metadata.yaml's name): consumers fetch its reports from models/<name>/`,
+    ])
+  }
+  const files = versionFiles(name)
+  if (files.length === 0) {
+    failed = true
+    report(path.relative(root, dir), ["no version files: publish one, or remove the directory"])
+    continue
   }
   for (const rel of files) {
     let doc
