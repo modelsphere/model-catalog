@@ -1,0 +1,52 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: deepseek-v4-flash
+id: vllm-tp8-6000d
+version: 1.0.2
+servedName: deepseek-v4-flash
+engine: vllm
+description: TP8 on one eight-GPU RTX 6000D node. Single-node, so no RDMA and no host networking.
+chart:
+  name: vllm
+  version: ">=0.7.6"
+image:
+  repository: vllm/vllm-openai
+  tag: v0.30.0
+requires:
+  gpus: 8
+  topology: single-node
+  gpuProduct:
+    - NVIDIA-RTX-6000D
+values:
+  model:
+    localPath: /data/models/DeepSeek-V4-Flash
+    mountPath: /models
+    contextLength: ""
+  modelCheck:
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  extraArgs:
+    - --tensor-parallel-size=8
+    - --gpu-memory-utilization=0.90
+    - --block-size=256
+    - --max-num-batched-tokens=8192
+    - --max-num-seqs=48
+    - --enable-prefix-caching
+    - --trust-remote-code
+    - --enable-prompt-tokens-details
+    - --allowed-media-domains=none.invalid
+    - --enable-auto-tool-choice
+    - --tool-call-parser=deepseek_v4
+    - --reasoning-parser=deepseek_v4
+  env:
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+    - name: NCCL_DEBUG
+      value: WARN
+  service:
+    port: 8050
+  hangWatcher:
+    enabled: true

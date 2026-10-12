@@ -1,4 +1,4 @@
-apiVersion: catalog.swiss/v1
+apiVersion: catalog.swiss/v2
 name: mistral-nemo-instruct
 displayName: Mistral-Nemo-Instruct
 description: Mistral-Nemo-Instruct on 1 H100 GPU.
@@ -6,12 +6,13 @@ family: mistral
 tags:
   - chat
   - tool-use
+defaultVariant: sglang-tp1-h100-optimized
 source:
   hf: mistralai/Mistral-Nemo-Instruct-2407
 tuning:
   - version: 1.0.0
-    baseline: sglang-tp1-h100-baseline
-    optimized: sglang-tp1-h100-optimized
+    baseline: sglang-tp1-h100-baseline@1.0.0
+    optimized: sglang-tp1-h100-optimized@1.0.0
     uplift: 1.4
     workloads:
       - name: 50k + 1.5k

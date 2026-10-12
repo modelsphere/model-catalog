@@ -1,0 +1,74 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: kimi-k3
+id: sglang-tp8-pp4-6000d
+version: 1.0.5
+servedName: kimi-k3
+engine: sglang
+description: >-
+  TP8 per node, PP4 across four nodes over RoCE. Marlin is the only correct MoE runner here: the default upcasts the MXFP4 experts to bf16 and needs ~6000 GiB, triton_kernel fails in the weight loader, and flashinfer_mxfp4 loads, serves and computes wrong answers. Measured 47.81 GiB of weights per card and max_total_num_tokens 1,237,195.
+chart:
+  name: sglang
+  version: ">=0.7.0"
+image:
+  repository: lmsysorg/sglang
+  tag: v0.5.20
+requires:
+  gpus: 8 # per pod; 32 across the group
+  nodes: 4
+  topology: lws
+  rdma: true
+  gpuProduct:
+    - NVIDIA-RTX-6000D
+values:
+  model:
+    localPath: /data/models/Kimi-K3
+    mountPath: /model
+    contextLength: ""
+  modelCheck:
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  lws:
+    enabled: true
+    size: 4
+  hostNetwork: true
+  rdma:
+    enabled: true
+  env:
+    - name: NVIDIA_DISABLE_REQUIRE
+      value: "1"
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+    - name: NCCL_DEBUG
+      value: WARN
+    - name: NCCL_IB_DISABLE
+      value: "0"
+    - name: NCCL_NET_GDR_LEVEL
+      value: "1"
+    - name: NCCL_SOCKET_IFNAME
+      value: bond0
+    - name: GLOO_SOCKET_IFNAME
+      value: bond0
+  extraArgs:
+    - --tp-size=8
+    - --pp-size=4
+    # The one flag that makes this model correct on sm120.
+    - --moe-runner-backend=marlin
+    - --mem-fraction-static=0.85
+    - --trust-remote-code
+    - --enable-metrics
+    - --enable-cache-report
+    # Without these the thinking text lands in content, carrying a stray
+    # <|clos... token with it. That is a missing flag, not a wrong answer.
+    - --reasoning-parser=kimi_k3
+    - --tool-call-parser=kimi_k3
+  service:
+    port: 8050
+  # The KDA linear-attention kernels compile on first start, so this model
+  # comes up slower under sglang than under vLLM.
+  progressDeadlineSeconds: 7200
+  hangWatcher:
+    enabled: true

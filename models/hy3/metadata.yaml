@@ -1,4 +1,4 @@
-apiVersion: catalog.swiss/v1
+apiVersion: catalog.swiss/v2
 name: hy3
 displayName: Hy3
 description: Hy3 on 8 H100 GPUs. Configs use NEXTN speculative decoding.
@@ -9,12 +9,13 @@ tags:
   - reasoning
   - tool-use
   - speculative-decoding
+defaultVariant: sglang-tp8-h100-optimized
 source:
   hf: tencent/Hy3-FP8
 tuning:
   - version: 1.0.0
-    baseline: sglang-tp8-h100-baseline
-    optimized: sglang-tp8-h100-optimized
+    baseline: sglang-tp8-h100-baseline@1.0.0
+    optimized: sglang-tp8-h100-optimized@1.0.0
     uplift: 64.2
     workloads:
       - name: 50k + 1.5k

@@ -1,4 +1,4 @@
-apiVersion: catalog.swiss/v1
+apiVersion: catalog.swiss/v2
 name: google-gemma-4-31b-it
 displayName: google/gemma-4-31B-it
 description: google/gemma-4-31B-it on 4 H100 GPUs. Configs use NEXTN speculative decoding.
@@ -8,12 +8,13 @@ tags:
   - reasoning
   - tool-use
   - speculative-decoding
+defaultVariant: sglang-tp4-h100-optimized
 source:
   hf: google/gemma-4-31B-it
 tuning:
   - version: 1.0.0
-    baseline: sglang-tp4-h100-baseline
-    optimized: sglang-tp4-h100-optimized
+    baseline: sglang-tp4-h100-baseline@1.0.0
+    optimized: sglang-tp4-h100-optimized@1.0.0
     uplift: 32.4
     workloads:
       - name: 50k + 1.5k

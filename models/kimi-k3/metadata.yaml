@@ -1,4 +1,4 @@
-apiVersion: catalog.swiss/v1
+apiVersion: catalog.swiss/v2
 name: kimi-k3
 displayName: Kimi K3
 description: Kimi K3 with SGLang and vLLM on a single eight-GPU B300 node, or vLLM with TP8 and PP4 across four RTX 6000D nodes. The tuned SGLang B300 variant uses DCP8, an fp8 KV cache, DSPARK speculative decoding, and hierarchical KV caching. DSPARK requires engine-compatible Kimi-K3-DSpark draft weights on every eligible node, mounted beside the target model.
@@ -9,12 +9,13 @@ tags:
   - tool-use
   - long-context
   - speculative-decoding
+defaultVariant: sglang-tp8-b300-optimized
 source:
   hf: moonshotai/Kimi-K3
 tuning:
   - version: 1.0.4
-    baseline: sglang-tp8-b300-baseline
-    optimized: sglang-tp8-b300-optimized
+    baseline: sglang-tp8-b300-baseline@1.0.5
+    optimized: sglang-tp8-b300-optimized@1.0.5
     uplift: 57.6
     workloads:
       - name: 50k + 1.5k

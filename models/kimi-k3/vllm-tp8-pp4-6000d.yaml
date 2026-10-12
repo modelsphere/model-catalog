@@ -1,0 +1,75 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: kimi-k3
+id: vllm-tp8-pp4-6000d
+version: 1.0.5
+servedName: kimi-k3
+engine: vllm
+description: TP8 per node, PP4 across four nodes over RoCE. A Marlin MoE path is required on sm120, to keep the 4-bit weights 4-bit; the default runner upcasts them to bf16 and does not fit. sglang reaches the same shape with --moe-runner-backend marlin.
+chart:
+  name: vllm
+  version: ">=0.7.6"
+image:
+  repository: vllm/vllm-openai
+  tag: v0.30.0
+requires:
+  gpus: 8 # per pod; 32 across the group
+  nodes: 4
+  topology: lws
+  rdma: true
+  gpuProduct:
+    - NVIDIA-RTX-6000D
+values:
+  model:
+    localPath: /data/models/Kimi-K3
+    mountPath: /models
+    contextLength: "1048576"
+  modelCheck:
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  lws:
+    enabled: true
+    size: 4
+  hostNetwork: true
+  rdma:
+    enabled: true
+  extraArgs:
+    - --tensor-parallel-size=8
+    - --pipeline-parallel-size=4
+    - --gpu-memory-utilization=0.90
+    # Autotune has to be off whenever PP > 1.
+    - --no-enable-flashinfer-autotune
+    - --enable-prefix-caching
+    - --prefix-match-unit=128
+    - --max-num-batched-tokens=8192
+    - --max-num-seqs=48
+    - --trust-remote-code
+    - --enable-prompt-tokens-details
+    - --allowed-media-domains=no-network.invalid
+    - --enable-auto-tool-choice
+    - --tool-call-parser=kimi_k3
+    - --reasoning-parser=kimi_k3
+  env:
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+    # The trtllm fused-MoE autotuner picks shapes that are not built for
+    # sm120; skipping those ops leaves the rest of the autotuner on.
+    - name: VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS
+      value: trtllm::fused_moe::gemm1,trtllm::fused_moe::gemm2,fp8_gemm
+    - name: VLLM_MEDIA_URL_ALLOW_REDIRECTS
+      value: "0"
+    - name: NCCL_DEBUG
+      value: INFO
+    - name: NCCL_SOCKET_IFNAME
+      value: bond0
+    - name: GLOO_SOCKET_IFNAME
+      value: bond0
+    - name: NCCL_NET_GDR_LEVEL
+      value: "1"
+  service:
+    port: 8050
+  hangWatcher:
+    enabled: true

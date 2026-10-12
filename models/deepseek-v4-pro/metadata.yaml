@@ -1,4 +1,4 @@
-apiVersion: catalog.swiss/v1
+apiVersion: catalog.swiss/v2
 name: deepseek-v4-pro
 displayName: DeepSeek-V4-Pro
 description: DeepSeek-V4-Pro with fp8 weights. Does not fit on one eight-GPU RTX 6000D node -- a two-pod LeaderWorkerSet group, TP8 inside each node and PP2 across the RoCE fabric between them.
@@ -8,5 +8,6 @@ tags:
   - reasoning
   - tool-use
   - long-context
+defaultVariant: vllm-tp8-pp2-6000d
 source:
   hf: deepseek-ai/DeepSeek-V4-Pro

@@ -1,0 +1,57 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: deepseek-v4-flash
+id: vllm-tp4-6000d
+version: 1.0.2
+servedName: deepseek-v4-flash
+engine: vllm
+description: >-
+  TP4 on four GPUs, the vLLM counterpart of sglang-tp4-6000d. Measured 39.42 GiB per card for weights plus non-torch memory, 33.07 GiB left for KV, GPU KV cache size 3,447,225 tokens -- 3.29x the 1,048,576-token maximum request length. The engine's own suggestion is to raise the KV allocation to 40.08 GiB with --kv-cache-memory, which is left off here because it has not been load-tested.
+chart:
+  name: vllm
+  version: ">=0.7.6"
+image:
+  repository: vllm/vllm-openai
+  tag: v0.30.0
+requires:
+  gpus: 4
+  topology: single-node
+  gpuProduct:
+    - NVIDIA-RTX-6000D
+values:
+  model:
+    localPath: /data/models/DeepSeek-V4-Flash
+    mountPath: /models
+    contextLength: ""
+  modelCheck:
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  extraArgs:
+    - --tensor-parallel-size=4
+    - --gpu-memory-utilization=0.90
+    - --block-size=256
+    - --max-num-batched-tokens=8192
+    - --max-num-seqs=48
+    - --enable-prefix-caching
+    - --trust-remote-code
+    - --enable-prompt-tokens-details
+    - --allowed-media-domains=none.invalid
+    - --enable-auto-tool-choice
+    - --tool-call-parser=deepseek_v4
+    - --reasoning-parser=deepseek_v4
+  env:
+    - name: NVIDIA_DISABLE_REQUIRE
+      value: "1"
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+    - name: VLLM_MEDIA_URL_ALLOW_REDIRECTS
+      value: "0"
+    - name: NCCL_DEBUG
+      value: WARN
+  service:
+    port: 8050
+  hangWatcher:
+    enabled: true
