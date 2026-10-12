@@ -229,7 +229,7 @@ export function ModelRoute() {
   const reports = reportLinks(m, "Perf report");
   const total = latest.variants.length;
   const shown = latest.variants.filter(shows).length;
-  const noun = total === 1 ? "variant" : "variants";
+  const noun = total === 1 ? "recipe" : "recipes";
 
   return (
     <>
@@ -279,11 +279,11 @@ export function ModelRoute() {
               ))}
             </div>
           )}
-          <GpuToggles counts={countBy(latest.variants.flatMap((v) => [...new Set(v.hardware)]))} what="Variants for" selected={selected} onChange={setSelected} />
+          <GpuToggles counts={countBy(latest.variants.flatMap((v) => [...new Set(v.hardware)]))} what="Recipes for" selected={selected} onChange={setSelected} />
         </section>
         <section id={`v${latest.version}`}>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-[0.4rem] px-[0.1rem] pt-1 pb-3">
-            <h2 className="text-[1.05rem] font-bold tabular-nums">Variants</h2>
+            <h2 className="text-[1.05rem] font-bold tabular-nums">Recipes</h2>
             <span className="text-[0.84rem] text-muted-foreground">
               <span>{selected.length ? `${shown} of ${total} ${noun}` : `${total} ${noun}`}</span>
               {latest.servedName && (

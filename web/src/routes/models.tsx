@@ -44,7 +44,7 @@ const ModelCard = memo(function ModelCard({ m, scale, hidden }: { m: Model; scal
         </div>
         {/* Content stays top-aligned; links sit at the bottom so a row's buttons line up. */}
         <div className="flex flex-1 flex-col">
-          <ul aria-label="Variants" className="rounded-lg border border-border">
+          <ul aria-label="Recipes" className="rounded-lg border border-border">
             {orderedVariants(m).map((v) => {
               // Cards are narrow, so hardware leads the description line
               // instead of wrapping onto a line of its own.
@@ -177,23 +177,23 @@ export function ModelsRoute() {
         header: {
           eyebrow: <Link to="/">model-catalog</Link>,
           title: "Models",
-          description: "Every model in the catalog: its variants, the GPUs they need, and the tuned variant's improvement over its baseline.",
+          description: "Every model in the catalog: its recipes, the GPUs they need, and the tuned recipe's improvement over its baseline.",
         },
         noun: "models",
         facets,
-        search: "Search models, variants, hardware…",
+        search: "Search models, recipes, hardware…",
         sorts: [
           ["uplift", "Sort by improvement"],
           ["name", "Sort by name"],
           ["family", "Sort by family"],
         ],
-        gpuWhat: "Models with a variant for",
+        gpuWhat: "Models with a recipe for",
         cardWidth: 420,
         head: (th) => (
           <>
             {th("name", "Model", { filter: "model" })}
             {th("family", "Family")}
-            <TableHead>Variants (latest)</TableHead>
+            <TableHead>Recipes (latest)</TableHead>
             {th("uplift", "Improvement vs baseline", { className: "text-right", title: UPLIFT_HELP, sub: "best workload" })}
             <TableHead>Links</TableHead>
           </>

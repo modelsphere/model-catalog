@@ -360,7 +360,7 @@ export function Summary({ items }: { items: Facet[] }) {
       className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3 max-[560px]:-mx-4 max-[560px]:grid-flow-col max-[560px]:auto-cols-[minmax(132px,40%)] max-[560px]:grid-cols-none max-[560px]:snap-x max-[560px]:snap-proximity max-[560px]:scroll-px-4 max-[560px]:overflow-x-auto max-[560px]:px-4 max-[560px]:pb-[2px] max-[560px]:[scrollbar-width:none] max-[560px]:[&::-webkit-scrollbar]:hidden"
     >
       <Stat label="Models" value={s.models} sub={s.deprecated ? `${s.deprecated} deprecated` : ""} />
-      <Stat label="Variants" value={s.variants} sub={counts(s.engines)} />
+      <Stat label="Recipes" value={s.variants} sub={counts(s.engines)} />
       <Stat label="Optimized pairs" value={s.pairs} sub={s.models ? `${Math.round((s.pairs / s.models) * 100)}% of models` : ""} />
       <Stat
         label="Median improvement"

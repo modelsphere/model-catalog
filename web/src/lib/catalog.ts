@@ -12,7 +12,7 @@ export async function fetchCatalog(root: string): Promise<Catalog> {
 // What an uplift number means, for tooltips. Workload names are the report's:
 // input + output tokens per request.
 export const UPLIFT_HELP =
-  "Throughput of the tuned variant over its baseline, from the tuning benchmark. " +
+  "Throughput of the tuned recipe over its baseline, from the tuning benchmark. " +
   "Workloads are input + output tokens per request, e.g. 50k + 1.5k.";
 
 // The perf reports' own English names for the benchmark's workloads; the

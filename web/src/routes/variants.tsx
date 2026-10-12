@@ -189,7 +189,7 @@ export function VariantsRoute() {
         heading: (
           <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-[0.1rem] pb-2">
             <h2 className="text-[1.05rem] font-bold">Deployment Recipe</h2>
-            <span className="text-[0.84rem] text-muted-foreground max-[560px]:hidden">each model's variants, in the version a deploy gets</span>
+            <span className="text-[0.84rem] text-muted-foreground max-[560px]:hidden">every model's recipes, in the version a deploy gets</span>
             <Link to="/models.html" className="ml-auto inline-flex items-baseline gap-[0.4rem] text-[0.88rem] font-semibold">
               All models
               <span className="text-[0.8rem] font-medium text-faint tabular-nums">{catalog.count}</span>
@@ -197,22 +197,22 @@ export function VariantsRoute() {
             </Link>
           </div>
         ),
-        noun: "variants",
+        noun: "recipes",
         facets,
-        search: "Search variants, models, images, hardware…",
+        search: "Search recipes, models, images, hardware…",
         sorts: [
           ["uplift", "Sort by improvement"],
           ["name", "Sort by model"],
           ["family", "Sort by family"],
           ["gpus", "Sort by GPUs"],
         ],
-        gpuWhat: "Variants for",
+        gpuWhat: "Recipes for",
         cardWidth: 360,
         head: (th) => (
           <>
             {th("name", "Model", { filter: "model" })}
             <TableHead>
-              Variant<span className="mt-[0.1rem] block text-[0.68rem] font-normal text-faint">engine · image</span>
+              Recipe<span className="mt-[0.1rem] block text-[0.68rem] font-normal text-faint">engine · image</span>
             </TableHead>
             {th("gpus", "Hardware", { filter: "hardware" })}
             {th("uplift", "Improvement vs baseline", { className: "text-right", title: UPLIFT_HELP, sub: "best workload" })}
