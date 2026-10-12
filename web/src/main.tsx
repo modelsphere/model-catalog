@@ -1,5 +1,6 @@
-// The site, one page: the models, the variants and each model's page are
-// routes, at the paths the published site has always had.
+// The site, one page: the deployment recipes, the models and each model's
+// page are routes. The recipes are the front page; variants.html, where they
+// were before, still shows them, so old links keep working.
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
@@ -24,9 +25,10 @@ const router = createBrowserRouter(
       // Until catalog.json is in, the page stays as index.html left it.
       HydrateFallback: () => null,
       children: [
-        { index: true, Component: ModelsRoute },
-        { path: "index.html", Component: ModelsRoute },
+        { index: true, Component: VariantsRoute },
+        { path: "index.html", Component: VariantsRoute },
         { path: "variants.html", Component: VariantsRoute },
+        { path: "models.html", Component: ModelsRoute },
         { path: "models/:dir", ...model },
         { path: "models/:dir/index.html", ...model },
         { path: "*", Component: NotFound },
@@ -34,7 +36,7 @@ const router = createBrowserRouter(
     },
   ],
   // GitHub Pages serves the site under /model-catalog/. With the slash, the
-  // models list is /model-catalog/, not /model-catalog: the page itself, not
+  // front page is /model-catalog/, not /model-catalog: the page itself, not
   // a path the server has to redirect.
   { basename: import.meta.env.BASE_URL }
 );

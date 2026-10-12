@@ -1,6 +1,6 @@
-// The variants list: every model's variants in the version a deploy gets, one
-// entry each, so they compare across models: by GPU, engine, image or
-// improvement.
+// The deployment recipes, the catalog's front page: every model's variants in
+// the version a deploy gets, one entry each, so they compare across models: by
+// GPU, engine, image or improvement.
 import { memo, useEffect, useMemo } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { Catalog, Model, Variant } from "@/types";
@@ -17,6 +17,7 @@ import {
   imageCode,
   improvementBar,
   linkItems,
+  NEW_TAB,
   none,
   tableVariantLine,
   VariantLine,
@@ -148,7 +149,7 @@ const VariantRow = memo(function VariantRow({ m, v, scale, hidden }: { m: Model;
 export function VariantsRoute() {
   const catalog = useRouteLoaderData("root") as Catalog;
   useEffect(() => {
-    document.title = "Variants · Model Catalog";
+    document.title = "Model Catalog";
   }, []);
   const { entries, facets, scale } = useMemo(() => {
     const entries = catalog.models.flatMap((m) => orderedVariants(m, latestVersion(m).variants).map((v, rank) => ({ m, v, rank })));
@@ -158,8 +159,44 @@ export function VariantsRoute() {
   }, [catalog]);
   return (
     <ListPage
-      catalog={catalog}
       cfg={{
+        header: {
+          title: (
+            <>
+              Model <em>catalog</em>
+            </>
+          ),
+          // Two lines: where deploying is done, then what is here.
+          description: (
+            <>
+              <span className="block">
+                For the deployment solution, see{" "}
+                <a href="https://github.com/modelsphere/modelsphere" {...NEW_TAB}>
+                  modelsphere
+                </a>
+                .
+              </span>
+              <span className="block">
+                The models{" "}
+                <a href="https://github.com/modelsphere/swiss" {...NEW_TAB}>
+                  swiss
+                </a>{" "}
+                can deploy, and how to serve each one: engine, image, flags, GPUs and tuned variants.
+              </span>
+            </>
+          ),
+        },
+        heading: (
+          <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-[0.1rem] pb-2">
+            <h2 className="text-[1.05rem] font-bold">Deployment Recipe</h2>
+            <span className="text-[0.84rem] text-muted-foreground max-[560px]:hidden">each model's variants, in the version a deploy gets</span>
+            <Link to="/models.html" className="ml-auto inline-flex items-baseline gap-[0.4rem] text-[0.88rem] font-semibold">
+              All models
+              <span className="text-[0.8rem] font-medium text-faint tabular-nums">{catalog.count}</span>
+              <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+        ),
         noun: "variants",
         facets,
         search: "Search variants, models, images, hardware…",
@@ -173,11 +210,11 @@ export function VariantsRoute() {
         cardWidth: 360,
         head: (th) => (
           <>
-            {th("name", "Model")}
+            {th("name", "Model", { filter: "model" })}
             <TableHead>
               Variant<span className="mt-[0.1rem] block text-[0.68rem] font-normal text-faint">engine · image</span>
             </TableHead>
-            {th("gpus", "Hardware")}
+            {th("gpus", "Hardware", { filter: "hardware" })}
             {th("uplift", "Improvement vs baseline", { className: "text-right", title: UPLIFT_HELP, sub: "best workload" })}
             <TableHead>Links</TableHead>
           </>

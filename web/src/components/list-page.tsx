@@ -1,12 +1,12 @@
-// The catalog's lists: the models (/) and the variants (/variants.html).
-// Both have the same summary, filters, and card and table views over the
-// list's entries; the filters live in the URL, so a view can be shared, and
-// carry over to the other list.
+// The catalog's lists: the deployment recipes, one per variant (/), and the
+// models (/models.html). Both have the same summary, filters, and card and
+// table views over the list's entries; the filters live in the URL, so a view
+// can be shared.
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactElement, type ReactNode } from "react";
 import { useSearchParams } from "react-router";
-import type { Catalog } from "@/types";
-import { latestVersion } from "@/lib/catalog";
-import { countBy, sortDir, sorters, type Facet } from "@/lib/facets";
+import { ArrowDownIcon, ArrowDownWideNarrowIcon, ArrowUpDownIcon, ArrowUpIcon, ArrowUpNarrowWideIcon, XIcon } from "lucide-react";
+import { countBy, sortDir, sorter, type Dir, type Facet } from "@/lib/facets";
+import { gpuGroup, gpuHue } from "@/lib/hues";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,9 +15,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { FilterSelect, GpuToggles, Summary } from "./catalog";
+import { ColumnFilter, FilterSelect, GpuToggles, Summary, type FilterOption } from "./catalog";
 import { icons } from "./icons";
-import { ListTabs, SiteFooter, SiteHeader } from "./site";
+import { SiteFooter, SiteHeader } from "./site";
 
 type View = "cards" | "table";
 
@@ -28,15 +28,28 @@ interface State {
   tag: string;
   hidedep: boolean;
   sort: string;
+  dir: Dir;
   view: View;
+  // Model names; anything of any of them matches.
+  model: string[];
   hardware: string[];
 }
 
+// The filters a table header can carry: many values each.
+type Multi = "model" | "hardware";
+
 const DEFAULTS = { sort: "uplift", view: "table" };
 
-export type SortHead = (col: string, label: string, opts?: { className?: string; title?: string; sub?: string }) => ReactElement;
+const flip = (d: Dir): Dir => (d === "ascending" ? "descending" : "ascending");
+// In the URL, only when a sort runs against its usual direction.
+const DIR_PARAM: Record<Dir, string> = { ascending: "asc", descending: "desc" };
+
+export type SortHead = (col: string, label: string, opts?: { className?: string; title?: string; sub?: string; filter?: Multi }) => ReactElement;
 
 export interface ListConfig {
+  // The page's title, with what it is; heading sits above the summary.
+  header: { eyebrow?: ReactNode; title: ReactNode; description?: ReactNode };
+  heading?: ReactNode;
   noun: string;
   facets: Facet[];
   search: string;
@@ -55,6 +68,7 @@ export interface ListConfig {
 function matches(m: Facet, st: State): boolean {
   const terms = st.q.toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.every((t) => m.text.includes(t))) return false;
+  if (st.model.length && !st.model.includes(m.name)) return false;
   if (st.family && m.family !== st.family) return false;
   if (st.engine && !m.engines.includes(st.engine)) return false;
   if (st.hardware.length && !st.hardware.some((h) => m.hardware.includes(h))) return false;
@@ -71,6 +85,8 @@ function queryOf(st: State): string {
     if (v === true) params.set(k, "1");
     else if (v && v !== DEFAULTS[k as keyof typeof DEFAULTS]) params.set(k, v);
   }
+  if (st.dir !== sortDir[st.sort]) params.set("dir", DIR_PARAM[st.dir]);
+  for (const n of st.model) params.append("model", n);
   for (const h of st.hardware) params.append("hardware", h);
   return params.toString();
 }
@@ -78,7 +94,7 @@ function queryOf(st: State): string {
 // On phones, two selects share a row.
 const field = "max-[560px]:w-full max-[560px]:flex-[1_1_calc(50%-0.25rem)]";
 
-export function ListPage({ catalog, cfg }: { catalog: Catalog; cfg: ListConfig }) {
+export function ListPage({ cfg }: { cfg: ListConfig }) {
   const { facets, noun } = cfg;
   const html = document.documentElement;
   const [params] = useSearchParams();
@@ -87,6 +103,7 @@ export function ListPage({ catalog, cfg }: { catalog: Catalog; cfg: ListConfig }
       family: facets.map((f) => f.family).filter((f): f is string => !!f),
       engine: facets.flatMap((f) => [...new Set(f.engines)]),
       tag: facets.flatMap((f) => f.tags),
+      model: countBy(facets.map((f) => f.name)),
       hardware: countBy(facets.flatMap((f) => f.hardware)),
     }),
     [facets]
@@ -100,14 +117,18 @@ export function ListPage({ catalog, cfg }: { catalog: Catalog; cfg: ListConfig }
       const v = params.get(k);
       return v != null && allowed.includes(v) ? v : fallback;
     };
+    const sort = pick("sort", cfg.sorts.map(([v]) => v), DEFAULTS.sort);
+    const dir = (Object.keys(DIR_PARAM) as Dir[]).find((d) => DIR_PARAM[d] === params.get("dir"));
     return {
       q: params.get("q") ?? "",
       family: pick("family", ["", ...options.family], ""),
       engine: pick("engine", ["", ...options.engine], ""),
       tag: pick("tag", ["", ...options.tag], ""),
       hidedep: hasDeprecated && params.get("hidedep") === "1",
-      sort: pick("sort", cfg.sorts.map(([v]) => v), DEFAULTS.sort),
+      sort,
+      dir: dir ?? sortDir[sort],
       view: pick("view", ["cards", "table"], html.dataset.view === "cards" ? "cards" : "table") as View,
+      model: params.getAll("model").filter((n) => n in options.model),
       hardware: params.getAll("hardware").filter((h) => h in options.hardware),
     };
   });
@@ -141,14 +162,17 @@ export function ListPage({ catalog, cfg }: { catalog: Catalog; cfg: ListConfig }
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  const sorter = sorters[st.sort] || sorters[DEFAULTS.sort];
-  const order = useMemo(() => facets.map((_, i) => i).sort((a, b) => sorter(facets[a], facets[b])), [facets, sorter]);
+  const byOrder = useMemo(() => sorter(st.sort, st.dir), [st.sort, st.dir]);
+  const order = useMemo(() => facets.map((_, i) => i).sort((a, b) => byOrder(facets[a], facets[b])), [facets, byOrder]);
   const shown = order.filter((i) => matches(facets[i], st));
   const visible = new Set(shown);
   // A view, once shown, stays rendered and is only hidden while the other is
   // on, so switching back is immediate.
   const kept = useRef(new Set<View>());
   kept.current.add(st.view);
+
+  // A new sort starts in its usual direction; the same one again reverses.
+  const sortBy = (col: string) => set(col === st.sort ? { dir: flip(st.dir) } : { sort: col, dir: sortDir[col] });
 
   // Tag, family and GPU chips set their filter; table headers set the sort.
   const onResultsClick = (e: MouseEvent) => {
@@ -165,25 +189,59 @@ export function ListPage({ catalog, cfg }: { catalog: Catalog; cfg: ListConfig }
       return;
     }
     const sort = target.closest<HTMLElement>("[data-sort]");
-    if (sort) set({ sort: sort.dataset.sort });
+    if (sort) sortBy(sort.dataset.sort!);
   };
 
-  const th: SortHead = (col, label, { className, title, sub } = {}) => {
-    const dir = col === st.sort ? sortDir[col] : undefined;
+  // What a header's filter offers: models by name, GPUs as the toolbar has them.
+  const modelNames = useMemo(() => new Map(facets.map((f) => [f.name, f.displayName])), [facets]);
+  const filterOptions = useMemo<Record<Multi, FilterOption[]>>(() => {
+    const { model, hardware } = options;
+    return {
+      model: Object.keys(model)
+        .map((n) => ({ value: n, label: modelNames.get(n)!, count: model[n] }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+      hardware: Object.keys(hardware)
+        .sort((a, b) => gpuGroup(a) - gpuGroup(b) || hardware[b] - hardware[a] || a.localeCompare(b))
+        .map((h) => ({ value: h, label: h, count: hardware[h], hue: gpuHue(h) })),
+    };
+  }, [options, modelNames]);
+
+  // A sortable header: its name, then the sort's arrow. With a filter, the
+  // name opens it, and only the arrow sorts.
+  const th: SortHead = (col, label, { className, title, sub, filter } = {}) => {
+    const dir = col === st.sort ? st.dir : undefined;
     return (
       <TableHead aria-sort={dir} className={className} title={title}>
-        <Button variant="bare" size="none" data-sort={col} className={cn("hover:text-foreground", dir && "text-foreground")}>
-          {label}
-          <span className="inline-block w-[0.7em]" aria-hidden="true">
-            {dir === "ascending" ? "↑" : dir === "descending" ? "↓" : ""}
-          </span>
-        </Button>
+        <span className="inline-flex items-center gap-[0.2rem]">
+          {filter ? (
+            <ColumnFilter
+              label={label}
+              options={filterOptions[filter]}
+              selected={st[filter]}
+              onChange={(values) => set({ [filter]: values })}
+              className={cn(dir && "text-foreground")}
+            />
+          ) : (
+            <Button variant="bare" size="none" data-sort={col} className={cn("hover:text-foreground", dir && "text-foreground")}>
+              {label}
+            </Button>
+          )}
+          <Button
+            variant="bare"
+            size="none"
+            data-sort={col}
+            aria-label={`Sort by ${label.toLowerCase()}${dir ? `, ${dir}` : ""}`}
+            title={dir ? `Sorted ${dir}: click for ${flip(dir)}` : `Sort by ${label.toLowerCase()}`}
+            className={cn("rounded-sm p-[0.2rem] text-faint hover:bg-accent hover:text-foreground [&_svg]:size-[0.85rem]", dir && "text-foreground")}
+          >
+            {dir === "ascending" ? <ArrowUpIcon /> : dir === "descending" ? <ArrowDownIcon /> : <ArrowUpDownIcon />}
+          </Button>
+        </span>
         {sub && <span className="mt-[0.1rem] block text-[0.68rem] font-normal text-faint">{sub}</span>}
       </TableHead>
     );
   };
 
-  const variants = catalog.models.reduce((n, m) => n + latestVersion(m).variants.length, 0);
   const select = (name: "family" | "engine" | "tag", all: string) => (
     <FilterSelect
       label={name[0].toUpperCase() + name.slice(1)}
@@ -197,24 +255,9 @@ export function ListPage({ catalog, cfg }: { catalog: Catalog; cfg: ListConfig }
 
   return (
     <>
-      <SiteHeader
-        title={
-          <>
-            Model <em>catalog</em>
-          </>
-        }
-        description={
-          <>
-            The models{" "}
-            <a href="https://github.com/modelsphere/swiss" target="_blank" rel="noopener">
-              swiss
-            </a>{" "}
-            can deploy, and how to serve each one: engine, image, flags, GPUs and tuned variants.
-          </>
-        }
-      />
+      <SiteHeader {...cfg.header} />
       <main className="wrap">
-        <ListTabs query={qs ? `?${qs}` : ""} models={catalog.count} variants={variants} />
+        {cfg.heading}
         <Summary items={shown.map((i) => facets[i])} />
         <form
           role="search"
@@ -253,18 +296,30 @@ export function ListPage({ catalog, cfg }: { catalog: Catalog; cfg: ListConfig }
             <p aria-live="polite" className="mx-1 text-[0.85rem] text-muted-foreground tabular-nums">
               {shown.length === facets.length ? `${facets.length} ${noun}` : `${shown.length} of ${facets.length} ${noun}`}
             </p>
-            <Select value={st.sort} onValueChange={(sort) => set({ sort })}>
-              <SelectTrigger aria-label="Sort by" className={field}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end">
-                {cfg.sorts.map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* The sort, and which way it runs: the cards have no headers to reverse it. */}
+            <div className={cn("flex min-w-0 gap-1", field)}>
+              <Select value={st.sort} onValueChange={(sort) => set({ sort, dir: sortDir[sort] })}>
+                <SelectTrigger aria-label="Sort by" className="min-w-0 flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  {cfg.sorts.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                aria-label={st.dir === "ascending" ? "Ascending" : "Descending"}
+                title={`Sorted ${st.dir}: click for ${flip(st.dir)}`}
+                className="min-h-[38px] px-[0.55rem] text-muted-foreground [&_svg]:size-4"
+                onClick={() => set({ dir: flip(st.dir) })}
+              >
+                {st.dir === "ascending" ? <ArrowUpNarrowWideIcon /> : <ArrowDownWideNarrowIcon />}
+              </Button>
+            </div>
             <ToggleGroup
               type="single"
               variant="segment"
@@ -282,24 +337,33 @@ export function ListPage({ catalog, cfg }: { catalog: Catalog; cfg: ListConfig }
             >
               <ToggleGroupItem value="cards" title="Card view">
                 {icons.cards}
-                <span>Cards</span>
+                {/* Phones: icons only, so the sort keeps the row. */}
+                <span className="max-[560px]:sr-only">Cards</span>
               </ToggleGroupItem>
               <ToggleGroupItem value="table" title="Table view">
                 {icons.table}
-                <span>Table</span>
+                <span className="max-[560px]:sr-only">Table</span>
               </ToggleGroupItem>
             </ToggleGroup>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <GpuToggles counts={options.hardware} what={cfg.gpuWhat} selected={st.hardware} onChange={(hardware) => set({ hardware })} />
             <span className="flex-[1_1_auto] max-[560px]:hidden"></span>
+            {/* The table header's model filter, here too: the cards have no header. */}
+            {st.model.length > 0 && (
+              <Button type="button" size="sm" className="gap-[0.35rem] [&_svg]:size-[0.85rem]" title="Clear the model filter" onClick={() => set({ model: [] })}>
+                Model:{" "}
+                {st.model.length > 2 ? `${st.model.length} models` : st.model.map((n) => modelNames.get(n)).join(", ")}
+                <XIcon aria-hidden="true" />
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"
               size="none"
               className="px-[0.35rem] py-[0.4rem] text-[0.85rem]"
               // Reset clears the filters but keeps the view.
-              onClick={() => set({ q: "", family: "", engine: "", tag: "", hidedep: false, sort: DEFAULTS.sort, hardware: [] })}
+              onClick={() => set({ q: "", family: "", engine: "", tag: "", hidedep: false, sort: DEFAULTS.sort, dir: sortDir[DEFAULTS.sort], model: [], hardware: [] })}
             >
               Reset
             </Button>

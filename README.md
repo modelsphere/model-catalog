@@ -14,10 +14,12 @@ private profile.
 ## Get started
 
 **Browse** <https://modelsphere.github.io/model-catalog/>, rebuilt on every push to `master`.
-Each model lists its variants, the GPUs they need, the tuned variant's improvement over its baseline, and the perf report behind it.
-The Variants tab lists every variant on its own, to compare them across models. Filters live in the URL, so a view can be shared, e.g.
-[models on B300](https://modelsphere.github.io/model-catalog/?hardware=B300) or
-[variants on B300, fewest GPUs first](https://modelsphere.github.io/model-catalog/variants.html?hardware=B300&sort=gpus).
+The front page, **Deployment Recipe**, lists every variant on its own, to compare them across models; in the table,
+the Model and Hardware headers filter on any number of values. [Models](https://modelsphere.github.io/model-catalog/models.html)
+lists each model with its variants, the GPUs they need, the tuned variant's improvement over its baseline, and the perf report behind it.
+Filters live in the URL, so a view can be shared, e.g.
+[recipes on B300, fewest GPUs first](https://modelsphere.github.io/model-catalog/?hardware=B300&sort=gpus) or
+[models on B300](https://modelsphere.github.io/model-catalog/models.html?hardware=B300).
 
 **Use it with swiss.** The site is also the catalog swiss reads (`index.json`):
 

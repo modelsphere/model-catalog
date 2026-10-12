@@ -1,7 +1,6 @@
 // What every page has around its content: the header, with the GitHub link
-// and the theme button, and the footer; and the lists' tabs.
+// and the theme button, and the footer.
 import { useEffect, useState, type ReactNode } from "react";
-import { NavLink } from "react-router";
 import { StarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { icons } from "./icons";
@@ -47,18 +46,22 @@ function ThemeButton() {
 // The header's top-right buttons share one look.
 const topButton = "gap-[0.4rem] px-3 py-[0.4rem] text-[0.85rem] text-muted-foreground hover:border-input hover:text-foreground [&_svg]:size-4";
 
-// The repository's stars, asked of GitHub once per visit; null until known,
+// A repository's stars, asked of GitHub once per visit; null until known,
 // or when GitHub will not say (rate limit, offline): the link shows without.
-let starsAsked: Promise<number | null> | null = null;
-function useStars(): number | null {
+const starsAsked = new Map<string, Promise<number | null>>();
+function useStars(repo: string): number | null {
   const [stars, setStars] = useState<number | null>(null);
   useEffect(() => {
-    starsAsked ??= fetch(__REPO__.replace("https://github.com/", "https://api.github.com/repos/"))
-      .then((res) => (res.ok ? res.json() : null))
-      .then((repo) => (typeof repo?.stargazers_count === "number" ? repo.stargazers_count : null))
-      .catch(() => null);
-    starsAsked.then(setStars);
-  }, []);
+    let asked = starsAsked.get(repo);
+    if (!asked) {
+      asked = fetch(repo.replace("https://github.com/", "https://api.github.com/repos/"))
+        .then((res) => (res.ok ? res.json() : null))
+        .then((r) => (typeof r?.stargazers_count === "number" ? r.stargazers_count : null))
+        .catch(() => null);
+      starsAsked.set(repo, asked);
+    }
+    asked.then(setStars);
+  }, [repo]);
   return stars;
 }
 
@@ -71,14 +74,17 @@ const githubMark = (
   </svg>
 );
 
-// The catalog's source on GitHub, with its stars.
-function GitHubLink() {
-  const stars = useStars();
+// The deployment solution the catalog serves.
+const MODELSPHERE = "https://github.com/modelsphere/modelsphere";
+
+// A repository on GitHub, with its stars.
+function GitHubLink({ repo, title }: { repo: string; title: string }) {
+  const stars = useStars(repo);
   return (
     <Button asChild className={topButton}>
-      <a href={__REPO__} target="_blank" rel="noopener" title="Source on GitHub">
+      <a href={repo} target="_blank" rel="noopener" title={title}>
         {githubMark}
-        <span className="max-[560px]:hidden">{__REPO__.split("/").pop()}</span>
+        <span className="max-[560px]:hidden">{repo.split("/").pop()}</span>
         {stars != null && (
           <span className="ml-[0.15rem] inline-flex items-center gap-1 border-l border-border pl-2 tabular-nums" title={`${stars} stars on GitHub`}>
             <StarIcon className="size-[0.95rem]!" aria-hidden="true" />
@@ -91,16 +97,17 @@ function GitHubLink() {
 }
 
 // A page's header: its title centered, with a breadcrumb above when the page
-// is not the catalog itself, then what it is. The GitHub link and
-// the theme sit top right: beside the title on a wide screen, above it on a
-// narrow one.
+// is not the catalog itself, then what it is. The GitHub links -- modelsphere,
+// then the catalog's source -- and the theme sit top right: beside the title
+// on a wide screen, above it on a narrow one.
 export function SiteHeader({ eyebrow, title, description }: { eyebrow?: ReactNode; title: ReactNode; description?: ReactNode }) {
   return (
     <header className="pt-5 pb-6 min-[1024px]:pt-12 min-[1024px]:pb-8">
       <div className="wrap">
         <div className="relative">
           <div className="mb-4 flex justify-end gap-2 min-[1024px]:absolute min-[1024px]:-top-6 min-[1024px]:right-0 min-[1024px]:mb-0">
-            <GitHubLink />
+            <GitHubLink repo={MODELSPHERE} title="modelsphere, the deployment solution, on GitHub" />
+            <GitHubLink repo={__REPO__} title="This catalog's source on GitHub" />
             <ThemeButton />
           </div>
           <div className="text-center">
@@ -110,7 +117,7 @@ export function SiteHeader({ eyebrow, title, description }: { eyebrow?: ReactNod
             <h1 className="font-display text-[clamp(2.5rem,7vw,3.75rem)] leading-[1.05] font-semibold tracking-[-0.02em] [&_em]:text-primary [&_em]:italic">
               {title}
             </h1>
-            {description && <p className="mx-auto mt-4 max-w-[46rem] text-[1.05rem] text-foreground/80">{description}</p>}
+            {description && <p className="mx-auto mt-4 max-w-[52rem] text-[1.05rem] text-balance text-foreground/80">{description}</p>}
           </div>
         </div>
       </div>
@@ -123,26 +130,5 @@ export function SiteFooter({ children }: { children: ReactNode }) {
     <footer className="wrap pt-10 pb-12 text-[0.84rem] text-faint">
       <p>{children}</p>
     </footer>
-  );
-}
-
-// The lists' tabs. Each carries the filters over, so the other list opens on
-// the same ones; a sort it lacks falls back.
-export function ListTabs({ query, models, variants }: { query: string; models: number; variants: number }) {
-  const tab = (to: string, label: string, n: number) => (
-    <NavLink
-      to={{ pathname: to, search: query }}
-      end
-      className="-mb-px inline-flex items-baseline gap-[0.4rem] border-b-2 border-transparent px-[0.85rem] py-[0.45rem] font-semibold text-muted-foreground hover:text-foreground hover:no-underline aria-[current=page]:border-primary aria-[current=page]:text-foreground"
-    >
-      {label}
-      <span className="text-[0.8rem] font-medium text-faint tabular-nums">{n}</span>
-    </NavLink>
-  );
-  return (
-    <nav className="mb-4 flex gap-1 border-b border-border" aria-label="Catalog">
-      {tab("/", "Models", models)}
-      {tab("/variants.html", "Variants", variants)}
-    </nav>
   );
 }

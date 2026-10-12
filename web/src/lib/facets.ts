@@ -5,6 +5,7 @@ import { variantBest } from "./catalog";
 // per variant. Variant entries take their model's name, family and tags.
 export interface Facet {
   name: string;
+  displayName: string;
   // How the best-improvement stat names the entry; the name when unset.
   label?: string;
   // A variant's place on its model page.
@@ -30,6 +31,7 @@ export function facetsOf(m: Model): Facet {
   const latest = m.versions[0];
   return {
     name: m.name,
+    displayName: m.displayName,
     family: m.family,
     tags: m.tags,
     engines: latest.variants.map((v) => v.engine),
@@ -56,6 +58,7 @@ export function variantFacetsOf(m: Model, v: Variant, rank: number): Facet {
   const image = v.image && v.image.repository ? `${v.image.repository}:${v.image.tag || "latest"}` : null;
   return {
     name: m.name,
+    displayName: m.displayName,
     label: `${m.name} · ${v.id}`,
     rank,
     family: m.family,
@@ -82,33 +85,43 @@ export function variantFacetsOf(m: Model, v: Variant, rank: number): Facet {
   };
 }
 
-// The default order: best improvement first, the rest by model, and a model's
-// variants in their model page's order.
-export function byUplift(a: Facet, b: Facet): number {
-  return (
-    (b.uplift == null ? -Infinity : b.uplift) - (a.uplift == null ? -Infinity : a.uplift) ||
-    a.name.localeCompare(b.name) ||
-    (a.rank || 0) - (b.rank || 0)
-  );
+export type Dir = "ascending" | "descending";
+
+// What a list sorts on: a key, in ascending order, and the direction a sort
+// starts in. Entries without the key go last whichever way it runs; ties go
+// by model, then a model's variants in their model page's order.
+interface Sort {
+  dir: Dir;
+  missing?: (f: Facet) => boolean;
+  cmp: (a: Facet, b: Facet) => number;
 }
 
-const byName = (a: Facet, b: Facet) => a.name.localeCompare(b.name) || (a.rank || 0) - (b.rank || 0);
-
-export const sorters: Record<string, (a: Facet, b: Facet) => number> = {
-  name: byName,
-  uplift: byUplift,
-  // Models without a family sort last.
-  family: (a, b) => Number(!a.family) - Number(!b.family) || (a.family || "").localeCompare(b.family || "") || byName(a, b),
-  // Fewest GPUs first; a variant that names no count last.
-  gpus: (a, b) => Number(a.gpus == null) - Number(b.gpus == null) || (a.gpus ?? 0) - (b.gpus ?? 0) || byName(a, b),
+const SORTS: Record<string, Sort> = {
+  name: { dir: "ascending", cmp: (a, b) => a.name.localeCompare(b.name) },
+  family: { dir: "ascending", missing: (f) => !f.family, cmp: (a, b) => a.family!.localeCompare(b.family!) },
+  // Best improvement first.
+  uplift: { dir: "descending", missing: (f) => f.uplift == null, cmp: (a, b) => a.uplift! - b.uplift! },
+  // Fewest GPUs first.
+  gpus: { dir: "ascending", missing: (f) => f.gpus == null, cmp: (a, b) => a.gpus! - b.gpus! },
 };
 
-export const sortDir: Record<string, "ascending" | "descending"> = {
-  name: "ascending",
-  family: "ascending",
-  uplift: "descending",
-  gpus: "ascending",
-};
+// The direction each sort starts in.
+export const sortDir: Record<string, Dir> = Object.fromEntries(Object.entries(SORTS).map(([k, s]) => [k, s.dir]));
+
+export function sorter(key: string, dir: Dir = sortDir[key]): (a: Facet, b: Facet) => number {
+  const { missing = () => false, cmp } = SORTS[key];
+  const sign = dir === "ascending" ? 1 : -1;
+  return (a, b) => {
+    const ma = missing(a);
+    const mb = missing(b);
+    return (
+      Number(ma) - Number(mb) ||
+      (ma || mb ? 0 : sign * cmp(a, b)) ||
+      a.name.localeCompare(b.name) ||
+      (a.rank || 0) - (b.rank || 0)
+    );
+  };
+}
 
 export interface Summary {
   models: number;

@@ -1,6 +1,6 @@
 /// <reference types="vitest/config" />
 // The frontend: one page that renders the catalog from catalog.json -- the
-// models, the variants and each model, as routes. Its backend is the catalog
+// deployment recipes, the models and each model, as routes. Its backend is the catalog
 // server (server/index.js): it serves index.json, the version files, the perf
 // reports and catalog.json.
 //
@@ -16,8 +16,9 @@
 //
 // site/
 //   index.html                 the page; its copies below let each route
-//   variants.html                load directly: GitHub Pages has no
-//   models/<name>/index.html     fallback for a single page app
+//   models.html                  load directly: GitHub Pages has no
+//   variants.html                fallback for a single page app
+//   models/<name>/index.html
 //   404.html
 //   assets/                    the page's scripts and styles
 //   catalog.json               what the page renders from
@@ -114,7 +115,7 @@ function catalogSite(): Plugin {
       const page = fs.readFileSync(path.join(outDir, "index.html"));
       // The pages and the catalog share one tree, so a page never replaces a
       // file the catalog put there.
-      for (const route of ["variants.html", "404.html", ...modelNames().map((dir: string) => `models/${dir}/index.html`)]) {
+      for (const route of ["models.html", "variants.html", "404.html", ...modelNames().map((dir: string) => `models/${dir}/index.html`)]) {
         const file = path.join(outDir, route);
         if (fs.existsSync(file)) throw new Error(`site/${route}: the catalog has a file where a page goes`);
         fs.mkdirSync(path.dirname(file), { recursive: true });

@@ -1,4 +1,4 @@
-// The models list.
+// The models list, a page of its own beside the deployment recipes.
 import { Fragment, memo, useEffect, useMemo } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { Catalog, Model } from "@/types";
@@ -160,7 +160,7 @@ const ModelRow = memo(function ModelRow({ m, scale, hidden }: { m: Model; scale:
 export function ModelsRoute() {
   const catalog = useRouteLoaderData("root") as Catalog;
   useEffect(() => {
-    document.title = "Model Catalog";
+    document.title = "Models · Model Catalog";
   }, []);
   const models = catalog.models;
   const { facets, scale } = useMemo(
@@ -173,8 +173,12 @@ export function ModelsRoute() {
   );
   return (
     <ListPage
-      catalog={catalog}
       cfg={{
+        header: {
+          eyebrow: <Link to="/">model-catalog</Link>,
+          title: "Models",
+          description: "Every model in the catalog: its variants, the GPUs they need, and the tuned variant's improvement over its baseline.",
+        },
         noun: "models",
         facets,
         search: "Search models, variants, hardware…",
@@ -187,7 +191,7 @@ export function ModelsRoute() {
         cardWidth: 420,
         head: (th) => (
           <>
-            {th("name", "Model")}
+            {th("name", "Model", { filter: "model" })}
             {th("family", "Family")}
             <TableHead>Variants (latest)</TableHead>
             {th("uplift", "Improvement vs baseline", { className: "text-right", title: UPLIFT_HELP, sub: "best workload" })}

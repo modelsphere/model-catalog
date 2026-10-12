@@ -221,7 +221,7 @@ export function ModelRoute() {
   const hf = m.source && m.source.hf;
   const filterLink = (field: string, value: string, hue: string) => (
     <Badge key={value} variant="chip" className={hue} asChild>
-      <Link to={{ pathname: "/", search: `?${field}=${encodeURIComponent(value)}` }} title={`All models with ${field} ${value}`}>
+      <Link to={{ pathname: "/models.html", search: `?${field}=${encodeURIComponent(value)}` }} title={`All models with ${field} ${value}`}>
         {value}
       </Link>
     </Badge>
@@ -236,7 +236,7 @@ export function ModelRoute() {
       <SiteHeader
         eyebrow={
           <>
-            <Link to="/">model-catalog</Link> / {m.name}
+            <Link to="/">model-catalog</Link> / <Link to="/models.html">models</Link> / {m.name}
           </>
         }
         title={

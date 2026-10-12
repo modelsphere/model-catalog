@@ -1,6 +1,7 @@
 // Pieces every page shows a model or variant with.
-import { Fragment, type ReactElement, type ReactNode } from "react";
+import { Fragment, useState, type ReactElement, type ReactNode } from "react";
 import { Link } from "react-router";
+import { ChevronDownIcon } from "lucide-react";
 import type { Model, Variant } from "@/types";
 import { anchorOf, encodePath, modelPath, reportLinks, REPORT_LANG, UPLIFT_HELP, variantBest } from "@/lib/catalog";
 import { computeSummary, type Facet } from "@/lib/facets";
@@ -9,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { icons } from "./icons";
@@ -230,6 +233,104 @@ export function FilterSelect({
           ))}
       </SelectContent>
     </Select>
+  );
+}
+
+export interface FilterOption {
+  value: string;
+  label: string;
+  count: number;
+  // A GPU's hue: the label then wears it, as in hardware lines.
+  hue?: string;
+}
+
+// A table column's filter: its header opens the column's values to check,
+// each with how many entries have it. Anything with a checked value matches;
+// none checked is everything. A long list gets a search.
+export function ColumnFilter({
+  label,
+  options,
+  selected,
+  onChange,
+  className,
+}: {
+  label: string;
+  options: FilterOption[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+  className?: string;
+}) {
+  const [q, setQ] = useState("");
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = options.filter((o) => terms.every((t) => `${o.value} ${o.label}`.toLowerCase().includes(t)));
+  const name = label.toLowerCase();
+  const active = selected.length > 0;
+  return (
+    <Popover onOpenChange={(open) => open || setQ("")}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={active ? `${label} filter, ${selected.length} selected` : `${label} filter`}
+          title={active ? `${label}: ${selected.map((v) => options.find((o) => o.value === v)?.label ?? v).join(", ")}` : `Filter by ${name}`}
+          data-active={active || undefined}
+          className={cn(
+            "group -ml-[0.3rem] inline-flex min-h-[1.5rem] items-center gap-[0.3rem] rounded-sm px-[0.3rem] hover:bg-accent hover:text-foreground data-active:text-primary data-[state=open]:bg-accent data-[state=open]:text-foreground",
+            className
+          )}
+        >
+          {label}
+          {active && <span className="rounded-sm bg-accent px-[0.3rem] text-[0.7rem] leading-[1.4] text-primary tabular-nums">{selected.length}</span>}
+          <ChevronDownIcon aria-hidden="true" className="size-[0.85rem] transition-transform duration-150 group-data-[state=open]:rotate-180" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="flex w-[17rem] flex-col font-normal">
+        {options.length > 8 && (
+          <div className="border-b border-border p-[0.4rem]">
+            <Input
+              type="search"
+              aria-label={`Search ${name}`}
+              placeholder={`Search ${name}…`}
+              autoComplete="off"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="min-h-8 py-1 text-[0.85rem]"
+            />
+          </div>
+        )}
+        <div role="group" aria-label={label} className="max-h-72 min-h-0 overflow-y-auto p-1">
+          {shown.map((o) => (
+            <label
+              key={o.value}
+              className="flex cursor-pointer items-center gap-[0.6rem] rounded-md px-2 py-[0.35rem] text-[0.88rem] text-foreground hover:bg-accent"
+            >
+              <input
+                type="checkbox"
+                className="size-[0.95rem] shrink-0 cursor-pointer accent-primary"
+                checked={selected.includes(o.value)}
+                onChange={(e) => onChange(e.target.checked ? [...selected, o.value] : selected.filter((v) => v !== o.value))}
+              />
+              <span className="min-w-0 flex-1 truncate" title={o.label === o.value ? undefined : o.value}>
+                {o.hue ? (
+                  <Badge variant="gpu" className={`hue-${o.hue}`}>
+                    {o.label}
+                  </Badge>
+                ) : (
+                  o.label
+                )}
+              </span>
+              <span className="text-[0.8rem] text-faint tabular-nums">{o.count}</span>
+            </label>
+          ))}
+          {shown.length === 0 && <p className="px-2 py-3 text-center text-[0.85rem] text-muted-foreground">No {name} matches.</p>}
+        </div>
+        <div className="flex items-center justify-between gap-2 border-t border-border px-[0.7rem] py-[0.4rem] text-[0.8rem] text-muted-foreground">
+          <span className="tabular-nums">{active ? `${selected.length} of ${options.length} selected` : `All ${options.length}`}</span>
+          <Button type="button" variant="ghost" size="none" disabled={!active} onClick={() => onChange([])}>
+            Clear
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

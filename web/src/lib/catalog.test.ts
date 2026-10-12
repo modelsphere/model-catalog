@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { Model, Tuning, Variant } from "../types";
 import { orderedVariants, reportLinks, tuningFor, variantBest, variantYaml } from "./catalog";
-import { byUplift, computeSummary, sorters, variantFacetsOf, type Facet } from "./facets";
+import { computeSummary, sorter, variantFacetsOf, type Facet } from "./facets";
 import { compareVersions } from "./versions";
 
 const variant = (id: string, over: Partial<Variant> = {}): Variant => ({
@@ -100,16 +100,24 @@ test("a variant's configuration is its own lines of the version file, dedented",
 });
 
 describe("facets", () => {
-  const f = (over: Partial<Facet>): Facet => ({ name: "m", family: null, tags: [], engines: ["sglang"], hardware: [], hasCmp: false, uplift: null, deprecated: false, text: "", ...over });
+  const f = (over: Partial<Facet>): Facet => ({ name: "m", displayName: "M", family: null, tags: [], engines: ["sglang"], hardware: [], hasCmp: false, uplift: null, deprecated: false, text: "", ...over });
 
   test("the default order: improvement, then model, then the model page's order", () => {
     const items = [f({ name: "b", rank: 1 }), f({ name: "a", uplift: 5 }), f({ name: "b", rank: 0 }), f({ name: "c", uplift: 50 })];
-    expect(items.sort(byUplift).map((x) => `${x.name}${x.rank ?? ""}`)).toEqual(["c", "a", "b0", "b1"]);
+    expect(items.sort(sorter("uplift")).map((x) => `${x.name}${x.rank ?? ""}`)).toEqual(["c", "a", "b0", "b1"]);
+  });
+
+  test("reversed, the key runs the other way; entries without it stay last, ties keep their order", () => {
+    const items = [f({ name: "b", rank: 1 }), f({ name: "a", uplift: 5 }), f({ name: "b", rank: 0 }), f({ name: "c", uplift: 50 })];
+    expect(items.sort(sorter("uplift", "ascending")).map((x) => `${x.name}${x.rank ?? ""}`)).toEqual(["a", "c", "b0", "b1"]);
+    const named = [f({ name: "a", rank: 1 }), f({ name: "b" }), f({ name: "a", rank: 0 })];
+    expect(named.sort(sorter("name", "descending")).map((x) => `${x.name}${x.rank ?? ""}`)).toEqual(["b", "a0", "a1"]);
   });
 
   test("fewest GPUs first, a variant naming none last", () => {
     const items = [f({ name: "x", gpus: null }), f({ name: "y", gpus: 16 }), f({ name: "z", gpus: 4 })];
-    expect(items.sort(sorters.gpus).map((x) => x.name)).toEqual(["z", "y", "x"]);
+    expect(items.sort(sorter("gpus")).map((x) => x.name)).toEqual(["z", "y", "x"]);
+    expect(items.sort(sorter("gpus", "descending")).map((x) => x.name)).toEqual(["y", "z", "x"]);
   });
 
   test("a model counts once however many of its variants show", () => {
