@@ -1,4 +1,4 @@
-apiVersion: catalog.swiss/v1
+apiVersion: catalog.swiss/v2
 name: kimi-k2.5
 displayName: Kimi K2.5
 description: Does not fit on one node. A two-pod LeaderWorkerSet group, TP8 inside each node and PP2 across the InfiniBand fabric between them. Needs the LWS controller, rdma-shared-dev-plugin and rdma-injector.
@@ -8,5 +8,6 @@ tags:
   - reasoning
   - long-context
   - multi-node
+defaultVariant: sglang-pp2-lws
 source:
   hf: moonshotai/Kimi-K2.5

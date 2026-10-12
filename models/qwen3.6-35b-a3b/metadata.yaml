@@ -1,4 +1,4 @@
-apiVersion: catalog.swiss/v1
+apiVersion: catalog.swiss/v2
 name: qwen3.6-35b-a3b
 displayName: Qwen3.6 35B-A3B
 description: Stock Qwen3.6-35B-A3B on two H100 or H800 GPUs or eight H100 GPUs, served as "qwen". The upstream weights, not one of the modelforge builds derived from them — those are published separately and served under other names.
@@ -7,12 +7,13 @@ tags:
   - chat
   - moe
   - tool-use
+defaultVariant: sglang-tp2-h100
 source:
   hf: Qwen/Qwen3.6-35B-A3B
 tuning:
   - version: 1.1.0
-    baseline: sglang-tp8-h100-baseline
-    optimized: sglang-tp8-h100-optimized
+    baseline: sglang-tp8-h100-baseline@1.1.0
+    optimized: sglang-tp8-h100-optimized@1.1.0
     uplift: 4.3
     workloads:
       - name: 50k + 1.5k

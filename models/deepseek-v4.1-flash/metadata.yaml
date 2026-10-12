@@ -1,4 +1,4 @@
-apiVersion: catalog.swiss/v1
+apiVersion: catalog.swiss/v2
 name: deepseek-v4.1-flash
 displayName: DeepSeek-V4.1-Flash
 description: DeepSeek-V4.1-Flash on 8 H100 GPUs.
@@ -7,12 +7,13 @@ tags:
   - chat
   - reasoning
   - tool-use
+defaultVariant: sglang-tp8-h100-optimized
 source:
   hf: deepseek-ai/DeepSeek-V4.1-Flash
 tuning:
   - version: 1.0.0
-    baseline: sglang-tp8-h100-baseline
-    optimized: sglang-tp8-h100-optimized
+    baseline: sglang-tp8-h100-baseline@1.0.0
+    optimized: sglang-tp8-h100-optimized@1.0.0
     uplift: 89.5
     workloads:
       - name: 50k + 1.5k

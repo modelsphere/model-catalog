@@ -6,10 +6,10 @@ const YAML = require("yaml");
 const { modelNames, readYaml, root, schemaOf, schemaValidator } = require("./lib/catalog");
 const { migrate } = require("./migrate-v2");
 
-test("every v1 model migrates to files the v2 schemas accept, its variants unchanged", () => {
+test("every v1 model migrates to files the v2 schemas accept, its variants unchanged", (t) => {
   const schema = schemaValidator();
   const v1 = modelNames().filter((name) => schemaOf(readYaml(`${root}/models/${name}/metadata.yaml`)) === "v1");
-  assert.ok(v1.length > 0);
+  if (v1.length === 0) return t.skip("every model is on v2");
   for (const name of v1) {
     const { files } = migrate(name);
     for (const [rel, body] of files) {
