@@ -28,14 +28,13 @@ function searchText(parts: Array<string | null | undefined | false>): string {
 }
 
 export function facetsOf(m: Model): Facet {
-  const latest = m.versions[0];
   return {
     name: m.name,
     displayName: m.displayName,
     family: m.family,
     tags: m.tags,
-    engines: latest.variants.map((v) => v.engine),
-    hardware: [...new Set(latest.variants.flatMap((v) => v.hardware))].sort(),
+    engines: m.variants.map((v) => v.engine),
+    hardware: [...new Set(m.variants.flatMap((v) => v.hardware))].sort(),
     hasCmp: !!m.comparison,
     uplift: m.comparison ? m.comparison.bestPct : null,
     deprecated: m.deprecated,
@@ -46,7 +45,7 @@ export function facetsOf(m: Model): Facet {
       m.family,
       m.source && m.source.hf,
       ...m.tags,
-      ...latest.variants.flatMap((v) => [v.id, v.engine, v.description, ...v.hardware]),
+      ...m.variants.flatMap((v) => [v.id, v.engine, v.description, ...v.hardware]),
     ]),
   };
 }

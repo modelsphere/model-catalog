@@ -124,7 +124,7 @@ function linksCell(m: Model) {
 
 // Compact: no descriptions (the description is the name's tooltip).
 const ModelRow = memo(function ModelRow({ m, scale, hidden }: { m: Model; scale: number; hidden: boolean }) {
-  const gpus = [...new Set(m.versions[0].variants.flatMap((v) => v.hardware))];
+  const gpus = [...new Set(m.variants.flatMap((v) => v.hardware))];
   return (
     <TableRow hidden={hidden}>
       <TableCell className="min-w-[200px]">
@@ -167,7 +167,7 @@ export function ModelsRoute() {
     () => ({
       facets: models.map(facetsOf),
       // Every bar is drawn against the catalog's best result.
-      scale: Math.max(0, ...models.flatMap((m) => m.versions[0].variants.map((v) => variantBest(m, v.id)?.upliftPct || 0))) || 1,
+      scale: Math.max(0, ...models.flatMap((m) => m.variants.map((v) => variantBest(m, v.id)?.upliftPct || 0))) || 1,
     }),
     [models]
   );
@@ -193,7 +193,7 @@ export function ModelsRoute() {
           <>
             {th("name", "Model", { filter: "model" })}
             {th("family", "Family")}
-            <TableHead>Recipes (latest)</TableHead>
+            <TableHead>Recipes</TableHead>
             {th("uplift", "Improvement vs baseline", { className: "text-right", title: UPLIFT_HELP, sub: "best workload" })}
             <TableHead>Links</TableHead>
           </>

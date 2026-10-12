@@ -22,7 +22,7 @@ const router = createBrowserRouter(
       shouldRevalidate: keepCatalog,
       Component: Root,
       ErrorBoundary: RouteError,
-      // Until catalog.json is in, the page stays as index.html left it.
+      // Until index-v2.json is in, the page stays as index.html left it.
       HydrateFallback: () => null,
       children: [
         { index: true, Component: VariantsRoute },

@@ -2,12 +2,13 @@
 // The catalog server: this checkout as a catalog, live from models/, at the
 // paths the published site has them.
 //
-//   GET /index.json                    the index swiss reads, built per request
-//   GET /models/<name>/<file>.yaml     the version files it names
-//   GET /models/<name>/<report>.html   perf reports
-//   GET /catalog.json                  what the web app renders from
-//   GET /index-v2.json                 v2 models and their variant files
+//   GET /index-v2.json                 v2 models and their variant files: what
+//                                      the web app renders from
+//   GET /models/<name>/<id>.yaml       the variant files it names
 //   GET /models/<name>/<id>.history.json
+//   GET /models/<name>/<report>.html   perf reports
+//   GET /index.json                    the v1 index swiss reads, built per request
+//   GET /models/<name>/<file>.yaml     the version files it names
 //
 //   npm run serve                      # http://127.0.0.1:8000
 //   npm run serve -- 9000
@@ -21,17 +22,16 @@ const http = require("http");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { root, modelsDir, historyPath } = require("../hack/lib/catalog");
-const { loadCatalog, checkedIndexV2, buildIndex, serializeIndex } = require("./data");
+const { checkedIndexV2, buildIndex, serializeIndex } = require("./data");
 
 const TYPES = { ".json": "application/json", ".yaml": "text/yaml; charset=utf-8", ".html": "text/html; charset=utf-8" };
 
-// A catalog server. catalog.json is built once and again after an edit under
-// models/: it reads git for every version file, which takes a few seconds.
-// index.json is cheap, so it is always built fresh.
+// A catalog server. index-v2.json is built once and again after an edit under
+// models/ or a commit: it reads git history, which takes a moment. index.json
+// is cheap, so it is always built fresh.
 function createServer() {
-  let catalog = null;
   let v2 = null;
-  const watcher = fs.watch(modelsDir, { recursive: true }, () => (catalog = v2 = null));
+  const watcher = fs.watch(modelsDir, { recursive: true }, () => (v2 = null));
   // Rebuilt after a commit too: versions come from git.
   const head = () => execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   const indexV2 = () => {
@@ -62,7 +62,6 @@ function createServer() {
     }
     try {
       if (url === "/index.json") return send(200, TYPES[".json"], serializeIndex(buildIndex()));
-      if (url === "/catalog.json") return send(200, TYPES[".json"], JSON.stringify((catalog ??= loadCatalog())));
       if (url === "/index-v2.json") return send(200, TYPES[".json"], indexV2().index);
       if (/^\/models\/[^/]+\/[^/]+\.history\.json$/.test(url)) {
         const body = indexV2().histories.get(url.slice(1));

@@ -1,11 +1,11 @@
-// A model's page: every variant of the version a deploy gets, in full.
+// A model's page: every variant, in full.
 // Tuning binds to the optimized variant: a model may have several, each
 // against its own baseline, so each optimized variant carries its own results.
 import { Fragment, useEffect, type ReactNode } from "react";
 import { Link, useLoaderData, useLocation, useNavigate, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from "react-router";
-import type { Model, Tuning, Variant, Version } from "@/types";
-import { anchorOf, encodePath, latestVersion, orderedVariants, reportLinks, REPORT_LANG, tuningFor, UPLIFT_HELP, variantYaml, WORKLOAD_NAMES } from "@/lib/catalog";
-import { loadCatalog, loadVersionText } from "@/lib/data";
+import type { Model, Tuning, Variant } from "@/types";
+import { anchorOf, encodePath, orderedVariants, reportLinks, REPORT_LANG, tuningFor, UPLIFT_HELP, WORKLOAD_NAMES } from "@/lib/catalog";
+import { loadCatalog, loadVariantText } from "@/lib/data";
 import { countBy } from "@/lib/facets";
 import { tagHue } from "@/lib/hues";
 import { cn } from "@/lib/utils";
@@ -18,19 +18,21 @@ import { icons } from "@/components/icons";
 import { SiteFooter, SiteHeader } from "@/components/site";
 
 export async function modelLoader({ params }: LoaderFunctionArgs) {
-  const m = (await loadCatalog()).models.find((x) => x.dir === params.dir);
+  const m = (await loadCatalog()).models.find((x) => x.name === params.dir);
   if (!m) throw new Response(`No model ${params.dir} in this catalog.`, { status: 404 });
-  return { m, versionText: await loadVersionText(m) };
+  // Each variant's configuration is its own file.
+  const texts = await Promise.all(m.variants.map(loadVariantText));
+  return { m, yaml: Object.fromEntries(m.variants.map((v, i) => [v.id, texts[i]])) as Record<string, string | null> };
 }
 
-// The GPU filter only changes the query: the model and its file stay.
+// The GPU filter only changes the query: the model and its files stay.
 export const keepModel = ({ currentParams, nextParams }: ShouldRevalidateFunctionArgs) => currentParams.dir !== nextParams.dir;
 
-// A pair's baseline: linked when this version has it -- a pair carried from
-// an earlier version may name one this version dropped.
-function BaselineRef({ ver, t }: { ver: Version; t: Tuning }) {
+// A pair's baseline: linked when the model still has it -- an old pair may
+// name one since deleted.
+function BaselineRef({ m, t }: { m: Model; t: Tuning }) {
   const code = <code>{t.baselineId}</code>;
-  return ver.variants.some((v) => v.id === t.baselineId) ? <Link to={{ hash: anchorOf(ver.version, t.baselineId) }}>{code}</Link> : code;
+  return m.variants.some((v) => v.id === t.baselineId) ? <Link to={{ hash: anchorOf(t.baselineId) }}>{code}</Link> : code;
 }
 
 // One bar per workload, drawn against the model's largest result so bars
@@ -63,13 +65,13 @@ function TuningBars({ t, scale }: { t: Tuning; scale: number }) {
   );
 }
 
-function TuningBlock({ ver, t, scale }: { ver: Version; t: Tuning; scale: number }) {
-  const older = t.version !== ver.version ? t.version : null;
+function TuningBlock({ m, v, t, scale }: { m: Model; v: Variant; t: Tuning; scale: number }) {
+  const older = t.optimizedVersion !== v.version ? t.optimizedVersion : null;
   return (
     <div className="mt-[0.85rem] rounded-lg border border-border px-[0.85rem] py-3 max-[719px]:px-[0.7rem] max-[719px]:py-[0.65rem]">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-[0.3rem] text-[0.88rem]">
         <span>
-          Improvement vs <BaselineRef ver={ver} t={t} />
+          Improvement vs <BaselineRef m={m} t={t} />
           <span className="text-[0.8rem] text-faint"> · per workload</span>
         </span>
         {t.reportFile && (
@@ -91,11 +93,11 @@ const fact = {
   dd: "mt-[0.1rem] text-[0.86rem] wrap-anywhere",
 };
 
-function VariantDetail({ m, ver, v, scale, yaml, targeted }: { m: Model; ver: Version; v: Variant; scale: number; yaml: string | null; targeted: boolean }) {
-  const anchor = anchorOf(ver.version, v.id);
-  const pairs = tuningFor(m, ver.version, v.id);
-  // Optimized variants of this version measured against this one.
-  const against = ver.variants.filter((o) => tuningFor(m, ver.version, o.id).some((t) => t.baselineId === v.id));
+function VariantDetail({ m, v, scale, yaml, targeted }: { m: Model; v: Variant; scale: number; yaml: string | null; targeted: boolean }) {
+  const anchor = anchorOf(v.id);
+  const pairs = tuningFor(m, v.id);
+  // Optimized variants measured against this one.
+  const against = m.variants.filter((o) => tuningFor(m, o.id).some((t) => t.baselineId === v.id));
   return (
     <Card
       id={anchor}
@@ -134,6 +136,10 @@ function VariantDetail({ m, ver, v, scale, yaml, targeted }: { m: Model; ver: Ve
       </div>
       {v.description && <p className="mt-[0.45rem] text-[0.9rem] text-muted-foreground">{v.description}</p>}
       <dl className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-x-5 gap-y-2">
+        <Fact label="Version" {...fact}>
+          <span className="tabular-nums">{v.version}</span>
+          {v.releaseDate && <span className="text-faint"> · released {v.releaseDate}</span>}
+        </Fact>
         <Fact label="Engine" {...fact}>
           {v.engine}
         </Fact>
@@ -151,9 +157,12 @@ function VariantDetail({ m, ver, v, scale, yaml, targeted }: { m: Model; ver: Ve
         <Fact label="Image" {...fact}>
           {imageCode(v)}
         </Fact>
+        <Fact label="Served as" {...fact}>
+          {v.servedName && <code>{v.servedName}</code>}
+        </Fact>
       </dl>
       {pairs.map((t) => (
-        <TuningBlock key={`${t.version}:${t.baselineId}:${t.reportFile}`} ver={ver} t={t} scale={scale} />
+        <TuningBlock key={`${t.optimizedVersion}:${t.baselineId}:${t.reportFile}`} m={m} v={v} t={t} scale={scale} />
       ))}
       {against.length > 0 && (
         <p className="mt-3 text-[0.86rem] text-muted-foreground">
@@ -161,7 +170,7 @@ function VariantDetail({ m, ver, v, scale, yaml, targeted }: { m: Model; ver: Ve
           {against.map((o, i) => (
             <Fragment key={o.id}>
               {i > 0 && ", "}
-              <Link to={{ hash: anchorOf(ver.version, o.id) }}>
+              <Link to={{ hash: anchorOf(o.id) }}>
                 <code>{o.id}</code>
               </Link>
             </Fragment>
@@ -207,9 +216,8 @@ function Facts({ items }: { items: ReactNode[] }) {
 }
 
 export function ModelRoute() {
-  const { m, versionText } = useLoaderData() as Awaited<ReturnType<typeof modelLoader>>;
-  const latest = latestVersion(m);
-  const variants = orderedVariants(m, latest.variants);
+  const { m, yaml } = useLoaderData() as Awaited<ReturnType<typeof modelLoader>>;
+  const variants = orderedVariants(m);
   const { hash } = useLocation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -220,7 +228,7 @@ export function ModelRoute() {
   // Checked GPU toggles show only the variants that run on one of them; the
   // choice lives in the query, beside the fragment. A model on one GPU has
   // nothing to filter, so no toggles.
-  const labels = new Set(latest.variants.flatMap((v) => v.hardware));
+  const labels = new Set(m.variants.flatMap((v) => v.hardware));
   const selected = params.getAll("hardware").filter((h) => labels.has(h));
   const setSelected = (next: string[]) => {
     const query = new URLSearchParams();
@@ -229,8 +237,8 @@ export function ModelRoute() {
   };
   const shows = (v: Variant) => !selected.length || selected.some((h) => v.hardware.includes(h));
 
-  const all = latest.variants
-    .flatMap((v) => tuningFor(m, latest.version, v.id))
+  const all = m.variants
+    .flatMap((v) => tuningFor(m, v.id))
     .flatMap((t) => (t.workloads.length ? t.workloads.map((w) => w.upliftPct) : [t.upliftPct]));
   const scale = Math.max(0, ...all.filter((x): x is number => x != null)) || 1;
   const hf = m.source && m.source.hf;
@@ -242,8 +250,8 @@ export function ModelRoute() {
     </Badge>
   );
   const reports = reportLinks(m, "Perf report");
-  const total = latest.variants.length;
-  const shown = latest.variants.filter(shows).length;
+  const total = m.variants.length;
+  const shown = m.variants.filter(shows).length;
   const noun = total === 1 ? "recipe" : "recipes";
 
   return (
@@ -296,30 +304,16 @@ export function ModelRoute() {
         )}
       </SiteHeader>
       <main className="wrap">
-        <section id={`v${latest.version}`}>
+        <section id="recipes">
           <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-[0.1rem] pb-2">
             <h2 className="text-[1.05rem] font-bold tabular-nums">Recipes</h2>
             <span className="text-[0.84rem] text-muted-foreground">
               <span>{selected.length ? `${shown} of ${total} ${noun}` : `${total} ${noun}`}</span>
-              {latest.servedName && (
-                <>
-                  {" · served as "}
-                  <code>{latest.servedName}</code>
-                </>
-              )}
             </span>
-            {latest.source && (
-              <Button variant="link" size="none" className="ml-auto text-[0.84rem]" asChild>
-                <a href={latest.source} {...NEW_TAB}>
-                  {icons.external}
-                  {latest.path.split("/").pop()}
-                </a>
-              </Button>
-            )}
           </div>
           {labels.size > 1 && (
             <div className="mb-4">
-              <GpuToggles counts={countBy(latest.variants.flatMap((v) => [...new Set(v.hardware)]))} what="Recipes for" selected={selected} onChange={setSelected} />
+              <GpuToggles counts={countBy(m.variants.flatMap((v) => [...new Set(v.hardware)]))} what="Recipes for" selected={selected} onChange={setSelected} />
             </div>
           )}
           <div className="grid gap-[0.85rem]">
@@ -327,18 +321,17 @@ export function ModelRoute() {
               <VariantDetail
                 key={v.id}
                 m={m}
-                ver={latest}
                 v={v}
                 scale={scale}
-                yaml={versionText && v.lines ? variantYaml(versionText, v.lines) : null}
-                targeted={hash === `#${anchorOf(latest.version, v.id)}`}
+                yaml={yaml[v.id]?.replace(/\s+$/, "") || null}
+                targeted={hash === `#${anchorOf(v.id)}`}
               />
             ))}
           </div>
         </section>
       </main>
       <SiteFooter>
-        Generated from <code>models/{m.dir}/</code> by <code>npm run build:site</code>.
+        Generated from <code>models/{m.name}/</code> by <code>npm run build:site</code>.
       </SiteFooter>
     </>
   );

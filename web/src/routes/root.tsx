@@ -7,7 +7,7 @@ import { SiteFooter, SiteHeader } from "@/components/site";
 
 export const rootLoader = () => loadCatalog();
 
-// catalog.json changes only with a new build, so no navigation reloads it.
+// index-v2.json changes only with a new build, so no navigation reloads it.
 export const keepCatalog = () => false;
 
 // Scroll positions are kept per page and fragment. By history entry they would

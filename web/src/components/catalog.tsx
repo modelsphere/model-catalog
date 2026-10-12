@@ -21,8 +21,8 @@ export const none = <span className="text-faint">—</span>;
 // Links open in a new tab, so the catalog stays where it was.
 export const NEW_TAB = { target: "_blank", rel: "noopener" } as const;
 
-// The site's root, where the published files are: catalog.json, index.json,
-// the version files and the perf reports.
+// The site's root, where the published files are: index-v2.json and its
+// variant files, index.json and its version files, and the perf reports.
 export const ROOT = import.meta.env.BASE_URL;
 
 // A filter chip: clicking one sets the list's filter (see ListPage). Family
@@ -54,6 +54,11 @@ export function VariantBadges({ v }: { v: Variant }) {
       {v.default && <Badge variant="quiet">default</Badge>}
       {v.isOptimized && <Badge variant="optimized">optimized</Badge>}
       {v.isBaseline && <Badge variant="quiet">baseline</Badge>}
+      {v.deprecated && (
+        <Badge variant="deprecated" title={v.deprecatedReason ?? undefined}>
+          deprecated
+        </Badge>
+      )}
     </>
   );
 }
@@ -65,7 +70,7 @@ export function VariantLine({ m, v, className, idClass }: { m: Model; v: Variant
     <div className={className}>
       <Link
         className={cn("mr-[0.15rem] font-mono text-[0.84rem] wrap-anywhere text-inherit hover:text-primary", idClass)}
-        to={{ pathname: modelPath(m), hash: anchorOf(m.latest, v.id) }}
+        to={{ pathname: modelPath(m), hash: anchorOf(v.id) }}
         title={v.description ? `${v.id}: ${v.description}` : v.id}
       >
         {v.id}
@@ -116,7 +121,7 @@ export function improvementBar(m: Model, v: Variant, scale: number, className: s
   const width = Math.max(0, Math.min(100, (b.upliftPct / scale) * 100));
   const title =
     (b.of > 1 ? `Best of ${b.of} workloads: ` : "") +
-    `${b.upliftLabel}${b.name ? ` at ${b.name} tokens` : ""}, ${v.id} vs ${b.t.baselineId}, measured on v${b.t.version}. ` +
+    `${b.upliftLabel}${b.name ? ` at ${b.name} tokens` : ""}, ${v.id} vs ${b.t.baselineId}, measured on v${b.t.optimizedVersion}. ` +
     UPLIFT_HELP;
   return (
     <div className={cn("grid grid-cols-[72px_minmax(4.6em,auto)] items-center justify-end gap-x-[0.6rem]", className)} title={title}>
@@ -147,7 +152,7 @@ export function linkItems(m: Model, kind: "button" | "link", reportLabel: string
       </Button>
     ),
   }));
-  for (const v of m.versions[0].variants) {
+  for (const v of m.variants) {
     if (!v.link) continue;
     items.push({
       id: v.id,

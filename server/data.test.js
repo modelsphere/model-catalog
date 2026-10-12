@@ -28,13 +28,3 @@ test("a published version is matched by model and version: moved unchanged is a 
 test("nothing published yet: nothing to check", () => {
   assert.deepEqual(rewritesOf(null, index([["m", [v("1.0.0", "models/m/m-1.0.0.yaml", "sha256:a")]]])), { rewrites: [], moves: [] });
 });
-
-test("catalog.json pairs a v2 model's pinned tuning refs with its variants", () => {
-  const { loadCatalog } = require("./data");
-  const { readYaml, root, schemaOf } = require("../hack/lib/catalog");
-  const tuned = loadCatalog().models.filter((m) => schemaOf(readYaml(`${root}/models/${m.dir}/metadata.yaml`)) === "v2" && m.tuning.length);
-  for (const m of tuned) {
-    assert.ok(m.comparison, `${m.name}: no comparison`);
-    assert.ok(m.versions[0].variants.some((v) => v.isOptimized), `${m.name}: no optimized variant`);
-  }
-});

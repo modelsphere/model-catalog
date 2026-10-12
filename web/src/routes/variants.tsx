@@ -1,10 +1,10 @@
-// The deployment recipes, the catalog's front page: every model's variants in
-// the version a deploy gets, one entry each, so they compare across models: by
+// The deployment recipes, the catalog's front page: every model's variants,
+// one entry each, so they compare across models: by
 // GPU, engine, image or improvement.
 import { memo, useEffect, useMemo } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { Catalog, Model, Variant } from "@/types";
-import { latestVersion, modelPath, orderedVariants, UPLIFT_HELP } from "@/lib/catalog";
+import { modelPath, orderedVariants, UPLIFT_HELP } from "@/lib/catalog";
 import { variantFacetsOf } from "@/lib/facets";
 import { Card } from "@/components/ui/card";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
@@ -152,7 +152,7 @@ export function VariantsRoute() {
     document.title = "Model Catalog";
   }, []);
   const { entries, facets, scale } = useMemo(() => {
-    const entries = catalog.models.flatMap((m) => orderedVariants(m, latestVersion(m).variants).map((v, rank) => ({ m, v, rank })));
+    const entries = catalog.models.flatMap((m) => orderedVariants(m).map((v, rank) => ({ m, v, rank })));
     const facets = entries.map(({ m, v, rank }) => variantFacetsOf(m, v, rank));
     // Every bar is drawn against the best result on the page.
     return { entries, facets, scale: Math.max(0, ...facets.map((f) => f.uplift || 0)) || 1 };
@@ -189,7 +189,7 @@ export function VariantsRoute() {
         heading: (
           <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-[0.1rem] pb-2">
             <h2 className="text-[1.05rem] font-bold">Deployment Recipe</h2>
-            <span className="text-[0.84rem] text-muted-foreground max-[560px]:hidden">every model's recipes, in the version a deploy gets</span>
+            <span className="text-[0.84rem] text-muted-foreground max-[560px]:hidden">every model's recipes</span>
             <Link to="/models.html" className="ml-auto inline-flex items-baseline gap-[0.4rem] text-[0.88rem] font-semibold">
               All models
               <span className="text-[0.8rem] font-medium text-faint tabular-nums">{catalog.count}</span>

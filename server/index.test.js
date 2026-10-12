@@ -35,22 +35,23 @@ test("every version file the index names is served at its path, as it is", async
   assert.equal(await res.text(), fs.readFileSync(path.join(root, rel), "utf8"));
 });
 
-test("catalog.json and the perf reports it links are served", async () => {
-  const catalog = await (await fetch(`${base}/catalog.json`)).json();
-  assert.equal(catalog.count, modelNames().length);
-  const report = catalog.models.flatMap((m) => m.reports)[0];
-  const res = await fetch(`${base}/${report.path}`);
-  assert.equal(res.status, 200);
-  assert.match(res.headers.get("content-type"), /^text\/html/);
-});
-
-test("index-v2.json lists only v2 models, and each variant's history is served", async () => {
+test("index-v2.json lists only v2 models, and each variant's file and history is served", async () => {
   const index = await (await fetch(`${base}/index-v2.json`)).json();
   assert.equal(index.apiVersion, "catalog.swiss/v2");
   for (const v of index.models.flatMap((m) => m.variants)) {
     const h = await (await fetch(`${base}/${v.history}`)).json();
     assert.deepEqual([h.path, h.revisions[0].digest], [v.path, v.digest]);
+    assert.equal(await (await fetch(`${base}/${v.path}`)).text(), fs.readFileSync(path.join(root, v.path), "utf8"));
   }
+});
+
+test("the perf reports index-v2.json lists are served, and catalog.json is gone", async () => {
+  const index = await (await fetch(`${base}/index-v2.json`)).json();
+  const m = index.models.find((x) => x.reports.length);
+  const res = await fetch(`${base}/models/${m.name}/${m.reports[0]}`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type"), /^text\/html/);
+  assert.equal((await fetch(`${base}/catalog.json`)).status, 404);
 });
 
 test("nothing outside models/ is served, and only reads are allowed", async () => {

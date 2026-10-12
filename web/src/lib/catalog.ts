@@ -1,13 +1,5 @@
-import type { Catalog, Model, Report, Tuning, Variant, Version, Workload } from "../types";
+import type { Catalog, Comparison, Index, IndexModel, IndexTuning, IndexVariant, Model, Report, Requires, Tuning, Variant, Workload } from "../types";
 import { compareVersions } from "./versions";
-
-// catalog.json, from the site's root as seen from the page (a model page sits
-// two directories down).
-export async function fetchCatalog(root: string): Promise<Catalog> {
-  const res = await fetch(`${root}catalog.json`);
-  if (!res.ok) throw new Error(`catalog.json: ${res.status}`);
-  return res.json();
-}
 
 // What an uplift number means, for tooltips. Workload names are the report's:
 // input + output tokens per request.
@@ -27,18 +19,13 @@ export function encodePath(p: string): string {
   return p.split("/").map(encodeURIComponent).join("/");
 }
 
-// The version a deploy naming none gets: what the model page and the variants
-// page show.
-export function latestVersion(m: Model): Version {
-  return m.versions.find((v) => v.version === m.latest)!;
-}
-
 // Each model's page, as the router and the published site name it.
 export function modelPath(m: Model): string {
-  return `/models/${encodeURIComponent(m.dir)}/index.html`;
+  return `/models/${encodeURIComponent(m.name)}/index.html`;
 }
 
-export const anchorOf = (version: string, id: string) => `v${version}-${id}`;
+// A variant's place on its model page.
+export const anchorOf = (id: string) => id;
 
 // Whether the id adds nothing to the display name: the name lowercased, with
 // spaces and slashes as dashes (DeepSeek-V4-Flash -> deepseek-v4-flash). The
@@ -51,17 +38,155 @@ export function idIsDisplayName(m: Model): boolean {
   return slug === m.name;
 }
 
-// The pairs shown on an optimized variant in a version: those measured on that
-// version, else -- a tuned variant carried forward unchanged -- those of the
-// newest earlier version that measured it.
-export function tuningFor(m: Model, version: string, id: string): Tuning[] {
+function requiresSummary(req: Requires | null): string {
+  if (!req) return "";
+  let gpus = req.gpus != null ? `${req.gpus} GPU` + (req.gpus === 1 ? "" : "s") : null;
+  // requires.gpus is per pod; a multi-node group needs gpus x nodes in total.
+  if (gpus && req.nodes && req.nodes > 1) gpus += ` × ${req.nodes} nodes`;
+  const topo = req.topology && req.topology !== "single-node" ? req.topology : null;
+  const product = Array.isArray(req.gpuProduct) ? req.gpuProduct.join(", ") : null;
+  const vendor = req.vendor && req.vendor !== "nvidia" ? req.vendor : null;
+  return [gpus, topo, product, vendor].filter(Boolean).join(" · ");
+}
+
+// Vendor names as swiss's console shows them.
+const VENDOR_NAMES: Record<string, string> = { nvidia: "NVIDIA", ascend: "Ascend", cambricon: "Cambricon", hygon: "Hygon", amd: "AMD" };
+
+const vendorName = (vendor: string) => VENDOR_NAMES[vendor] || vendor;
+
+// Short labels for the hardware filter: NVIDIA-H100-80GB-HBM3 -> H100,
+// NVIDIA-RTX-6000D -> RTX-6000D. NVIDIA cards go bare; another vendor's card
+// reads "<Vendor> <model>" (Ascend-910B3 -> Ascend 910B3), or stays as is when
+// it names the vendor elsewhere.
+export function hardwareLabels(req: Requires | null): string[] {
+  if (!req) return [];
+  const vendor = req.vendor || "nvidia";
+  const products = Array.isArray(req.gpuProduct) ? req.gpuProduct : [];
+  if (products.length === 0) return [vendor === "nvidia" ? "any GPU" : vendorName(vendor)];
+  return products.map((p) => {
+    const m = String(p).match(/(?:^|-)([A-Z]{1,2}\d{2,4}[A-Z]?)(?=-|$)/i);
+    const card = m ? m[1].toUpperCase() : String(p).replace(/^NVIDIA-/i, "");
+    if (vendor === "nvidia") return card;
+    const model = card.replace(new RegExp(`^${vendor}-`, "i"), "");
+    if (model === card && card.toLowerCase().includes(vendor.toLowerCase())) return card;
+    return `${vendorName(vendor)} ${model}`;
+  });
+}
+
+// Compact hardware line for a variant: "8 × H100", "8 × GPU × 2 nodes".
+export function hardwareShort(req: Requires | null): string {
+  if (!req || req.gpus == null) return "";
+  const hasProducts = Array.isArray(req.gpuProduct) && req.gpuProduct.length > 0;
+  const vendor = req.vendor && req.vendor !== "nvidia" ? vendorName(req.vendor) : "GPU";
+  let s = `${req.gpus} × ${hasProducts ? hardwareLabels(req).join(" / ") : vendor}`;
+  if (req.nodes && req.nodes > 1) s += ` × ${req.nodes} nodes`;
+  return s;
+}
+
+function formatUplift(pct: number): string {
+  return `${pct < 0 ? "" : "+"}${(Math.round(pct * 10) / 10).toFixed(1)}%`;
+}
+
+// <id>@<version>, as metadata.yaml's tuning names the variant version measured.
+function measured(ref: string): [string, string] {
+  const at = ref.lastIndexOf("@");
+  return at < 0 ? [ref, ""] : [ref.slice(0, at), ref.slice(at + 1)];
+}
+
+function tuningEntry(name: string, t: IndexTuning): Tuning {
+  const [baselineId, baselineVersion] = measured(t.baseline);
+  const [optimizedId, optimizedVersion] = measured(t.optimized);
+  const pct = typeof t.uplift === "number" ? t.uplift : null;
+  return {
+    baselineId,
+    baselineVersion,
+    optimizedId,
+    optimizedVersion,
+    upliftPct: pct,
+    upliftLabel: pct == null ? null : formatUplift(pct),
+    report: t.report ? `models/${name}/${t.report}` : null,
+    reportFile: t.report || null,
+    workloads: (t.workloads ?? []).map((w) => ({ name: String(w.name), upliftPct: w.uplift, upliftLabel: formatUplift(w.uplift) })),
+  };
+}
+
+// The pair a model shows: one between two of its variants, preferring one
+// measured on the tuned variant's current version, then one whose tuned
+// variant is the default. Its one number -- badge, table, sort and summary --
+// is its best workload, or the headline when the benchmark recorded none.
+function comparisonFor(tuning: Tuning[], variants: Variant[]): Comparison | null {
+  const byId = new Map(variants.map((v) => [v.id, v]));
+  const fits = tuning.filter((t) => byId.has(t.baselineId) && byId.has(t.optimizedId));
+  const t =
+    fits.find((x) => byId.get(x.optimizedId)!.version === x.optimizedVersion) ||
+    fits.find((x) => byId.get(x.optimizedId)!.default) ||
+    fits[0];
+  if (!t) return null;
+  const best = t.workloads.reduce<Workload | null>((b, w) => (b && b.upliftPct >= w.upliftPct ? b : w), null);
+  const bestPct = best ? best.upliftPct : t.upliftPct;
+  return { ...t, bestPct, bestLabel: bestPct == null ? null : formatUplift(bestPct), bestWorkload: best ? best.name : null };
+}
+
+const deprecation = (d: boolean | string | undefined) => ({ deprecated: !!d, deprecatedReason: typeof d === "string" ? d : null });
+
+function variantOf(index: Index, m: IndexModel, v: IndexVariant, tuning: Tuning[]): Variant {
+  const isOptimized = tuning.some((t) => t.optimizedId === v.id);
+  const requires = v.requires || null;
+  return {
+    id: v.id,
+    version: v.version,
+    releaseDate: v.releaseDate || null,
+    path: v.path,
+    source: index.repo && v.commit ? `${index.repo}/blob/${v.commit}/${encodePath(v.path)}` : null,
+    servedName: v.servedName || null,
+    engine: v.engine,
+    // The first variant when metadata.yaml names none.
+    default: v.id === (m.defaultVariant ?? m.variants[0].id),
+    description: v.description || null,
+    link: v.link && /^https?:\/\//i.test(v.link) ? v.link : null,
+    chart: v.chart || null,
+    image: v.image || null,
+    requires,
+    requiresSummary: requiresSummary(requires),
+    hardware: hardwareLabels(requires),
+    hardwareShort: hardwareShort(requires),
+    isOptimized,
+    isBaseline: !isOptimized && tuning.some((t) => t.baselineId === v.id),
+    ...deprecation(v.deprecated),
+  };
+}
+
+// The catalog the pages show, from index-v2.json: what they derive from it --
+// hardware labels, variant roles, the pair each model shows, source permalinks
+// -- worked out once.
+export function catalogOf(index: Index): Catalog {
+  const models = index.models.map((m): Model => {
+    const tuning = m.tuning.map((t) => tuningEntry(m.name, t));
+    const variants = m.variants.map((v) => variantOf(index, m, v, tuning));
+    return {
+      name: m.name,
+      displayName: m.displayName || m.name,
+      description: m.description || null,
+      family: m.family || null,
+      tags: m.tags || [],
+      ...deprecation(m.deprecated),
+      source: m.source || null,
+      variants,
+      reports: m.reports.map((file): Report => ({ file, path: `models/${m.name}/${file}`, title: file.replace(/\.html$/i, "") })),
+      comparison: comparisonFor(tuning, variants),
+      tuning,
+    };
+  });
+  return { count: models.length, models };
+}
+
+// The pairs shown on an optimized variant: those of the newest version of it
+// measured. That may be older than the variant's current version.
+export function tuningFor(m: Model, id: string): Tuning[] {
   const mine = m.tuning.filter((t) => t.optimizedId === id);
-  const same = mine.filter((t) => t.version === String(version));
-  if (same.length) return same;
-  const earlier = mine
-    .filter((t) => compareVersions(t.version, version) < 0)
-    .sort((a, b) => compareVersions(b.version, a.version));
-  return earlier.length ? earlier.filter((t) => t.version === earlier[0].version) : [];
+  if (!mine.length) return [];
+  const newest = mine.map((t) => t.optimizedVersion).reduce((a, b) => (compareVersions(a, b) >= 0 ? a : b));
+  return mine.filter((t) => t.optimizedVersion === newest);
 }
 
 // A result per model (or per its variants list) and argument, computed once:
@@ -85,11 +210,11 @@ export interface Best {
   of: number;
 }
 
-// An optimized variant's best result in the latest version, over its pairs and
-// their workloads; null for any other variant.
+// An optimized variant's best result, over its pairs and their workloads; null
+// for any other variant.
 export const variantBest = perObject((m: Model, id: string): Best | null => {
   let best: Best | null = null;
-  for (const t of tuningFor(m, m.latest, id)) {
+  for (const t of tuningFor(m, id)) {
     const rows: Array<Workload | { name: null; upliftPct: number | null; upliftLabel: string | null }> = t.workloads.length
       ? t.workloads
       : [{ name: null, upliftPct: t.upliftPct, upliftLabel: t.upliftLabel }];
@@ -105,7 +230,7 @@ export const variantBest = perObject((m: Model, id: string): Best | null => {
 // Optimized variants first, the biggest improvement first, then the rest.
 // Ties go to the default, then file order (sort is stable). Every list and
 // the model page show variants in this one order.
-export function orderedVariants(m: Model, variants: Variant[] = m.versions[0].variants): Variant[] {
+export function orderedVariants(m: Model, variants: Variant[] = m.variants): Variant[] {
   return ordered(m, variants);
 }
 
@@ -133,18 +258,17 @@ export interface ReportLink {
 // A model's reports in its variants' order, each with its link text: the
 // label alone for one report; for several, the GPUs of the variant each
 // measured, or its file name when those do not tell them apart. A report
-// measured on an earlier version than the latest says which in its tooltip.
+// measured on an earlier version of its variant says which in its tooltip.
 export const reportLinks = perObject((m: Model, label: string): ReportLink[] => {
   const variants = orderedVariants(m);
-  const all = m.versions.flatMap((ver) => ver.variants);
   const items = m.reports.map((r) => {
     const t = m.tuning.find((x) => x.reportFile === r.file);
-    const v = t && all.find((x) => x.id === t.optimizedId);
+    const v = t && m.variants.find((x) => x.id === t.optimizedId);
     const at = v ? variants.findIndex((x) => x.id === v.id) : -1;
     return {
       r,
       id: v ? v.id : null,
-      older: t && t.version !== m.latest ? t.version : null,
+      older: t && v && t.optimizedVersion !== v.version ? t.optimizedVersion : null,
       hw: v && v.hardware.length ? v.hardware.join(" / ") : null,
       at: at < 0 ? Infinity : at,
     };
@@ -159,14 +283,3 @@ export const reportLinks = perObject((m: Model, label: string): ReportLink[] => 
       text: items.length < 2 ? label : distinct ? `${hw} ${label.toLowerCase()}` : r.title,
     }));
 });
-
-// A variant's configuration: its own lines of the published version file,
-// dedented, with its "- " marker gone.
-export function variantYaml(text: string, lines: NonNullable<Variant["lines"]>): string {
-  const own = text.split("\n").slice(lines.from - 1, lines.to);
-  own[0] = " ".repeat(lines.indent) + own[0].slice(lines.indent);
-  return own
-    .map((l) => l.slice(lines.indent))
-    .join("\n")
-    .replace(/\s+$/, "");
-}

@@ -1,26 +1,26 @@
-import type { Catalog, Model } from "@/types";
-import { encodePath, latestVersion } from "./catalog";
+import type { Catalog, Index, Variant } from "@/types";
+import { catalogOf, encodePath } from "./catalog";
 
 const ROOT = import.meta.env.BASE_URL;
 
-// catalog.json, fetched once for the whole visit: it changes only with a
+// index-v2.json, fetched once for the whole visit: it changes only with a
 // new build.
 let catalog: Promise<Catalog> | null = null;
 
 export function loadCatalog(): Promise<Catalog> {
-  catalog ??= fetch(`${ROOT}catalog.json`).then((res) => {
+  catalog ??= fetch(`${ROOT}index-v2.json`).then(async (res) => {
     if (!res.ok) {
       catalog = null;
-      throw new Error(`catalog.json: ${res.status}`);
+      throw new Error(`index-v2.json: ${res.status}`);
     }
-    return res.json();
+    return catalogOf((await res.json()) as Index);
   });
   return catalog;
 }
 
-// The published version file a model page cuts each variant's configuration
-// from; null when it cannot be had.
-export async function loadVersionText(m: Model): Promise<string | null> {
-  const res = await fetch(ROOT + encodePath(latestVersion(m).path));
+// A variant's published file, its configuration as a model page shows it;
+// null when it cannot be had.
+export async function loadVariantText(v: Variant): Promise<string | null> {
+  const res = await fetch(ROOT + encodePath(v.path));
   return res.ok ? res.text() : null;
 }

@@ -162,8 +162,8 @@ tuning:
 | `npm run validate:images` | (needs `tools:install`, for crane) every image is publicly pullable without a login, by tag and by any pinned `digest`, and every perf report measured its variants' builds<br> a tag that has moved off its pinned digest is a warning; `--match-digest` makes it an error |
 | `npm run validate` | `validate:schema`, `validate:helm` and `validate:images` |
 | `npm run dev:site` | the site at <http://localhost:5173/model-catalog/>, live from `models/` |
-| `npm run build:site` | the site and `index.json` into `site/` (`PUBLISHED_INDEX=none` offline); `npm run preview:site` serves it |
-| `npm run serve` | the catalog server: `index.json`, `index-v2.json`, the version and variant files, reports and `catalog.json`, live from `models/` |
+| `npm run build:site` | the site into `site/`: both model-catalog pages and index files served for swiss |
+| `npm run serve` | the catalog server: `index-v2.json`, `index.json`, the variant and version files, histories and reports, live from `models/` |
 
 `validate:helm` and `validate:images` check every version file; pass files, or
 `--base REF` for what a branch changes, to narrow them.

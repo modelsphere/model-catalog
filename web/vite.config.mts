@@ -1,14 +1,14 @@
 /// <reference types="vitest/config" />
-// The frontend: one page that renders the catalog from catalog.json -- the
+// The frontend: one page that renders the catalog from index-v2.json -- the
 // deployment recipes, the models and each model, as routes. Its backend is the catalog
-// server (server/index.js): it serves index.json, the version files, the perf
-// reports and catalog.json.
+// server (server/index.js): it serves index-v2.json, the variant files and their
+// histories, the perf reports, and the v1 index.json with its version files.
 //
 //   npm run dev:site       # http://localhost:5173/model-catalog/, with a catalog
 //                          # server of its own, live from models/
 //   CATALOG=http://127.0.0.1:8000 npm run dev:site
 //                          # another backend, e.g. a running npm run serve, or
-//                          # a published site serving this version's catalog.json
+//                          # a published site serving this version's index-v2.json
 //   npm run build:site     # site/: the page and, as static files, everything the
 //                          # server serves; PUBLISHED_INDEX and REWRITES say how
 //                          # to treat an edited published version
@@ -21,9 +21,12 @@
 //   models/<name>/index.html
 //   404.html
 //   assets/                    the page's scripts and styles
-//   catalog.json               what the page renders from
+//   index-v2.json              what the page renders from, built from models/
+//                              and git history
+//   models/<name>/<id>.yaml    every variant file it names, and its
+//   models/<name>/<id>.history.json
 //   models/<name>/*.html       perf reports, copied from the repo
-//   index.json                 the index, built from models/
+//   index.json                 the v1 index swiss reads, built from models/
 //   models/<name>/*.yaml       every version file it names
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
@@ -45,10 +48,10 @@ const outDir = path.join(repo, "site");
 // /model-catalog/. Every route and asset is under it, in dev too.
 const base = new URL(readYaml(path.join(repo, "catalog.yaml")).site).pathname;
 
-// What the page fetches from its backend, as the backend has it: index.json,
-// catalog.json, version files and perf reports. A model's index.html is a
-// route of the page, not the backend's.
-const fromBackend = `^${base}(?:index\\.json|catalog\\.json|models/[^/]+/(?!index\\.html$)[^/]+\\.(?:yaml|html))$`;
+// What the page fetches from its backend, as the backend has it: index-v2.json,
+// variant files and perf reports, and the index.json the footer links. A
+// model's index.html is a route of the page, not the backend's.
+const fromBackend = `^${base}(?:index\\.json|index-v2\\.json|models/[^/]+/(?!index\\.html$)[^/]+\\.(?:yaml|html|history\\.json))$`;
 
 function catalogSite(): Plugin {
   let building = false;

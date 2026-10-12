@@ -1,32 +1,39 @@
 import { describe, expect, test } from "vitest";
-import type { Model, Tuning, Variant } from "../types";
-import { orderedVariants, reportLinks, tuningFor, variantBest, variantYaml } from "./catalog";
+import type { Index, Model, Tuning, Variant } from "../types";
+import { catalogOf, hardwareLabels, hardwareShort, orderedVariants, reportLinks, tuningFor, variantBest } from "./catalog";
 import { computeSummary, sorter, variantFacetsOf, type Facet } from "./facets";
 import { compareVersions } from "./versions";
 
 const variant = (id: string, over: Partial<Variant> = {}): Variant => ({
   id,
+  version: "1.0.1",
+  releaseDate: null,
+  path: `models/m/${id}.yaml`,
+  source: null,
+  servedName: null,
   engine: "sglang",
   default: false,
   description: null,
   link: null,
-  source: null,
   chart: null,
   image: null,
-  lines: null,
   requires: { gpus: 8 },
   requiresSummary: "",
   hardware: ["H100"],
   hardwareShort: "8 × H100",
   isBaseline: false,
   isOptimized: false,
+  deprecated: false,
+  deprecatedReason: null,
   ...over,
 });
 
+// optimizedId measured at version, against base at the same version.
 const pair = (version: string, optimizedId: string, pcts: number[], over: Partial<Tuning> = {}): Tuning => ({
-  version,
   baselineId: "base",
+  baselineVersion: version,
   optimizedId,
+  optimizedVersion: version,
   upliftPct: pcts[0],
   upliftLabel: `+${pcts[0]}%`,
   report: null,
@@ -37,7 +44,6 @@ const pair = (version: string, optimizedId: string, pcts: number[], over: Partia
 
 const model = (variants: Variant[], tuning: Tuning[], over: Partial<Model> = {}): Model => ({
   name: "m",
-  dir: "m",
   displayName: "M",
   description: null,
   family: null,
@@ -45,8 +51,7 @@ const model = (variants: Variant[], tuning: Tuning[], over: Partial<Model> = {})
   deprecated: false,
   deprecatedReason: null,
   source: null,
-  latest: "1.0.1",
-  versions: [{ version: "1.0.1", path: "models/m/m-1.0.1.yaml", source: null, servedName: null, variantCount: variants.length, variants }],
+  variants,
   reports: [],
   comparison: null,
   tuning,
@@ -64,10 +69,10 @@ describe("tuning", () => {
     [pair("1.0.0", "fast", [10, 30]), pair("0.9.0", "fast", [99]), pair("1.0.1", "faster", [40])]
   );
 
-  test("a tuned variant carried forward shows the newest earlier version's pairs", () => {
-    expect(tuningFor(m, "1.0.1", "fast").map((t) => t.version)).toEqual(["1.0.0"]);
-    expect(tuningFor(m, "1.0.1", "faster").map((t) => t.version)).toEqual(["1.0.1"]);
-    expect(tuningFor(m, "1.0.1", "base")).toEqual([]);
+  test("a tuned variant shows the pairs of its newest version measured", () => {
+    expect(tuningFor(m, "fast").map((t) => t.optimizedVersion)).toEqual(["1.0.0"]);
+    expect(tuningFor(m, "faster").map((t) => t.optimizedVersion)).toEqual(["1.0.1"]);
+    expect(tuningFor(m, "base")).toEqual([]);
   });
 
   test("a variant's best is its best workload, out of how many", () => {
@@ -94,9 +99,68 @@ test("one report is labeled as asked; several, by the GPUs each measured", () =>
   ]);
 });
 
-test("a variant's configuration is its own lines of the version file, dedented", () => {
-  const text = ["version: 1.0.0", "variants:", "  - id: a", "    engine: sglang", "    values:", "      x: 1", "  - id: b", ""].join("\n");
-  expect(variantYaml(text, { from: 3, to: 6, indent: 4 })).toBe("id: a\nengine: sglang\nvalues:\n  x: 1");
+describe("index-v2.json", () => {
+  const sha = "a".repeat(40);
+  const file = (id: string, over: Record<string, unknown> = {}) => ({
+    id,
+    version: "1.0.2",
+    releaseDate: "2026-10-12",
+    commit: sha,
+    path: `models/m/${id}.yaml`,
+    digest: `sha256:${"0".repeat(64)}`,
+    history: `models/m/${id}.history.json`,
+    engine: "sglang",
+    chart: { name: "sglang", version: ">=0.8.0" },
+    requires: { gpus: 8, gpuProduct: ["NVIDIA-H100-80GB-HBM3"] },
+    ...over,
+  });
+  const index = (over: Record<string, unknown> = {}): Index => ({
+    apiVersion: "catalog.swiss/v2",
+    repo: "https://github.com/o/c",
+    count: 1,
+    models: [
+      {
+        name: "m",
+        reports: ["m-h100-report.html"],
+        tuning: [
+          { baseline: "base@1.0.0", optimized: "fast@1.0.0", uplift: 5 },
+          { baseline: "base@1.0.2", optimized: "fast@1.0.2", uplift: 12, workloads: [{ name: "8k + 1k", uplift: 20 }], report: "m-h100-report.html" },
+        ],
+        variants: [file("base"), file("fast", { servedName: "m-served", deprecated: "superseded" }), file("draft", { commit: undefined, releaseDate: undefined, requires: { gpus: 2, nodes: 2, topology: "lws" } })],
+        ...over,
+      },
+    ],
+  });
+
+  test("each variant's roles, default, source pinned to its commit, and release", () => {
+    const [m] = catalogOf(index()).models;
+    expect(m.variants.map((v) => [v.id, v.default, v.isOptimized, v.isBaseline])).toEqual([
+      ["base", true, false, true],
+      ["fast", false, true, false],
+      ["draft", false, false, false],
+    ]);
+    expect(m.variants[0]).toMatchObject({ source: `https://github.com/o/c/blob/${sha}/models/m/base.yaml`, releaseDate: "2026-10-12", hardwareShort: "8 × H100" });
+    expect(m.variants[1]).toMatchObject({ servedName: "m-served", deprecated: true, deprecatedReason: "superseded" });
+    // Uncommitted: nothing to pin, no release yet.
+    expect(m.variants[2]).toMatchObject({ source: null, releaseDate: null, hardware: ["any GPU"], hardwareShort: "2 × GPU × 2 nodes" });
+    expect(catalogOf(index({ defaultVariant: "fast" })).models[0].variants.find((v) => v.default)?.id).toBe("fast");
+  });
+
+  test("tuning names the variant versions measured; the model shows the pair measured on the current one", () => {
+    const [m] = catalogOf(index()).models;
+    expect(m.tuning.map((t) => [t.optimizedId, t.optimizedVersion, t.baselineId, t.baselineVersion])).toEqual([
+      ["fast", "1.0.0", "base", "1.0.0"],
+      ["fast", "1.0.2", "base", "1.0.2"],
+    ]);
+    expect(m.comparison).toMatchObject({ optimizedVersion: "1.0.2", bestPct: 20, bestWorkload: "8k + 1k", report: "models/m/m-h100-report.html" });
+    expect(m.reports).toEqual([{ file: "m-h100-report.html", path: "models/m/m-h100-report.html", title: "m-h100-report" }]);
+  });
+
+  test("hardware labels: NVIDIA cards bare, another vendor's named", () => {
+    expect(hardwareLabels({ gpus: 8, gpuProduct: ["NVIDIA-H100-80GB-HBM3", "NVIDIA-RTX-6000D"] })).toEqual(["H100", "RTX-6000D"]);
+    expect(hardwareLabels({ gpus: 1, vendor: "ascend", gpuProduct: ["Ascend-910B3"] })).toEqual(["Ascend 910B3"]);
+    expect(hardwareShort({ gpus: 1, vendor: "ascend" })).toBe("1 × Ascend");
+  });
 });
 
 describe("facets", () => {
