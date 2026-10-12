@@ -9,6 +9,10 @@ const {execFileSync} = require("node:child_process");
 const {selectFiles, kubeconformArgs, failureLines} = require("./helm-validation");
 const config = require("../../schema/crds/config.json");
 
+const VERSION = "apiVersion: catalog.swiss/v1\n";
+const MODIFIED = "apiVersion: catalog.swiss/v1\nversion: modified\n";
+const VARIANT = "apiVersion: catalog.swiss/v2\nkind: Variant\n";
+
 function repository(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "helm-selection-"));
   t.after(() => fs.rmSync(dir, {recursive: true, force: true}));
@@ -18,13 +22,13 @@ function repository(t) {
   git("config", "user.email", "validator@example.invalid");
   // The fixture's commits are throwaway: never ask the developer's gpg.
   git("config", "commit.gpgsign", "false");
-  function write(file, body = "test\n") {
+  function write(file, body = file.endsWith(".yaml") ? VERSION : "test\n") {
     fs.mkdirSync(path.dirname(path.join(dir, file)), {recursive: true});
     fs.writeFileSync(path.join(dir, file), body);
   }
   function commit() { git("add", "."); git("commit", "-m", "fixture"); }
   write("models/example/example-1.0.0.yaml");
-  write("models/example/metadata.yaml");
+  write("models/example/metadata.yaml", "test\n");
   write("hack/validate-helm.js");
   commit();
   git("branch", "base");
@@ -42,7 +46,7 @@ test("add, modify and rename destinations are selected; deletions are excluded",
   r.write("models/example/example-1.1.0.yaml"); r.commit();
   r.git("branch", "before");
   r.git("mv", "models/example/example-1.0.0.yaml", "models/example/renamed version-1.0.0.yaml");
-  r.write("models/example/example-1.1.0.yaml", "modified\n");
+  r.write("models/example/example-1.1.0.yaml", MODIFIED);
   r.write("models/example/example-1.2.0.yaml"); r.commit();
   assert.deepEqual(selectFiles(r.dir, {base: "before"}).files, [
     "models/example/example-1.1.0.yaml", "models/example/example-1.2.0.yaml", "models/example/renamed version-1.0.0.yaml"]);
@@ -74,7 +78,7 @@ test("validator, dependency and schema changes, including deletions, trigger all
 
 test("only added versions are held to the chart minimum, also in a full scan", (t) => {
   const r = repository(t);
-  r.write("models/example/example-1.0.0.yaml", "modified\n");
+  r.write("models/example/example-1.0.0.yaml", MODIFIED);
   r.write("models/example/example-1.1.0.yaml");
   r.write("hack/validate-helm.js", "changed\n"); r.commit();
   const selection = selectFiles(r.dir, {base: "base"});
@@ -82,6 +86,20 @@ test("only added versions are held to the chart minimum, also in a full scan", (
   assert.deepEqual(selection.added, ["models/example/example-1.1.0.yaml"]);
   assert.deepEqual(selectFiles(r.dir, {all: true}).added, []);
   assert.deepEqual(selectFiles(r.dir, {files: ["models/example/example-1.0.0.yaml"]}).added, ["models/example/example-1.0.0.yaml"]);
+});
+
+test("a v2 variant file is selected by its content, and any change to one is held to the chart minimum", (t) => {
+  const r = repository(t);
+  r.write("models/example/sglang-tp8.yaml", VARIANT);
+  r.write("models/example/vllm-tp8.yaml", VARIANT); r.commit();
+  r.git("branch", "before");
+  r.write("models/example/sglang-tp8.yaml", `${VARIANT}id: sglang-tp8\n`);
+  r.write("models/example/sglang-tp4.yaml", VARIANT); r.commit();
+  const selection = selectFiles(r.dir, {base: "before"});
+  assert.deepEqual(selection.files, ["models/example/sglang-tp4.yaml", "models/example/sglang-tp8.yaml"]);
+  assert.deepEqual(selection.added, ["models/example/sglang-tp4.yaml", "models/example/sglang-tp8.yaml"]);
+  assert.deepEqual(selectFiles(r.dir, {all: true}).files, [
+    "models/example/example-1.0.0.yaml", "models/example/sglang-tp4.yaml", "models/example/sglang-tp8.yaml", "models/example/vllm-tp8.yaml"]);
 });
 
 test("unknown base fails rather than reporting no changes", (t) => {

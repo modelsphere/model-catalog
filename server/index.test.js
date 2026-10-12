@@ -44,6 +44,15 @@ test("catalog.json and the perf reports it links are served", async () => {
   assert.match(res.headers.get("content-type"), /^text\/html/);
 });
 
+test("index-v2.json lists only v2 models, and each variant's history is served", async () => {
+  const index = await (await fetch(`${base}/index-v2.json`)).json();
+  assert.equal(index.apiVersion, "catalog.swiss/v2");
+  for (const v of index.models.flatMap((m) => m.variants)) {
+    const h = await (await fetch(`${base}/${v.history}`)).json();
+    assert.deepEqual([h.path, h.revisions[0].digest], [v.path, v.digest]);
+  }
+});
+
 test("nothing outside models/ is served, and only reads are allowed", async () => {
   const name = modelNames()[0];
   for (const p of ["/package.json", "/models/../package.json", "/models/%2e%2e/catalog.yaml", `/models/${name}/../../catalog.yaml`, "/models/nope/x.yaml"]) {

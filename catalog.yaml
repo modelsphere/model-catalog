@@ -9,3 +9,6 @@ apiVersion: catalog.swiss/v1
 # itself: a version file is immutable once published, and would have to name
 # a page that does not exist until the site is deployed.
 site: https://modelsphere.github.io/model-catalog/
+
+# Where old v2 revisions are fetched from, raw at a commit.
+repo: https://github.com/modelsphere/model-catalog

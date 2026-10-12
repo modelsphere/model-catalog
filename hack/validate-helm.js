@@ -98,10 +98,10 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
     const added = new Set(selection.added);
     Object.assign(summary, selection, {runDirectory: path.relative(root, runDir)});
     const count = selection.files.length;
-    log(`Selected ${count} version file${count === 1 ? "" : "s"}: ${selection.reason}` +
+    log(`Selected ${count} version or variant file${count === 1 ? "" : "s"}: ${selection.reason}` +
       `${selection.mergeBase ? ` (${selection.mergeBase})` : ""}`);
     if (!count) {
-      log("No model version configuration changes (无版本配置变更).");
+      log("No model version or variant configuration changes (无版本配置变更).");
       return true;
     }
     log();
@@ -223,7 +223,7 @@ function main(opts, {repositoryRoot = root, runCommand = command} = {}) {
             if (added.has(file)) throw new Error(`chart.version: ${below}`);
             // A published version keeps its chart; rewriting it to pass would
             // change the digest every existing deploy recorded.
-            record.warning = `published version declares ${below}`;
+            record.warning = `as published, declares ${below}`;
             if (!pkg.archive) {
               record.skipped = true;
               continue;

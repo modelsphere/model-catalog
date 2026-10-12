@@ -148,6 +148,7 @@ dist
 # End of https://www.toptal.com/developers/gitignore/api/node
 # Generated GitHub Pages site
 site/
+/models/*/*.history.json
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/tags

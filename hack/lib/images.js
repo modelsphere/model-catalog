@@ -11,7 +11,7 @@ const path = require("path");
 const { promisify } = require("util");
 const ipaddr = require("ipaddr.js");
 const { command } = require("./helm-validation");
-const { root, modelNames, versionFiles } = require("./catalog");
+const { root, modelNames, versionFiles, variantFiles } = require("./catalog");
 const { jsonBlocks } = require("./report");
 
 // A repository the way containerd reads it: no registry host (or docker.io)
@@ -185,7 +185,7 @@ function changedVersionFiles(root, base) {
   const changed = git(["diff", "--name-only", "-z", "--diff-filter=AMR", mergeBase, "HEAD"]).split("\0").filter(Boolean);
   const touched = new Set(changed.filter((f) => /^models\/[^/]+\/(metadata\.yaml|[^/]+\.html)$/.test(f)).map((f) => f.split("/")[1]));
   const models = path.join(root, "models");
-  const versions = modelNames(models).flatMap((name) => versionFiles(name, models));
+  const versions = modelNames(models).flatMap((name) => [...versionFiles(name, models), ...variantFiles(name, models)]);
   return versions.filter((file) => changed.includes(file) || touched.has(file.split("/")[1]));
 }
 

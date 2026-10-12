@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swiss.catalog/schema/metadata.v2.schema.json",
+  "title": "Swiss catalog model metadata (v2)",
+  "description": "models/<name>/metadata.yaml for a v2 model: what the model is, its default variant and tuning results. Edited in place.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "name",
+    "source"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "catalog.swiss/v2"
+    },
+    "name": {
+      "$ref": "metadata.schema.json#/properties/name"
+    },
+    "displayName": {
+      "$ref": "metadata.schema.json#/properties/displayName"
+    },
+    "description": {
+      "$ref": "metadata.schema.json#/properties/description"
+    },
+    "homepage": {
+      "$ref": "metadata.schema.json#/properties/homepage"
+    },
+    "license": {
+      "$ref": "metadata.schema.json#/properties/license"
+    },
+    "family": {
+      "$ref": "metadata.schema.json#/properties/family"
+    },
+    "series": {
+      "description": "Groups related models, e.g. deepseek-v4-flash and deepseek-v4-flash-0731.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "maxLength": 63
+    },
+    "quantization": {
+      "description": "Weight format, e.g. fp8, nvfp4.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "maxLength": 32
+    },
+    "tags": {
+      "$ref": "metadata.schema.json#/properties/tags"
+    },
+    "deprecated": {
+      "$ref": "metadata.schema.json#/properties/deprecated"
+    },
+    "defaultVariant": {
+      "description": "The variant a UI preselects; the first by id when unset.",
+      "$ref": "version.schema.json#/$defs/variant/properties/id"
+    },
+    "tuning": {
+      "description": "Measured tuning results. Display only.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "baseline",
+          "optimized",
+          "report"
+        ],
+        "properties": {
+          "version": {
+            "description": "Legacy: the v1 version measured, for index.json.",
+            "$ref": "metadata.schema.json#/properties/tuning/items/properties/version"
+          },
+          "baseline": {
+            "description": "The variant measured as the baseline.",
+            "$ref": "#/$defs/measured"
+          },
+          "optimized": {
+            "description": "The tuned variant.",
+            "$ref": "#/$defs/measured"
+          },
+          "uplift": {
+            "$ref": "metadata.schema.json#/properties/tuning/items/properties/uplift"
+          },
+          "workloads": {
+            "$ref": "metadata.schema.json#/properties/tuning/items/properties/workloads"
+          },
+          "report": {
+            "$ref": "metadata.schema.json#/properties/tuning/items/properties/report"
+          }
+        }
+      }
+    },
+    "source": {
+      "$ref": "metadata.schema.json#/properties/source"
+    }
+  },
+  "$defs": {
+    "measured": {
+      "description": "<id>@<version>: the variant version measured.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*@\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+    }
+  }
+}

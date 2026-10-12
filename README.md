@@ -109,6 +109,49 @@ tuning:
 A report must be a complete HTML document whose embedded JSON parses. `validate:schema` fails on a missing, empty or invalid one; the site skips
 linking it. The images it records must be the two variants' own (registry, repository and tag), which `validate:images` checks.
 
+## Schema v2
+
+One file per variant, edited in place ([#30](https://github.com/modelsphere/model-catalog/issues/30)).
+
+```
+models/<name>/
+  metadata.yaml   apiVersion: catalog.swiss/v2   schema/metadata.v2.schema.json
+  <id>.yaml       one variant                    schema/variant.schema.json
+```
+
+```yaml
+# models/kimi-k3/sglang-tp8-pp4-6000d.yaml
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: kimi-k3
+id: sglang-tp8-pp4-6000d
+version: 1.0.5                     # semver, raised on every change
+releaseDate: 2026-10-12
+servedName: kimi-k3
+engine: sglang
+chart: { name: sglang, version: ">=0.7.0" }
+requires: { gpus: 8, nodes: 4, topology: lws, gpuProduct: [NVIDIA-RTX-6000D] }
+values: { ... }
+```
+
+```yaml
+# models/kimi-k3/metadata.yaml
+apiVersion: catalog.swiss/v2
+name: kimi-k3
+source: { hf: moonshotai/Kimi-K3 }
+defaultVariant: sglang-tp8-b300-optimized     # replaces a variant's default: true
+tuning:
+  - version: 1.0.4                            # legacy: the v1 version measured, kept for index.json
+    baseline: sglang-tp8-b300-baseline@1.0.5  # <id>@<version> measured
+    optimized: sglang-tp8-b300-optimized@1.0.5
+    uplift: 57.6
+    report: kimi-k3-1.0.4-b300-report.html
+```
+
+- A deploy pins commit, path and sha256; `history.json` maps each version to its commit.
+- Published: `index-v2.json` (`schema/index-v2.schema.json`) and `models/<name>/<id>.history.json`.
+- Migrate a model: `node hack/migrate-v2.js <model> [--dry-run]`.
+
 ## Development
 
 | command | does |
@@ -121,7 +164,7 @@ linking it. The images it records must be the two variants' own (registry, repos
 | `npm run validate` | `validate:schema`, `validate:helm` and `validate:images` |
 | `npm run dev:site` | the site at <http://localhost:5173/model-catalog/>, live from `models/` |
 | `npm run build:site` | the site and `index.json` into `site/` (`PUBLISHED_INDEX=none` offline); `npm run preview:site` serves it |
-| `npm run serve` | the catalog server: `index.json`, the version files, reports and `catalog.json`, live from `models/` |
+| `npm run serve` | the catalog server: `index.json`, `index-v2.json`, the version and variant files, reports and `catalog.json`, live from `models/` |
 
 `validate:helm` and `validate:images` check every version file; pass files, or
 `--base REF` for what a branch changes, to narrow them.

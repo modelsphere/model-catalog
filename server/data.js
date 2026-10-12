@@ -12,7 +12,7 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { parseDocument, LineCounter } = require("yaml");
-const { root, modelsDir, readYaml, modelNames, versionFiles, compareVersions, latestOf, buildIndex, serializeIndex } = require("../hack/lib/catalog");
+const { root, modelsDir, readYaml, modelNames, versionFiles, compareVersions, latestOf, buildIndex, serializeIndex, buildIndexV2, checkIndexV2, historyPath, schemaOf, legacyTuning } = require("../hack/lib/catalog");
 const { reportProblem } = require("../hack/lib/report");
 
 // The GitHub repository the version files live in: the one being built in CI,
@@ -176,7 +176,7 @@ function loadCatalog() {
       }));
     // A tuning entry whose report is skipped keeps its numbers; only the link goes.
     const linked = new Set(reports.map((r) => r.file));
-    const tuning = (Array.isArray(meta.tuning) ? meta.tuning : []).map((t) => {
+    const tuning = ((schemaOf(meta) === "v2" ? legacyTuning(meta.tuning) : meta.tuning) ?? []).map((t) => {
       if (!t || !t.report || linked.has(t.report)) return t;
       if (!htmlFiles.includes(t.report)) linkable(`models/${name}/${t.report}`);
       return { ...t, report: undefined };
@@ -382,6 +382,31 @@ function publishCatalog(index, outDir) {
   return { models: index.models.length, files };
 }
 
+// index-v2.json and its histories; throws when they fail their checks.
+function checkedIndexV2() {
+  const built = buildIndexV2();
+  const problems = checkIndexV2(built);
+  if (problems.length) throw new Error(problems.join("\n"));
+  return built;
+}
+
+// index-v2.json, the v2 variant files and every history.json.
+function publishV2(outDir) {
+  const { index, histories } = checkedIndexV2();
+  fs.writeFileSync(path.join(outDir, "index-v2.json"), serializeIndex(index));
+  let files = 0;
+  for (const v of index.models.flatMap((m) => m.variants)) {
+    fs.mkdirSync(path.dirname(path.join(outDir, v.path)), { recursive: true });
+    fs.copyFileSync(path.join(root, v.path), path.join(outDir, v.path));
+    files++;
+  }
+  for (const [rel, h] of histories) {
+    fs.mkdirSync(path.dirname(path.join(outDir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(outDir, historyPath(rel)), JSON.stringify(h, null, 2) + "\n");
+  }
+  return { models: index.count, files, histories: histories.size };
+}
+
 // Everything beside the pages, as a build writes it into outDir: catalog.json,
 // the perf reports, and the catalog (index.json and its version files), from
 // checkedIndex. Returns a line saying what it wrote.
@@ -390,6 +415,7 @@ function writeSiteData(outDir, { index, rewrites }) {
   fs.writeFileSync(path.join(outDir, "catalog.json"), JSON.stringify(catalog, null, 2) + "\n");
   copyReports(catalog, outDir);
   const published = publishCatalog(index, outDir);
+  const v2 = publishV2(outDir);
   // GitHub Pages serves the tree as it is.
   fs.writeFileSync(path.join(outDir, ".nojekyll"), "");
   const variants = catalog.models.reduce((n, m) => n + m.versions.find((v) => v.version === m.latest).variants.length, 0);
@@ -398,8 +424,9 @@ function writeSiteData(outDir, { index, rewrites }) {
     `${catalog.models.filter((m) => m.comparison).length} optimized-vs-baseline, ` +
     `${catalog.models.reduce((n, m) => n + m.reports.length, 0)} perf HTML; ` +
     `catalog: ${published.models} models, ${published.files} version files` +
-    (rewrites ? `, ${rewrites} rewritten in place (REWRITES=allow)` : "")
+    (rewrites ? `, ${rewrites} rewritten in place (REWRITES=allow)` : "") +
+    `; index-v2: ${v2.models} models, ${v2.files} variant files, ${v2.histories} histories`
   );
 }
 
-module.exports = { loadCatalog, checkedIndex, rewritesOf, writeSiteData, buildIndex, serializeIndex };
+module.exports = { loadCatalog, checkedIndex, checkedIndexV2, rewritesOf, writeSiteData, buildIndex, serializeIndex };

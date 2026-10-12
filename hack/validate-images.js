@@ -15,7 +15,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { parseArgs } = require("node:util");
 const YAML = require("yaml");
-const { root, modelNames, versionFiles } = require("./lib/catalog");
+const { spawnSync } = require("node:child_process");
+const { root, modelNames, versionFiles, variantFiles, kindOf, schemaOf, historiesOf } = require("./lib/catalog");
 const { checkImage, reportMismatches, changedVersionFiles } = require("./lib/images");
 
 function parse(args) {
@@ -28,26 +29,27 @@ function parse(args) {
   const files = positionals.map((file) => path.relative(root, path.resolve(file)).split(path.sep).join("/"));
   if (base && files.length) throw new Error("choose --base REF or explicit files, not both");
   if (base) return { files: changedVersionFiles(root, base), matchDigest };
-  const versions = modelNames().flatMap((name) => versionFiles(name));
+  const versions = modelNames().flatMap((name) => [...versionFiles(name), ...variantFiles(name)]);
   if (!files.length) return { files: versions, matchDigest };
   const unknown = files.filter((f) => !versions.includes(f));
-  if (unknown.length) throw new Error(`not a model version file: ${unknown.join(", ")}`);
+  if (unknown.length) throw new Error(`not a model version or variant file: ${unknown.join(", ")}`);
   return { files, matchDigest };
 }
 
 async function main() {
   const { files, matchDigest } = parse(process.argv.slice(2));
   if (files.length === 0) {
-    console.log("no version files to check");
+    console.log("no version or variant files to check");
     return 0;
   }
 
   const docs = new Map(files.map((file) => [file, YAML.parse(fs.readFileSync(path.join(root, file), "utf8"))]));
+  const variantsOf = (doc) => (kindOf(doc) === "variant" ? [doc] : (doc?.variants ?? []));
 
   // Each distinct image once, however many variants share it.
   const uses = new Map();
   for (const [file, doc] of docs) {
-    for (const v of doc.variants ?? []) {
+    for (const v of variantsOf(doc)) {
       if (!v?.image?.repository) continue;
       const key = JSON.stringify([v.image.repository, String(v.image.tag ?? "latest"), v.image.digest ?? ""]);
       if (!uses.has(key)) uses.set(key, []);
@@ -79,13 +81,26 @@ async function main() {
   // Tuned pairs of the selected versions. A missing report or variant is
   // validate:schema's to report.
   let reports = 0;
+  let histories;
+  const measured = (name, ref) => {
+    const [id, version] = String(ref ?? "").split("@");
+    const rel = `models/${name}/${id}.yaml`;
+    const now = docs.get(rel) ?? (fs.existsSync(path.join(root, rel)) ? YAML.parse(fs.readFileSync(path.join(root, rel), "utf8")) : undefined);
+    if (String(now?.version) === version) return now;
+    histories ??= historiesOf();
+    const commit = histories.get(rel)?.revisions.find((r) => r.version === version)?.commit;
+    const r = commit && spawnSync("git", ["show", `${commit}:${rel}`], { cwd: root, encoding: "utf8" });
+    return r?.status === 0 ? YAML.parse(r.stdout) : undefined;
+  };
   for (const name of new Set([...docs.keys()].map((file) => file.split("/")[1]))) {
     const meta = `models/${name}/metadata.yaml`;
-    const tuning = YAML.parse(fs.readFileSync(path.join(root, meta), "utf8"))?.tuning ?? [];
-    tuning.forEach((t, i) => {
+    const metadata = YAML.parse(fs.readFileSync(path.join(root, meta), "utf8"));
+    const v2 = schemaOf(metadata) === "v2";
+    (metadata?.tuning ?? []).forEach((t, i) => {
       const doc = [...docs].find(([file, d]) => file.split("/")[1] === name && String(d?.version) === String(t?.version))?.[1];
-      const variant = (id) => doc?.variants?.find((v) => v?.id === id);
-      const [b, o] = [variant(t?.baseline), variant(t?.optimized)];
+      const variant = (key) => (v2 ? measured(name, t?.[key]) : doc?.variants?.find((v) => v?.id === t?.[key]));
+      if (v2 && ![t?.baseline, t?.optimized].some((ref) => docs.has(`models/${name}/${String(ref ?? "").split("@")[0]}.yaml`))) return;
+      const [b, o] = [variant("baseline"), variant("optimized")];
       const html = path.join(root, "models", name, String(t?.report ?? ""));
       if (!t?.report || !b?.image || !o?.image || !fs.existsSync(html)) return;
       reports++;
@@ -104,7 +119,7 @@ async function main() {
   const count = (level) => [...results.values()].filter((r) => r.level === level).length;
   const errors = count("error");
   const bad = [...byFile.keys()].filter((f) => f.endsWith("metadata.yaml")).reduce((n, f) => n + byFile.get(f).length, 0);
-  console.log(`${plural(keys.length, "image")} in ${plural(files.length, "version file")}: ${count("ok")} ok, ${plural(count("warning"), "warning")}, ${plural(errors, "error")}`);
+  console.log(`${plural(keys.length, "image")} in ${plural(files.length, "file")}: ${count("ok")} ok, ${plural(count("warning"), "warning")}, ${plural(errors, "error")}`);
   console.log(`${reports} perf report${reports === 1 ? "" : "s"} checked against their variants' images, ${bad} mismatch${bad === 1 ? "" : "es"}`);
   return errors || bad ? 1 : 0;
 }

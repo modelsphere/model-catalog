@@ -33,3 +33,125 @@ test("the index locks every version to its file's bytes", () => {
     }
   }
 });
+
+const os = require("node:os");
+const { execFileSync } = require("node:child_process");
+const YAML = require("yaml");
+const { buildIndexV2, checkIndexV2, modelFiles, revisionProblems, versionFiles, variantFiles } = require("./catalog");
+
+// A git repo; each step writes files (null deletes) and commits at a UTC time.
+function fixture(steps) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "catalog-"));
+  const git = (args, at) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], {
+      cwd: dir,
+      env: { ...process.env, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at },
+      stdio: "pipe",
+    });
+  git(["init", "-q", "-b", "master"]);
+  const write = (files) => {
+    for (const [rel, body] of Object.entries(files)) {
+      const file = path.join(dir, rel);
+      if (body === null) fs.rmSync(file);
+      else {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, typeof body === "string" ? body : YAML.stringify(body));
+      }
+    }
+  };
+  const commit = (at, subject, files) => {
+    write(files);
+    git(["add", "-A"], at);
+    git(["commit", "-q", "-m", subject], at);
+  };
+  for (const step of steps) commit(...step);
+  return { dir, write, commit, head: () => git(["rev-parse", "HEAD"]).toString().trim(), sha: (n) => git(["rev-parse", `HEAD~${n}`]).toString().trim() };
+}
+
+const variant = (id, version = "1.0.0", gpus = 8) => ({
+  apiVersion: "catalog.swiss/v2",
+  kind: "Variant",
+  model: "m2",
+  id,
+  version,
+  releaseDate: "2026-10-01",
+  engine: "sglang",
+  chart: { name: "sglang", version: ">=0.7.0" },
+  requires: { gpus },
+});
+
+const catalogFiles = {
+  "catalog.yaml": { apiVersion: "catalog.swiss/v1", site: "https://example.com/c/", repo: "https://github.com/o/c" },
+  "models/m1/metadata.yaml": { apiVersion: "catalog.swiss/v1", name: "m1", source: { hf: "o/m1" } },
+  "models/m1/m1-1.0.0.yaml": {
+    apiVersion: "catalog.swiss/v1",
+    name: "m1",
+    version: "1.0.0",
+    variants: [{ id: "a", engine: "vllm", chart: { name: "vllm", version: "0.1.0" }, requires: { gpus: 1 } }, { id: "b", default: true, engine: "vllm", chart: { name: "vllm", version: "0.1.0" }, requires: { gpus: 2 } }],
+  },
+  "models/m2/metadata.yaml": { apiVersion: "catalog.swiss/v2", name: "m2", source: { hf: "o/m2" }, defaultVariant: "sglang-tp8" },
+  "models/m2/sglang-tp8.yaml": variant("sglang-tp8"),
+  "models/m2/sglang-tp4.yaml": variant("sglang-tp4", "1.0.0", 4),
+};
+
+test("a file is a v1 version or a v2 variant by its content, never its name", () => {
+  const { dir } = fixture([["2026-10-01T10:00:00Z", "init", catalogFiles]]);
+  const models = path.join(dir, "models");
+  assert.deepEqual(versionFiles("m1", models), ["models/m1/m1-1.0.0.yaml"]);
+  assert.deepEqual(variantFiles("m2", models), ["models/m2/sglang-tp4.yaml", "models/m2/sglang-tp8.yaml"]);
+  fs.writeFileSync(path.join(models, "m2/odd-1.0.0.yaml"), "apiVersion: catalog.swiss/v3\n");
+  fs.writeFileSync(path.join(models, "m2/broken.yaml"), "a: [\n");
+  const odd = modelFiles("m2", models).filter((f) => !f.kind);
+  assert.deepEqual(odd.map((f) => [f.rel, !!f.error]), [["models/m2/broken.yaml", true], ["models/m2/odd-1.0.0.yaml", false]]);
+});
+
+test("index-v2 lists only v2 models, each variant file at its latest version", () => {
+  const repo = fixture([
+    ["2026-10-01T10:00:00Z", "init", catalogFiles],
+    ["2026-10-02T08:00:00Z", "tp8: one", { "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.1", 7) }],
+    ["2026-10-02T09:00:00Z", "tp8: two", { "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.1.0", 6) }],
+    ["2026-10-03T09:00:00Z", "drop tp4", { "models/m2/sglang-tp4.yaml": null }],
+  ]);
+  const built = buildIndexV2({ root: repo.dir, warn: () => {} });
+  const { index, histories } = built;
+  assert.deepEqual(checkIndexV2(built), []);
+  assert.equal(index.commit, repo.head());
+  assert.equal(index.raw, "https://raw.githubusercontent.com/o/c/");
+  assert.deepEqual(index.models.map((m) => m.name), ["m2"]);
+  const [m2] = index.models;
+  assert.deepEqual(m2.variants.map((v) => [v.id, v.version, v.commit, v.history]), [["sglang-tp8", "1.1.0", repo.sha(1), "models/m2/sglang-tp8.history.json"]]);
+  const tp8 = histories.get("models/m2/sglang-tp8.yaml");
+  assert.deepEqual(tp8.revisions.map((r) => [r.version, r.subject]), [["1.1.0", "tp8: two"], ["1.0.1", "tp8: one"], ["1.0.0", "init"]]);
+  assert.equal(tp8.revisions[0].digest, m2.variants[0].digest);
+  const tp4 = histories.get("models/m2/sglang-tp4.yaml");
+  assert.deepEqual([tp4.revisions.map((r) => r.version), tp4.deleted.subject], [["1.0.0"], "drop tp4"]);
+  assert.deepEqual(revisionProblems({ root: repo.dir }), []);
+});
+
+test("a change must raise the version, and a raised version must change something", () => {
+  const repo = fixture([["2026-10-01T10:00:00Z", "init", catalogFiles]]);
+  repo.write({ "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.0", 7) });
+  assert.deepEqual(revisionProblems({ root: repo.dir }), [["models/m2/sglang-tp8.yaml", "working copy: changed without raising version above 1.0.0"]]);
+  repo.write({ "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.1") });
+  assert.deepEqual(revisionProblems({ root: repo.dir }), [["models/m2/sglang-tp8.yaml", "working copy: version 1.0.1 changes nothing else"]]);
+  repo.write({ "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.1", 7) });
+  const { index } = buildIndexV2({ root: repo.dir, warn: () => {} });
+  assert.deepEqual([index.models[0].variants[1].version, index.models[0].variants[1].commit], ["1.0.1", undefined]);
+  assert.deepEqual(revisionProblems({ root: repo.dir }), []);
+});
+
+test("a shallow clone is refused: its versions would be wrong", () => {
+  const repo = fixture([
+    ["2026-10-01T10:00:00Z", "init", catalogFiles],
+    ["2026-10-02T10:00:00Z", "edit", { "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.1", 7) }],
+  ]);
+  const clone = fs.mkdtempSync(path.join(os.tmpdir(), "catalog-shallow-"));
+  execFileSync("git", ["clone", "-q", "--depth=1", `file://${repo.dir}`, clone]);
+  assert.throws(() => buildIndexV2({ root: clone, warn: () => {} }), /shallow clone/);
+});
+
+test("the catalog's own index-v2.json passes its checks", () => {
+  const built = buildIndexV2({ warn: () => {} });
+  assert.deepEqual(checkIndexV2(built), []);
+  assert.ok(built.index.models.every((m) => m.variants.every((v) => v.history)));
+});

@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swiss.catalog/schema/variant.schema.json",
+  "title": "Swiss catalog variant (v2)",
+  "description": "models/<model>/<id>.yaml: one variant of a model, edited in place, its version raised on every change. Site-specific and per-deploy settings are rejected, as in v1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "model",
+    "id",
+    "version",
+    "releaseDate",
+    "engine",
+    "chart",
+    "requires"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "catalog.swiss/v2"
+    },
+    "kind": {
+      "const": "Variant"
+    },
+    "model": {
+      "description": "The model: its metadata.yaml name and directory.",
+      "$ref": "metadata.schema.json#/properties/name"
+    },
+    "id": {
+      "description": "Unique within the model, and the file name. Not metadata.",
+      "$ref": "version.schema.json#/$defs/variant/properties/id"
+    },
+    "version": {
+      "description": "Semver, raised on every change to this file.",
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+    },
+    "releaseDate": {
+      "description": "When this version was released.",
+      "type": "string",
+      "format": "date"
+    },
+    "servedName": {
+      "description": "--served-model-name, when it differs from the model name.",
+      "$ref": "version.schema.json#/properties/servedName"
+    },
+    "description": {
+      "$ref": "version.schema.json#/$defs/variant/properties/description"
+    },
+    "link": {
+      "$ref": "version.schema.json#/$defs/variant/properties/link"
+    },
+    "engine": {
+      "$ref": "version.schema.json#/$defs/variant/properties/engine"
+    },
+    "chart": {
+      "$ref": "version.schema.json#/$defs/variant/properties/chart"
+    },
+    "image": {
+      "$ref": "version.schema.json#/$defs/variant/properties/image"
+    },
+    "requires": {
+      "$ref": "version.schema.json#/$defs/variant/properties/requires"
+    },
+    "values": {
+      "$ref": "version.schema.json#/$defs/variant/properties/values"
+    },
+    "deprecated": {
+      "description": "Deprecate before deleting the file. A string is the reason.",
+      "type": [
+        "boolean",
+        "string"
+      ]
+    },
+    "replaces": {
+      "description": "The id of a variant this one renames or supersedes.",
+      "$ref": "version.schema.json#/$defs/variant/properties/id"
+    }
+  }
+}

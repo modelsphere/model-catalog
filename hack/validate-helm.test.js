@@ -15,7 +15,7 @@ function fixture(t, failure, {chartName = "sglang", declaredVersion = "0.8.0", l
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
   const file = "models/example/example-1.0.0.yaml";
   fs.mkdirSync(path.join(root, "models/example"), {recursive: true});
-  fs.writeFileSync(path.join(root, file), YAML.stringify({variants: [
+  fs.writeFileSync(path.join(root, file), YAML.stringify({apiVersion: "catalog.swiss/v1", variants: [
     {id: "default", default: true, chart: {name: chartName, version: declaredVersion}},
     {id: "other", chart: {name: chartName, version: `>=${config.minimumChartVersions[chartName]}`}, values: {extraArgs: ["--other"]}}
   ]}));

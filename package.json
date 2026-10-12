@@ -22,7 +22,7 @@
     "validate:schema": "node hack/validate-schema.js",
     "validate:helm": "node hack/validate-helm.js",
     "validate:images": "node hack/validate-images.js",
-    "test": "node --test 'hack/lib/*.test.js' hack/validate-helm.test.js 'server/*.test.js' && npm run test:web",
+    "test": "node --test 'hack/lib/*.test.js' hack/validate-helm.test.js hack/migrate-v2.test.js 'server/*.test.js' && npm run test:web",
     "test:helm:integration": "node --test hack/validate-helm.integration.test.js",
     "build:site": "vite build --config web/vite.config.mts --logLevel warn",
     "serve": "node server",

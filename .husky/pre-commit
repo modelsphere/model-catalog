@@ -1,1 +1,1 @@
-npm run validate:schema
+npm run validate:schema -- --base HEAD

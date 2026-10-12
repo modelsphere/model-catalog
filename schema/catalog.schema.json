@@ -17,6 +17,18 @@
       "type": "string",
       "format": "uri",
       "pattern": "^https?://.+/$"
+    },
+    "repo": {
+      "description": "The catalog repository on GitHub.",
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://.+[^/]$"
+    },
+    "raw": {
+      "description": "Where files are fetched raw at a commit, as <raw><commit>/<path>. Defaults to raw.githubusercontent.com for a GitHub repo.",
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://.+/$"
     }
   }
 }

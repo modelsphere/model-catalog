@@ -1,37 +1,16 @@
 #!/usr/bin/env node
-// Schema-check this catalog.
+// Schema-check this catalog. --base REF also checks what changed since REF.
 "use strict"
 
 const fs = require("fs")
 const path = require("path")
-// "2020" is the JSON Schema draft these files declare (2020-12), not the
-// package's age. require("ajv") speaks draft-07; this entry point is Ajv 8.
-const Ajv2020 = require("ajv/dist/2020")
-const addFormats = require("ajv-formats")
+const {parseArgs} = require("util")
+const {spawnSync} = require("child_process")
 const YAML = require("yaml")
-const {root, modelsDir, modelNames, versionFiles} = require("./lib/catalog")
+const {root, modelsDir, modelNames, modelFiles, versionFiles, variantFiles, schemaOf, schemaValidator, historiesOf, revisionProblems} = require("./lib/catalog")
 const {reportProblem} = require("./lib/report")
 
-const metadataFiles = modelNames()
-  .map((name) => path.join(modelsDir, name, "metadata.yaml"))
-  .filter((file) => fs.existsSync(file))
-const versionFilePaths = modelNames().flatMap((name) => versionFiles(name).map((rel) => path.join(root, rel)))
-
-const checks = [
-  {
-    schema: "schema/catalog.schema.json",
-    files: fs.existsSync(path.join(root, "catalog.yaml")) ? [path.join(root, "catalog.yaml")] : [],
-    missing: "catalog.yaml: missing -- it names where the site is published",
-  },
-  {
-    schema: "schema/metadata.schema.json",
-    files: metadataFiles,
-  },
-  {
-    schema: "schema/version.schema.json",
-    files: versionFilePaths,
-  },
-]
+const {values: {base}} = parseArgs({options: {base: {type: "string"}}})
 
 function pointer(instancePath) {
   if (!instancePath) return ""
@@ -91,120 +70,188 @@ function report(rel, lines) {
   for (const line of lines) console.error(`  ${line}`)
 }
 
-// strictTypes rejects draft 2020-12 that the spec allows: a union type, and
-// keywords such as minimum without a sibling type. Keep the other strict checks.
-// verbose puts the failing value on each error.
-const ajv = new Ajv2020({allErrors: true, strict: true, strictTypes: false, verbose: true})
-addFormats(ajv)
-
 let failed = false
-for (const check of checks) {
-  if (check.files.length === 0) {
-    console.error(check.missing ?? `${check.schema}: no files`)
-    failed = true
+function fail(rel, lines) {
+  failed = true
+  report(rel, lines)
+}
+
+function parse(file) {
+  return YAML.parse(fs.readFileSync(file, "utf8"))
+}
+
+const parsed = new Map()
+function doc(file) {
+  if (!parsed.has(file)) {
+    try {
+      parsed.set(file, parse(file))
+    } catch {
+      parsed.set(file, undefined)
+    }
+  }
+  return parsed.get(file)
+}
+
+let schemaFor
+try {
+  schemaFor = schemaValidator()
+} catch (err) {
+  console.error(`schema/: ${err.message}`)
+  process.exit(1)
+}
+
+function schemaCheck(file, schema) {
+  const rel = path.relative(root, file)
+  let data
+  try {
+    data = parse(file)
+  } catch (err) {
+    const at = err.linePos?.[0]
+    const where = at ? `line ${at.line}:${at.col}: ` : ""
+    fail(rel, `${where}${err.message}`.split("\n"))
+    return
+  }
+  const validate = schemaFor(schema)
+  if (validate(data)) return
+  fail(rel, meaningful(validate.errors).map((err) => {
+    const at = pointer(err.instancePath)
+    const text = detail(err)
+    return at ? `${at}: ${text}` : text
+  }))
+}
+
+// Files are v1 or v2 by their content, never their name.
+const catalogFile = path.join(root, "catalog.yaml")
+if (fs.existsSync(catalogFile)) schemaCheck(catalogFile, "catalog.schema.json")
+else fail("catalog.yaml", ["missing -- it names where the site is published"])
+
+if (modelNames().length === 0) fail("models/", ["no models"])
+for (const name of modelNames()) {
+  const dir = path.join(modelsDir, name)
+  const meta = path.join(dir, "metadata.yaml")
+  if (!fs.existsSync(meta)) {
+    fail(path.relative(root, dir), ["missing metadata.yaml"])
     continue
   }
-  let validate
-  try {
-    validate = ajv.compile(JSON.parse(fs.readFileSync(path.join(root, check.schema), "utf8")))
-  } catch (err) {
-    console.error(`${check.schema}: ${err.message}`)
-    process.exit(1)
-  }
-  for (const file of check.files) {
-    const rel = path.relative(root, file)
-    let data
-    try {
-      data = YAML.parse(fs.readFileSync(file, "utf8"))
-    } catch (err) {
-      const at = err.linePos?.[0]
-      const where = at ? `line ${at.line}:${at.col}: ` : ""
-      report(rel, `${where}${err.message}`.split("\n"))
-      failed = true
-      continue
+  schemaCheck(meta, schemaOf(doc(meta)) === "v2" ? "metadata.v2.schema.json" : "metadata.schema.json")
+  for (const {rel, kind, error} of modelFiles(name)) {
+    if (kind === "version") schemaCheck(path.join(root, rel), "version.schema.json")
+    else if (kind === "variant") schemaCheck(path.join(root, rel), "variant.schema.json")
+    else if (error) schemaCheck(path.join(root, rel), "version.schema.json") // reports the parse error
+    else {
+      fail(rel, [
+        "neither a v1 version file (apiVersion: catalog.swiss/v1) nor a v2 variant (apiVersion: catalog.swiss/v2, kind: Variant)",
+      ])
     }
-    if (validate(data)) continue
-    failed = true
-    report(rel, meaningful(validate.errors).map((err) => {
-      const at = pointer(err.instancePath)
-      const text = detail(err)
-      return at ? `${at}: ${text}` : text
-    }))
+  }
+  for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".history.json"))) {
+    fail(`models/${name}/${f}`, ["generated by the Pages build from git, never committed: delete it"])
   }
 }
 
 // What the schema cannot see: a variant id is unique within its version. A
 // deploy, a tuning entry and validate:helm all name a variant by it.
+const versionFilePaths = modelNames().flatMap((name) => versionFiles(name).map((rel) => path.join(root, rel)))
 for (const file of versionFilePaths) {
-  let variants
-  try {
-    variants = YAML.parse(fs.readFileSync(file, "utf8"))?.variants
-  } catch {
-    continue // a parse error is already reported above
-  }
+  const variants = doc(file)?.variants
   if (!Array.isArray(variants)) continue
   const ids = variants.map((v) => v?.id)
   const twice = [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))]
   if (twice.length > 0) {
-    failed = true
-    report(path.relative(root, file), twice.map((id) => `variants: id ${JSON.stringify(id)} is used twice`))
+    fail(path.relative(root, file), twice.map((id) => `variants: id ${JSON.stringify(id)} is used twice`))
   }
+}
+
+// An LWS group that disagrees with requires.nodes hangs at rendezvous.
+function variantProblems(v, at) {
+  const lines = []
+  const lws = v?.values?.lws
+  if (lws?.enabled === true && lws.size !== v?.requires?.nodes) {
+    lines.push(`${at}values.lws.size ${lws.size} is not requires.nodes ${v?.requires?.nodes}`)
+  }
+  if (v?.chart?.name && v?.engine && v.chart.name !== v.engine) {
+    lines.push(`${at}chart.name ${v.chart.name} is not its engine, ${v.engine}`)
+  }
+  return lines
 }
 
 // What the schema cannot see, per model: it lives in models/<name>/, named
 // after metadata.yaml's name -- the index gives a perf report as a bare file
-// name, and consumers fetch it from models/<name>/<report> -- it has a version
-// to publish, each version file declares the model's name and is named
-// <name>-<version>.yaml, at most one variant is the default, and an LWS group
-// is as many pods as its variant requires nodes -- a group that disagrees
-// hangs at rendezvous instead of failing.
+// name, and consumers fetch it from models/<name>/<report> -- and it has
+// something to serve.
 for (const name of modelNames()) {
   const dir = path.join(modelsDir, name)
-  let model
-  try {
-    model = YAML.parse(fs.readFileSync(path.join(dir, "metadata.yaml"), "utf8"))?.name
-  } catch {
-    // reported by the schema check above
-  }
+  const meta = doc(path.join(dir, "metadata.yaml"))
+  const model = meta?.name
   if (typeof model === "string" && model !== name) {
-    failed = true
-    report(path.relative(root, dir), [
+    fail(path.relative(root, dir), [
       `must be named models/${model}/, after its model (metadata.yaml's name): consumers fetch its reports from models/<name>/`,
     ])
   }
-  const files = versionFiles(name)
-  if (files.length === 0) {
-    failed = true
-    report(path.relative(root, dir), ["no version files: publish one, or remove the directory"])
+  const v2 = schemaOf(meta) === "v2"
+  const versions = versionFiles(name)
+  const variants = variantFiles(name)
+  if (!v2 && variants.length > 0) {
+    fail(path.relative(root, dir), [
+      `${variants.map((rel) => path.basename(rel)).join(", ")}: v2 variants in a v1 model; ` +
+        `convert it first (node hack/migrate-v2.js ${name}), which makes metadata.yaml v2`,
+    ])
+  }
+  if (v2 ? variants.length === 0 : versions.length === 0) {
+    fail(path.relative(root, dir), [v2 ? "no variant files: add one, or remove the directory" : "no version files: publish one, or remove the directory"])
     continue
   }
-  for (const rel of files) {
-    let doc
-    try {
-      doc = YAML.parse(fs.readFileSync(path.join(root, rel), "utf8"))
-    } catch {
-      continue // reported by the schema check above
-    }
+  for (const rel of versions) {
+    const d = doc(path.join(root, rel))
+    if (!d) continue // reported by the schema check above
     const lines = []
-    if (model && doc?.name !== model) {
-      lines.push(`name: ${JSON.stringify(doc?.name)} is not its model's, ${JSON.stringify(model)} in metadata.yaml`)
+    if (model && d.name !== model) {
+      lines.push(`name: ${JSON.stringify(d.name)} is not its model's, ${JSON.stringify(model)} in metadata.yaml`)
     }
-    const want = `${doc?.name}-${doc?.version}.yaml`
+    const want = `${d.name}-${d.version}.yaml`
     if (path.basename(rel) !== want) lines.push(`must be named ${want}, after the name and version it declares`)
-    const variants = Array.isArray(doc?.variants) ? doc.variants : []
-    const defaults = variants.filter((v) => v?.default === true).map((v) => v.id)
+    const vs = Array.isArray(d.variants) ? d.variants : []
+    const defaults = vs.filter((v) => v?.default === true).map((v) => v.id)
     if (defaults.length > 1) lines.push(`variants: ${defaults.join(", ")} are all marked default; at most one may be`)
-    for (const v of variants) {
-      const lws = v?.values?.lws
-      if (lws?.enabled === true && lws.size !== v?.requires?.nodes) {
-        lines.push(`variants: ${v.id}: values.lws.size ${lws.size} is not requires.nodes ${v?.requires?.nodes}`)
-      }
-    }
-    if (lines.length > 0) {
-      failed = true
-      report(rel, lines)
-    }
+    for (const v of vs) lines.push(...variantProblems(v, `variants: ${v?.id}: `))
+    if (lines.length > 0) fail(rel, lines)
   }
+  if (!v2) continue
+  const stems = new Set(versions.map((rel) => path.basename(rel, ".yaml")))
+  const ids = new Set()
+  for (const rel of variants) {
+    const d = doc(path.join(root, rel))
+    if (!d) continue
+    const lines = []
+    if (model && d.model !== model) lines.push(`model: ${JSON.stringify(d.model)} is not its model's, ${JSON.stringify(model)} in metadata.yaml`)
+    if (d.id === "metadata") lines.push("id: metadata is the model's own file; choose another id")
+    else if (stems.has(d.id)) lines.push(`id: ${d.id} is a v1 version file's name; choose another id`)
+    else if (path.basename(rel) !== `${d.id}.yaml`) lines.push(`must be named ${d.id}.yaml, after the id it declares`)
+    lines.push(...variantProblems(d, ""))
+    if (d.replaces !== undefined && d.replaces === d.id) lines.push("replaces: names the variant itself")
+    if (lines.length > 0) fail(rel, lines)
+    ids.add(d.id)
+  }
+  if (meta?.defaultVariant !== undefined && !ids.has(meta.defaultVariant)) {
+    fail(`models/${name}/metadata.yaml`, [`defaultVariant: ${JSON.stringify(meta.defaultVariant)} is not a variant of this model`])
+  }
+}
+
+// Built from git only when needed.
+let histories
+function history(rel) {
+  histories ??= historiesOf()
+  return histories.get(rel)
+}
+
+// A variant id with an "optimized" segment (the naming convention, as in
+// sglang-tp8-h100-optimized) must be recorded as the optimized side of some
+// tuning entry, or the sites show the model as untuned.
+const namedOptimized = (id) => typeof id === "string" && /(^|-)optimi[sz]ed(-|$)/.test(id)
+
+function workloadProblems(t, at) {
+  const names = Array.isArray(t.workloads) ? t.workloads.map((w) => w?.name) : []
+  return [...new Set(names.filter((n, j) => names.indexOf(n) !== j))].map((name) => `${at}.workloads: ${JSON.stringify(name)} is listed twice`)
 }
 
 // What the schema cannot see: a tuning pair must name a published version of
@@ -212,40 +259,21 @@ for (const name of modelNames()) {
 // and a variant named as tuned must have its result recorded. swiss does not
 // check any of it -- tuning is display only, and a mistake in it must not stop
 // a catalog loading for deploys -- so it is caught here instead.
-for (const meta of metadataFiles) {
-  let tuning
-  try {
-    tuning = YAML.parse(fs.readFileSync(meta, "utf8"))?.tuning
-  } catch {
-    continue // a parse error is already reported above
-  }
-  // Not a list is a schema error, reported above; a model with none still
-  // gets the recorded-result check below.
-  if (!Array.isArray(tuning)) tuning = []
-
-  const dir = path.dirname(meta)
+function v1Tuning(dir, tuning) {
   const published = new Map()
   for (const rel of versionFiles(path.basename(dir))) {
-    try {
-      const doc = YAML.parse(fs.readFileSync(path.join(root, rel), "utf8"))
-      if (doc?.version) published.set(String(doc.version), new Set((doc.variants ?? []).map((v) => v?.id)))
-    } catch {
-      // reported by the schema check above
-    }
+    const d = doc(path.join(root, rel))
+    if (d?.version) published.set(String(d.version), new Set((d.variants ?? []).map((v) => v?.id)))
   }
 
   const lines = []
-
-  // A variant whose id names it optimized (the naming convention: an
-  // "optimized" segment, as in sglang-tp8-h100-optimized) must be recorded as
-  // the optimized side of some tuning entry, or the sites show the model as
-  // untuned. Any version's entry will do: a tuned variant carried into a later
-  // version unchanged is shown with the number it was measured with.
+  // Any version's entry will do: a tuned variant carried into a later version
+  // unchanged is shown with the number it was measured with.
   const recorded = new Set(tuning.map((t) => t?.optimized))
   const missing = new Map()
   for (const [version, ids] of published) {
     for (const id of ids) {
-      if (typeof id !== "string" || !/(^|-)optimi[sz]ed(-|$)/.test(id) || recorded.has(id)) continue
+      if (!namedOptimized(id) || recorded.has(id)) continue
       missing.set(id, [...(missing.get(id) ?? []), version])
     }
   }
@@ -275,15 +303,83 @@ for (const meta of metadataFiles) {
     if (typeof t.report === "string" && !fs.existsSync(path.join(dir, t.report))) {
       lines.push(`${at}.report: no file ${JSON.stringify(t.report)} beside metadata.yaml`)
     }
-    const names = Array.isArray(t.workloads) ? t.workloads.map((w) => w?.name) : []
-    for (const name of new Set(names.filter((n, j) => names.indexOf(n) !== j))) {
-      lines.push(`${at}.workloads: ${JSON.stringify(name)} is listed twice`)
-    }
+    lines.push(...workloadProblems(t, at))
   })
-  if (lines.length > 0) {
-    failed = true
-    report(path.relative(root, meta), lines)
+  return lines
+}
+
+// v2: <id> is the current variant, <id>@<date version> a revision in its history.
+function v2Tuning(dir, tuning) {
+  const name = path.basename(dir)
+  const current = new Map(variantFiles(name).map((rel) => doc(path.join(root, rel))).filter(Boolean).map((d) => [d.id, String(d.version)]))
+  const lines = []
+  const recorded = new Set(tuning.map((t) => String(t?.optimized ?? "").split("@")[0]))
+  for (const id of current.keys()) {
+    if (namedOptimized(id) && !recorded.has(id)) {
+      lines.push(`variant ${JSON.stringify(id)} is named optimized but has no tuning entry; add one to tuning with optimized: ${id}, its baseline, and the uplift`)
+    }
   }
+  const legacy = new Map(versionFiles(name).map((rel) => doc(path.join(root, rel))).filter(Boolean)
+    .map((d) => [String(d.version), new Set((d.variants ?? []).map((v) => v?.id))]))
+  tuning.forEach((t, i) => {
+    if (!t || typeof t !== "object") return
+    const at = `tuning[${i}]`
+    if (t.version !== undefined) {
+      const ids = legacy.get(String(t.version))
+      if (!ids) lines.push(`${at}.version: ${JSON.stringify(t.version)} is not a v1 version of this model`)
+      else for (const key of ["baseline", "optimized"]) {
+        const id = String(t[key] ?? "").split("@")[0]
+        if (!ids.has(id)) lines.push(`${at}.${key}: version ${t.version} has no variant ${JSON.stringify(id)}`)
+      }
+    }
+    for (const key of ["baseline", "optimized"]) {
+      if (typeof t[key] !== "string") continue
+      const [id, version] = t[key].split("@")
+      if (!version) {
+        lines.push(`${at}.${key}: name the version measured, ${id}@${current.get(id) ?? "<version>"}`)
+        continue
+      }
+      if (current.get(id) === version) continue
+      let h
+      try {
+        h = history(`models/${name}/${id}.yaml`)
+      } catch (err) {
+        lines.push(`${at}.${key}: cannot check ${t[key]}: ${err.message}`)
+        continue
+      }
+      if (!h) lines.push(`${at}.${key}: ${JSON.stringify(id)} has never been a variant of this model`)
+      else if (!h.revisions.some((r) => r.version === version)) {
+        lines.push(`${at}.${key}: ${id} has no version ${version}; it has ${h.revisions.map((r) => r.version).join(", ")}`)
+      }
+    }
+    if (t.baseline !== undefined && t.baseline === t.optimized) {
+      lines.push(`${at}: baseline and optimized are the same variant`)
+    }
+    if (typeof t.report === "string" && !fs.existsSync(path.join(dir, t.report))) {
+      lines.push(`${at}.report: no file ${JSON.stringify(t.report)} beside metadata.yaml`)
+    }
+    lines.push(...workloadProblems(t, at))
+  })
+  return lines
+}
+
+for (const name of modelNames()) {
+  const meta = path.join(modelsDir, name, "metadata.yaml")
+  if (!fs.existsSync(meta)) continue
+  const d = doc(meta)
+  if (!d) continue // a parse error is already reported above
+  // Not a list is a schema error, reported above; a model with none still
+  // gets the recorded-result check.
+  const tuning = Array.isArray(d.tuning) ? d.tuning : []
+  const lines = schemaOf(d) === "v2" ? v2Tuning(path.dirname(meta), tuning) : v1Tuning(path.dirname(meta), tuning)
+  if (lines.length > 0) fail(path.relative(root, meta), lines)
+}
+
+// A variant file's version goes up with every change, and only with one.
+try {
+  for (const [rel, line] of revisionProblems()) fail(rel, [line])
+} catch (err) {
+  fail("models/", [`cannot check variant versions: ${err.message}`])
 }
 
 // The site links every HTML file beside a model's metadata and skips one it
@@ -295,10 +391,59 @@ for (const name of modelNames()) {
   for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".html")).sort()) {
     const problem =
       file === "index.html" ? "index.html is the model's page on the site; name the report something else" : reportProblem(path.join(dir, file))
-    if (problem) {
-      failed = true
-      report(path.relative(root, path.join(dir, file)), [problem])
+    if (problem) fail(path.relative(root, path.join(dir, file)), [problem])
+  }
+}
+
+function git(args) {
+  const r = spawnSync("git", args, {cwd: root, encoding: "utf8", maxBuffer: 1 << 28})
+  if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${(r.stderr || r.error?.message || "").trim()}`)
+  return r.stdout
+}
+
+// --base: checks on what changed since the merge-base.
+function baseChecks() {
+  const mergeBase = git(["merge-base", base, "HEAD"]).trim()
+  const at = (rel) => {
+    const r = spawnSync("git", ["show", `${mergeBase}:${rel}`], {cwd: root, encoding: "utf8", maxBuffer: 1 << 28})
+    return r.status === 0 ? r.stdout : null
+  }
+  const parseAt = (rel) => {
+    try {
+      return YAML.parse(at(rel) ?? "")
+    } catch {
+      return undefined
     }
+  }
+  const status = new Map()
+  const tokens = git(["diff", "--name-status", "--no-renames", "-z", mergeBase, "--", "models"]).split("\0")
+  for (let i = 0; i + 1 < tokens.length; i += 2) status.set(tokens[i + 1], tokens[i])
+  for (const rel of git(["ls-files", "--others", "--exclude-standard", "-z", "--", "models"]).split("\0").filter(Boolean)) status.set(rel, "A")
+
+  for (const name of modelNames()) {
+    const metaRel = `models/${name}/metadata.yaml`
+    const meta = doc(path.join(root, metaRel))
+    if (schemaOf(meta) !== "v2") continue
+    for (const rel of versionFiles(name)) {
+      if (status.get(rel) === "A") {
+        fail(rel, [`${name} is on v2 (its metadata.yaml): change a variant file in place rather than publishing a new version file`])
+      }
+    }
+    for (const [rel, s] of status) {
+      if (s !== "D" || !rel.startsWith(`models/${name}/`) || !rel.endsWith(".yaml")) continue
+      const was = parseAt(rel)
+      if (was?.kind === "Variant" && !was.deprecated) {
+        fail(rel, ["deleted without being deprecated first: mark it deprecated: and publish that, then delete it in a later change"])
+      }
+    }
+  }
+}
+
+if (base) {
+  try {
+    baseChecks()
+  } catch (err) {
+    fail(`--base ${base}`, [err.message])
   }
 }
 

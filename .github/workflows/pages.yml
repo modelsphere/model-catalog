@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -40,8 +42,6 @@ jobs:
       - name: validate
         run: npm run validate
 
-      # index.json is built here, from models/, and checked against the one live
-      # on the site: a published version must not change (server/data.js).
       - name: Build Pages site and catalog
         run: npm run build:site
         env:
