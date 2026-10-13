@@ -7,7 +7,7 @@ const path = require("path")
 const {parseArgs} = require("util")
 const {spawnSync} = require("child_process")
 const YAML = require("yaml")
-const {root, modelsDir, modelNames, modelFiles, versionFiles, variantFiles, schemaOf, schemaValidator, historiesOf, revisionProblems} = require("./lib/catalog")
+const {root, modelsDir, modelNames, kindOf, modelFiles, versionFiles, variantFiles, schemaOf, schemaValidator, historiesOf, revisionProblems} = require("./lib/catalog")
 const {reportProblem} = require("./lib/report")
 
 const {values: {base}} = parseArgs({options: {base: {type: "string"}}})
@@ -420,15 +420,34 @@ function baseChecks() {
   for (let i = 0; i + 1 < tokens.length; i += 2) status.set(tokens[i + 1], tokens[i])
   for (const rel of git(["ls-files", "--others", "--exclude-standard", "-z", "--", "models"]).split("\0").filter(Boolean)) status.set(rel, "A")
 
-  for (const name of modelNames()) {
-    const metaRel = `models/${name}/metadata.yaml`
-    const meta = doc(path.join(root, metaRel))
-    if (schemaOf(meta) !== "v2") continue
-    for (const rel of versionFiles(name)) {
-      if (status.get(rel) === "A") {
-        fail(rel, [`${name} is on v2 (its metadata.yaml): change a variant file in place rather than publishing a new version file`])
+  // v1 is read-only: its files stay as published, for index.json. A model
+  // changes only on v2, after migrating, and a new model starts there.
+  const migrate = (rel) => `migrate it first: node hack/migrate-v2.js ${rel.split("/")[1]}`
+  for (const [rel, s] of status) {
+    if (!/^models\/[^/]+\/[^/]+\.yaml$/.test(rel)) continue
+    const now = s === "D" ? undefined : doc(path.join(root, rel))
+    const was = s === "A" ? undefined : parseAt(rel)
+    if (rel.endsWith("/metadata.yaml")) {
+      if (s === "A" && schemaOf(now) === "v1") {
+        fail(rel, ["schema v1 is read-only: start a new model on v2 (apiVersion: catalog.swiss/v2), with a variant file per variant"])
+      } else if (s === "M" && schemaOf(was) === "v1" && schemaOf(now) === "v1") {
+        fail(rel, [`schema v1 is read-only: ${migrate(rel)}, then edit it`])
       }
+    } else if (kindOf(was) === "version" || kindOf(now) === "version") {
+      const metaRel = `${path.dirname(rel)}/metadata.yaml`
+      const instead =
+        status.get(metaRel) === "A" ? "a new model has a v2 variant file per variant"
+        : schemaOf(doc(path.join(root, metaRel))) === "v2" ? "change a variant file in place"
+        : `${migrate(rel)}, then change a variant file in place`
+      if (s === "A") fail(rel, [`schema v1 is read-only: no new version files; ${instead}`])
+      else if (s === "M") fail(rel, [`schema v1 is read-only: a published version file never changes; ${instead}`])
+      else fail(rel, ["schema v1 is read-only: index.json serves this version, and deploys pin it; keep the file"])
     }
+  }
+
+  for (const name of modelNames()) {
+    const meta = doc(path.join(root, `models/${name}/metadata.yaml`))
+    if (schemaOf(meta) !== "v2") continue
     for (const [rel, s] of status) {
       if (s !== "D" || !rel.startsWith(`models/${name}/`) || !rel.endsWith(".yaml")) continue
       const was = parseAt(rel)
