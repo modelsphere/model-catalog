@@ -171,7 +171,7 @@ export function ModelsRoute() {
       // Every bar is drawn against the catalog's best result.
       scale: Math.max(0, ...models.flatMap((m) => m.variants.map((v) => variantBest(m, v.id)?.upliftPct || 0))) || 1,
     }),
-    [models]
+    [models],
   );
   return (
     <ListPage

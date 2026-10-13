@@ -55,7 +55,7 @@ export function VariantHistory({ m, v, repo }: { m: Model; v: Variant; repo: str
     setError(null);
     loadHistory(v).then(
       (h) => live && setHistory(h),
-      (err: Error) => live && setError(err.message)
+      (err: Error) => live && setError(err.message),
     );
     return () => {
       live = false;
@@ -65,9 +65,7 @@ export function VariantHistory({ m, v, repo }: { m: Model; v: Variant; repo: str
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm">
-          {icons.history}History
-        </Button>
+        <Button size="sm">{icons.history}History</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

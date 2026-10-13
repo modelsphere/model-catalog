@@ -1,10 +1,10 @@
-import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "@/lib/utils"
-import { Slot } from "radix-ui"
+import * as React from "react";
+import { cva, type VariantProps } from "class-variance-authority";
+import { cn } from "@/lib/utils";
+import { Slot } from "radix-ui";
 
 // Roles and status in small caps.
-const label = "inline-block rounded-sm border px-[0.4rem] text-[0.66rem] leading-[1.45] font-semibold tracking-[0.04em] uppercase"
+const label = "inline-block rounded-sm border px-[0.4rem] text-[0.66rem] leading-[1.45] font-semibold tracking-[0.04em] uppercase";
 
 const badgeVariants = cva("", {
   variants: {
@@ -25,25 +25,17 @@ const badgeVariants = cva("", {
   defaultVariants: {
     variant: "default",
   },
-})
+});
 
 function Badge({
   className,
   variant = "default",
   asChild = false,
   ...props
-}: React.ComponentProps<"span"> &
-  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
-  const Comp = asChild ? Slot.Root : "span"
+}: React.ComponentProps<"span"> & VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot.Root : "span";
 
-  return (
-    <Comp
-      data-slot="badge"
-      data-variant={variant}
-      className={cn(badgeVariants({ variant }), className)}
-      {...props}
-    />
-  )
+  return <Comp data-slot="badge" data-variant={variant} className={cn(badgeVariants({ variant }), className)} {...props} />;
 }
 
-export { Badge, badgeVariants }
+export { Badge, badgeVariants };

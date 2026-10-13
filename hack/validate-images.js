@@ -62,10 +62,12 @@ async function main() {
   // A few at a time: enough to be quick, few enough not to trip rate limits.
   for (let i = 0; i < keys.length; i += 4) {
     const batch = keys.slice(i, i + 4);
-    await Promise.all(batch.map(async (key) => {
-      const [repository, tag, digest] = JSON.parse(key);
-      results.set(key, await checkImage({ repository, tag, digest }, { matchDigest }));
-    }));
+    await Promise.all(
+      batch.map(async (key) => {
+        const [repository, tag, digest] = JSON.parse(key);
+        results.set(key, await checkImage({ repository, tag, digest }, { matchDigest }));
+      }),
+    );
     for (const key of batch) console.log(`${results.get(key).level.padEnd(7)} ${results.get(key).message}`);
   }
 
@@ -119,12 +121,17 @@ async function main() {
   const count = (level) => [...results.values()].filter((r) => r.level === level).length;
   const errors = count("error");
   const bad = [...byFile.keys()].filter((f) => f.endsWith("metadata.yaml")).reduce((n, f) => n + byFile.get(f).length, 0);
-  console.log(`${plural(keys.length, "image")} in ${plural(files.length, "file")}: ${count("ok")} ok, ${plural(count("warning"), "warning")}, ${plural(errors, "error")}`);
+  console.log(
+    `${plural(keys.length, "image")} in ${plural(files.length, "file")}: ${count("ok")} ok, ${plural(count("warning"), "warning")}, ${plural(errors, "error")}`,
+  );
   console.log(`${reports} perf report${reports === 1 ? "" : "s"} checked against their variants' images, ${bad} mismatch${bad === 1 ? "" : "es"}`);
   return errors || bad ? 1 : 0;
 }
 
-main().then((code) => process.exit(code), (err) => {
-  console.error(err.message);
-  process.exit(2);
-});
+main().then(
+  (code) => process.exit(code),
+  (err) => {
+    console.error(err.message);
+    process.exit(2);
+  },
+);

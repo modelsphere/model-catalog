@@ -280,11 +280,13 @@ export function ColumnFilter({
           data-active={active || undefined}
           className={cn(
             "group -ml-[0.3rem] inline-flex min-h-[1.5rem] items-center gap-[0.3rem] rounded-sm px-[0.3rem] hover:bg-accent hover:text-foreground data-active:text-primary data-[state=open]:bg-accent data-[state=open]:text-foreground",
-            className
+            className,
           )}
         >
           {label}
-          {active && <span className="rounded-sm bg-accent px-[0.3rem] text-[0.7rem] leading-[1.4] text-primary tabular-nums">{selected.length}</span>}
+          {active && (
+            <span className="rounded-sm bg-accent px-[0.3rem] text-[0.7rem] leading-[1.4] text-primary tabular-nums">{selected.length}</span>
+          )}
           <ChevronDownIcon aria-hidden="true" className="size-[0.85rem] transition-transform duration-150 group-data-[state=open]:rotate-180" />
         </button>
       </PopoverTrigger>

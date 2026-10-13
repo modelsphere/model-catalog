@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "@/lib/utils"
-import { Toggle as TogglePrimitive } from "radix-ui"
+import * as React from "react";
+import { cva, type VariantProps } from "class-variance-authority";
+import { cn } from "@/lib/utils";
+import { Toggle as TogglePrimitive } from "radix-ui";
 
 const toggleVariants = cva(
   "inline-flex cursor-pointer items-center whitespace-nowrap select-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
@@ -21,22 +21,11 @@ const toggleVariants = cva(
     defaultVariants: {
       variant: "tint",
     },
-  }
-)
+  },
+);
 
-function Toggle({
-  className,
-  variant = "tint",
-  ...props
-}: React.ComponentProps<typeof TogglePrimitive.Root> &
-  VariantProps<typeof toggleVariants>) {
-  return (
-    <TogglePrimitive.Root
-      data-slot="toggle"
-      className={cn(toggleVariants({ variant, className }))}
-      {...props}
-    />
-  )
+function Toggle({ className, variant = "tint", ...props }: React.ComponentProps<typeof TogglePrimitive.Root> & VariantProps<typeof toggleVariants>) {
+  return <TogglePrimitive.Root data-slot="toggle" className={cn(toggleVariants({ variant, className }))} {...props} />;
 }
 
-export { Toggle, toggleVariants }
+export { Toggle, toggleVariants };

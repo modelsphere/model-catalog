@@ -113,12 +113,7 @@ export function sorter(key: string, dir: Dir = sortDir[key]): (a: Facet, b: Face
   return (a, b) => {
     const ma = missing(a);
     const mb = missing(b);
-    return (
-      Number(ma) - Number(mb) ||
-      (ma || mb ? 0 : sign * cmp(a, b)) ||
-      a.name.localeCompare(b.name) ||
-      (a.rank || 0) - (b.rank || 0)
-    );
+    return Number(ma) - Number(mb) || (ma || mb ? 0 : sign * cmp(a, b)) || a.name.localeCompare(b.name) || (a.rank || 0) - (b.rank || 0);
   };
 }
 

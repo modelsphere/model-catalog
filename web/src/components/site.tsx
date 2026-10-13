@@ -27,13 +27,7 @@ function ThemeButton() {
     setTheme(t);
   };
   return (
-    <Button
-      type="button"
-      id="theme-toggle"
-      title={`Theme: ${theme} (click to change)`}
-      onClick={next}
-      className={topButton}
-    >
+    <Button type="button" id="theme-toggle" title={`Theme: ${theme} (click to change)`} onClick={next} className={topButton}>
       {THEMES.map((t) => (
         <span key={t} data-icon={t} hidden={t !== theme} className="inline-flex">
           {icons[t]}
@@ -121,12 +115,10 @@ export function SiteHeader({
           <div
             className={cn(
               "mb-4 flex flex-wrap-reverse items-center justify-end gap-x-2 gap-y-3",
-              eyebrow ? "min-[1024px]:mb-6" : "min-[1024px]:absolute min-[1024px]:-top-6 min-[1024px]:right-0 min-[1024px]:mb-0"
+              eyebrow ? "min-[1024px]:mb-6" : "min-[1024px]:absolute min-[1024px]:-top-6 min-[1024px]:right-0 min-[1024px]:mb-0",
             )}
           >
-            {eyebrow && (
-              <p className="mr-auto text-[0.75rem] tracking-[0.08em] text-muted-foreground uppercase [&_a]:text-inherit">{eyebrow}</p>
-            )}
+            {eyebrow && <p className="mr-auto text-[0.75rem] tracking-[0.08em] text-muted-foreground uppercase [&_a]:text-inherit">{eyebrow}</p>}
             {/* The buttons wrap together, never one by one. */}
             <div className="flex gap-2">
               <GitHubLink repo={MODELSPHERE} title="modelsphere, the deployment solution, on GitHub" />

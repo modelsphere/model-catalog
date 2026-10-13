@@ -106,7 +106,7 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
       model: countBy(facets.map((f) => f.name)),
       hardware: countBy(facets.flatMap((f) => f.hardware)),
     }),
-    [facets]
+    [facets],
   );
   const hasDeprecated = facets.some((f) => f.deprecated);
 
@@ -117,7 +117,11 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
       const v = params.get(k);
       return v != null && allowed.includes(v) ? v : fallback;
     };
-    const sort = pick("sort", cfg.sorts.map(([v]) => v), DEFAULTS.sort);
+    const sort = pick(
+      "sort",
+      cfg.sorts.map(([v]) => v),
+      DEFAULTS.sort,
+    );
     const dir = (Object.keys(DIR_PARAM) as Dir[]).find((d) => DIR_PARAM[d] === params.get("dir"));
     return {
       q: params.get("q") ?? "",
@@ -278,7 +282,10 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
               onChange={(e) => set({ q: e.target.value })}
               className="peer"
             />
-            <Kbd aria-hidden="true" className="absolute top-1/2 right-[0.6rem] -translate-y-1/2 peer-focus:hidden peer-[:not(:placeholder-shown)]:hidden">
+            <Kbd
+              aria-hidden="true"
+              className="absolute top-1/2 right-[0.6rem] -translate-y-1/2 peer-focus:hidden peer-[:not(:placeholder-shown)]:hidden"
+            >
               /
             </Kbd>
           </label>
@@ -351,9 +358,14 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
             <span className="flex-[1_1_auto] max-[560px]:hidden"></span>
             {/* The table header's model filter, here too: the cards have no header. */}
             {st.model.length > 0 && (
-              <Button type="button" size="sm" className="gap-[0.35rem] [&_svg]:size-[0.85rem]" title="Clear the model filter" onClick={() => set({ model: [] })}>
-                Model:{" "}
-                {st.model.length > 2 ? `${st.model.length} models` : st.model.map((n) => modelNames.get(n)).join(", ")}
+              <Button
+                type="button"
+                size="sm"
+                className="gap-[0.35rem] [&_svg]:size-[0.85rem]"
+                title="Clear the model filter"
+                onClick={() => set({ model: [] })}
+              >
+                Model: {st.model.length > 2 ? `${st.model.length} models` : st.model.map((n) => modelNames.get(n)).join(", ")}
                 <XIcon aria-hidden="true" />
               </Button>
             )}
@@ -363,7 +375,19 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
               size="none"
               className="px-[0.35rem] py-[0.4rem] text-[0.85rem]"
               // Reset clears the filters but keeps the view.
-              onClick={() => set({ q: "", family: "", engine: "", tag: "", hidedep: false, sort: DEFAULTS.sort, dir: sortDir[DEFAULTS.sort], model: [], hardware: [] })}
+              onClick={() =>
+                set({
+                  q: "",
+                  family: "",
+                  engine: "",
+                  tag: "",
+                  hidedep: false,
+                  sort: DEFAULTS.sort,
+                  dir: sortDir[DEFAULTS.sort],
+                  model: [],
+                  hardware: [],
+                })
+              }
             >
               Reset
             </Button>

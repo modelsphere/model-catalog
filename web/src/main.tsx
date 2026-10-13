@@ -38,11 +38,11 @@ const router = createBrowserRouter(
   // GitHub Pages serves the site under /model-catalog/. With the slash, the
   // front page is /model-catalog/, not /model-catalog: the page itself, not
   // a path the server has to redirect.
-  { basename: import.meta.env.BASE_URL }
+  { basename: import.meta.env.BASE_URL },
 );
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RouterProvider router={router} />
-  </StrictMode>
+  </StrictMode>,
 );

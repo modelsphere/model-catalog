@@ -1,1 +1,3 @@
+# Format the staged code and check it parses and type-checks; then the catalog.
+npx lint-staged
 npm run validate:schema -- --base HEAD

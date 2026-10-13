@@ -38,7 +38,11 @@ function createServer() {
     const at = head();
     if (v2?.at !== at) {
       const { index, histories } = checkedIndexV2();
-      v2 = { at, index: serializeIndex(index), histories: new Map([...histories].map(([rel, h]) => [historyPath(rel), JSON.stringify(h, null, 2) + "\n"])) };
+      v2 = {
+        at,
+        index: serializeIndex(index),
+        histories: new Map([...histories].map(([rel, h]) => [historyPath(rel), JSON.stringify(h, null, 2) + "\n"])),
+      };
     }
     return v2;
   };

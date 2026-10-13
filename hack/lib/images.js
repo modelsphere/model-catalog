@@ -53,7 +53,11 @@ async function privateNetwork(host, lookup = dns.lookup) {
 // crane's error for a lookup that failed, in this check's words where one
 // fits, else crane's own.
 function craneProblem(stderr) {
-  const message = String(stderr).trim().split("\n").pop().replace(/^Error: /, "");
+  const message = String(stderr)
+    .trim()
+    .split("\n")
+    .pop()
+    .replace(/^Error: /, "");
   if (/\b(MANIFEST_UNKNOWN|NAME_UNKNOWN)\b/.test(message)) return "no such manifest";
   if (/\b(UNAUTHORIZED|DENIED)\b/.test(message)) return "not pullable without a login (private, or no such repository)";
   return message;
@@ -163,7 +167,10 @@ function imageRef(ref) {
 function reportMismatches(html, { baseline, optimized }) {
   const ran = reportImages(html);
   const out = [];
-  for (const [role, want, got] of [["baseline", baseline, ran.baseline], ["tuned", optimized, ran.attempts]]) {
+  for (const [role, want, got] of [
+    ["baseline", baseline, ran.baseline],
+    ["tuned", optimized, ran.attempts],
+  ]) {
     if (!got.size) out.push(`records no ${role} image`);
     else if (![...got].some((x) => imageRef(x) === imageRef(want))) {
       out.push(`the ${role} variant runs ${want}, but the report measured ${[...got].join(", ")}`);
@@ -189,4 +196,14 @@ function changedVersionFiles(root, base) {
   return versions.filter((file) => changed.includes(file) || touched.has(file.split("/")[1]));
 }
 
-module.exports = { parseRepository, isPrivateAddress, craneProblem, resolveManifest, checkImage, reportImages, imageRef, reportMismatches, changedVersionFiles };
+module.exports = {
+  parseRepository,
+  isPrivateAddress,
+  craneProblem,
+  resolveManifest,
+  checkImage,
+  reportImages,
+  imageRef,
+  reportMismatches,
+  changedVersionFiles,
+};

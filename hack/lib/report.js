@@ -7,9 +7,7 @@ const { HtmlValidate, Parser, StaticConfigLoader } = require("html-validate");
 
 // Conformance to the HTML standard for a whole document, without style rules:
 // a cut-off file fails as an unclosed element, a non-HTML one on its doctype.
-const validator = new HtmlValidate(
-  new StaticConfigLoader({ extends: ["html-validate:standard", "html-validate:document"] })
-);
+const validator = new HtmlValidate(new StaticConfigLoader({ extends: ["html-validate:standard", "html-validate:document"] }));
 
 // The JSON data blocks of an HTML document, <script type="application/json">
 // (or ld+json), as { id, text, line }. Read with an HTML parser rather than a

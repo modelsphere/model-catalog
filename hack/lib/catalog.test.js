@@ -13,7 +13,7 @@ test("versions sort by semver precedence", () => {
   // The spec's own example.
   assert.deepEqual(
     sorted(["1.0.0", "1.0.0-rc.1", "1.0.0-beta.11", "1.0.0-beta.2", "1.0.0-beta", "1.0.0-alpha.beta", "1.0.0-alpha.1", "1.0.0-alpha"]),
-    ["1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta", "1.0.0-beta.2", "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0"]
+    ["1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta", "1.0.0-beta.2", "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0"],
   );
 });
 
@@ -27,7 +27,10 @@ test("the index locks every version to its file's bytes", () => {
   const index = buildIndex();
   assert.ok(index.count > 0);
   for (const m of index.models) {
-    assert.ok(m.versions.some((v) => v.version === m.latest), `${m.name}: latest is not one of its versions`);
+    assert.ok(
+      m.versions.some((v) => v.version === m.latest),
+      `${m.name}: latest is not one of its versions`,
+    );
     for (const v of m.versions) {
       assert.equal(v.digest, digest(fs.readFileSync(path.join(root, v.path))), v.path);
     }
@@ -65,7 +68,16 @@ function fixture(steps) {
     git(["commit", "-q", "-m", subject], at);
   };
   for (const step of steps) commit(...step);
-  return { dir, write, commit, head: () => git(["rev-parse", "HEAD"]).toString().trim(), sha: (n) => git(["rev-parse", `HEAD~${n}`]).toString().trim() };
+  return {
+    dir,
+    write,
+    commit,
+    head: () => git(["rev-parse", "HEAD"]).toString().trim(),
+    sha: (n) =>
+      git(["rev-parse", `HEAD~${n}`])
+        .toString()
+        .trim(),
+  };
 }
 
 const variant = (id, version = "1.0.0", gpus = 8) => ({
@@ -86,7 +98,10 @@ const catalogFiles = {
     apiVersion: "catalog.swiss/v1",
     name: "m1",
     version: "1.0.0",
-    variants: [{ id: "a", engine: "vllm", chart: { name: "vllm", version: "0.1.0" }, requires: { gpus: 1 } }, { id: "b", default: true, engine: "vllm", chart: { name: "vllm", version: "0.1.0" }, requires: { gpus: 2 } }],
+    variants: [
+      { id: "a", engine: "vllm", chart: { name: "vllm", version: "0.1.0" }, requires: { gpus: 1 } },
+      { id: "b", default: true, engine: "vllm", chart: { name: "vllm", version: "0.1.0" }, requires: { gpus: 2 } },
+    ],
   },
   "models/m2/metadata.yaml": { apiVersion: "catalog.swiss/v2", name: "m2", source: { hf: "o/m2" }, defaultVariant: "sglang-tp8" },
   "models/m2/sglang-tp8.yaml": variant("sglang-tp8"),
@@ -101,7 +116,13 @@ test("a file is a v1 version or a v2 variant by its content, never its name", ()
   fs.writeFileSync(path.join(models, "m2/odd-1.0.0.yaml"), "apiVersion: catalog.swiss/v3\n");
   fs.writeFileSync(path.join(models, "m2/broken.yaml"), "a: [\n");
   const odd = modelFiles("m2", models).filter((f) => !f.kind);
-  assert.deepEqual(odd.map((f) => [f.rel, !!f.error]), [["models/m2/broken.yaml", true], ["models/m2/odd-1.0.0.yaml", false]]);
+  assert.deepEqual(
+    odd.map((f) => [f.rel, !!f.error]),
+    [
+      ["models/m2/broken.yaml", true],
+      ["models/m2/odd-1.0.0.yaml", false],
+    ],
+  );
 });
 
 test("index-v2 lists only v2 models, each variant file at its latest version", () => {
@@ -116,14 +137,30 @@ test("index-v2 lists only v2 models, each variant file at its latest version", (
   assert.deepEqual(checkIndexV2(built), []);
   assert.equal(index.commit, repo.head());
   assert.equal(index.raw, "https://raw.githubusercontent.com/o/c/");
-  assert.deepEqual(index.models.map((m) => m.name), ["m2"]);
+  assert.deepEqual(
+    index.models.map((m) => m.name),
+    ["m2"],
+  );
   const [m2] = index.models;
-  assert.deepEqual(m2.variants.map((v) => [v.id, v.version, v.commit, v.history]), [["sglang-tp8", "1.1.0", repo.sha(1), "models/m2/sglang-tp8.history.json"]]);
+  assert.deepEqual(
+    m2.variants.map((v) => [v.id, v.version, v.commit, v.history]),
+    [["sglang-tp8", "1.1.0", repo.sha(1), "models/m2/sglang-tp8.history.json"]],
+  );
   const tp8 = histories.get("models/m2/sglang-tp8.yaml");
-  assert.deepEqual(tp8.revisions.map((r) => [r.version, r.subject]), [["1.1.0", "tp8: two"], ["1.0.1", "tp8: one"], ["1.0.0", "init"]]);
+  assert.deepEqual(
+    tp8.revisions.map((r) => [r.version, r.subject]),
+    [
+      ["1.1.0", "tp8: two"],
+      ["1.0.1", "tp8: one"],
+      ["1.0.0", "init"],
+    ],
+  );
   // Each version's release date is its commit's, in UTC.
   assert.equal(m2.variants[0].releaseDate, "2026-10-03");
-  assert.deepEqual(tp8.revisions.map((r) => r.releaseDate), ["2026-10-03", "2026-10-02", "2026-10-01"]);
+  assert.deepEqual(
+    tp8.revisions.map((r) => r.releaseDate),
+    ["2026-10-03", "2026-10-02", "2026-10-01"],
+  );
   assert.equal(tp8.revisions[0].digest, m2.variants[0].digest);
   const tp4 = histories.get("models/m2/sglang-tp4.yaml");
   assert.deepEqual([tp4.revisions.map((r) => r.version), tp4.deleted.subject], [["1.0.0"], "drop tp4"]);
@@ -133,7 +170,9 @@ test("index-v2 lists only v2 models, each variant file at its latest version", (
 test("a change must raise the version, and a raised version must change something", () => {
   const repo = fixture([["2026-10-01T10:00:00Z", "init", catalogFiles]]);
   repo.write({ "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.0", 7) });
-  assert.deepEqual(revisionProblems({ root: repo.dir }), [["models/m2/sglang-tp8.yaml", "working copy: changed without raising version above 1.0.0"]]);
+  assert.deepEqual(revisionProblems({ root: repo.dir }), [
+    ["models/m2/sglang-tp8.yaml", "working copy: changed without raising version above 1.0.0"],
+  ]);
   repo.write({ "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.1") });
   assert.deepEqual(revisionProblems({ root: repo.dir }), [["models/m2/sglang-tp8.yaml", "working copy: version 1.0.1 changes nothing else"]]);
   repo.write({ "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.1", 7) });

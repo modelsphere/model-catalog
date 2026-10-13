@@ -67,7 +67,7 @@ test("versions order by semver precedence", () => {
 describe("tuning", () => {
   const m = model(
     [variant("base", { isBaseline: true }), variant("fast", { isOptimized: true }), variant("faster", { isOptimized: true, default: true })],
-    [pair("1.0.0", "fast", [10, 30]), pair("0.9.0", "fast", [99]), pair("1.0.1", "faster", [40])]
+    [pair("1.0.0", "fast", [10, 30]), pair("0.9.0", "fast", [99]), pair("1.0.1", "faster", [40])],
   );
 
   test("a tuned variant shows the pairs of its newest version measured", () => {
@@ -133,7 +133,11 @@ describe("index-v2.json", () => {
           { baseline: "base@1.0.0", optimized: "fast@1.0.0", uplift: 5 },
           { baseline: "base@1.0.2", optimized: "fast@1.0.2", uplift: 12, workloads: [{ name: "8k + 1k", uplift: 20 }], report: "m-h100-report.html" },
         ],
-        variants: [file("base"), file("fast", { servedName: "m-served", deprecated: "superseded" }), file("draft", { commit: undefined, releaseDate: undefined, requires: { gpus: 2, nodes: 2, topology: "lws" } })],
+        variants: [
+          file("base"),
+          file("fast", { servedName: "m-served", deprecated: "superseded" }),
+          file("draft", { commit: undefined, releaseDate: undefined, requires: { gpus: 2, nodes: 2, topology: "lws" } }),
+        ],
         ...over,
       },
     ],
@@ -146,7 +150,11 @@ describe("index-v2.json", () => {
       ["fast", false, true, false],
       ["draft", false, false, false],
     ]);
-    expect(m.variants[0]).toMatchObject({ source: `https://github.com/o/c/blob/${sha}/models/m/base.yaml`, releaseDate: "2026-10-12", hardwareShort: "8 × H100" });
+    expect(m.variants[0]).toMatchObject({
+      source: `https://github.com/o/c/blob/${sha}/models/m/base.yaml`,
+      releaseDate: "2026-10-12",
+      hardwareShort: "8 × H100",
+    });
     expect(m.variants[1]).toMatchObject({ servedName: "m-served", deprecated: true, deprecatedReason: "superseded" });
     // Uncommitted: nothing to pin, no release yet.
     expect(m.variants[2]).toMatchObject({ source: null, releaseDate: null, hardware: ["any GPU"], hardwareShort: "2 × GPU × 2 nodes" });
@@ -171,7 +179,19 @@ describe("index-v2.json", () => {
 });
 
 describe("facets", () => {
-  const f = (over: Partial<Facet>): Facet => ({ name: "m", displayName: "M", family: null, tags: [], engines: ["sglang"], hardware: [], hasCmp: false, uplift: null, deprecated: false, text: "", ...over });
+  const f = (over: Partial<Facet>): Facet => ({
+    name: "m",
+    displayName: "M",
+    family: null,
+    tags: [],
+    engines: ["sglang"],
+    hardware: [],
+    hasCmp: false,
+    uplift: null,
+    deprecated: false,
+    text: "",
+    ...over,
+  });
 
   test("the default order: improvement, then model, then the model page's order", () => {
     const items = [f({ name: "b", rank: 1 }), f({ name: "a", uplift: 5 }), f({ name: "b", rank: 0 }), f({ name: "c", uplift: 50 })];
@@ -192,7 +212,11 @@ describe("facets", () => {
   });
 
   test("a model counts once however many of its variants show", () => {
-    const s = computeSummary([f({ name: "a", hasCmp: true, uplift: 10, label: "a · fast" }), f({ name: "a", hasCmp: true }), f({ name: "b", deprecated: true })]);
+    const s = computeSummary([
+      f({ name: "a", hasCmp: true, uplift: 10, label: "a · fast" }),
+      f({ name: "a", hasCmp: true }),
+      f({ name: "b", deprecated: true }),
+    ]);
     expect(s).toMatchObject({ models: 2, variants: 3, pairs: 1, deprecated: 1, median: 10, best: { name: "a · fast", pct: 10 } });
   });
 

@@ -28,7 +28,18 @@ test("repositories resolve the way containerd resolves them", () => {
 });
 
 test("private, carrier-grade NAT, loopback and link-local addresses are not public", () => {
-  for (const ip of ["10.1.2.3", "172.27.133.35", "192.168.0.1", "100.100.1.1", "127.0.0.1", "169.254.1.1", "::1", "fd00::1", "fe80::1", "::ffff:10.0.0.1"]) {
+  for (const ip of [
+    "10.1.2.3",
+    "172.27.133.35",
+    "192.168.0.1",
+    "100.100.1.1",
+    "127.0.0.1",
+    "169.254.1.1",
+    "::1",
+    "fd00::1",
+    "fe80::1",
+    "::ffff:10.0.0.1",
+  ]) {
     assert.ok(isPrivateAddress(ip), ip);
   }
   for (const ip of ["172.32.0.1", "52.45.125.121", "100.63.226.34", "2600:1f18::1", "::ffff:52.45.125.121"]) assert.ok(!isPrivateAddress(ip), ip);
@@ -37,12 +48,16 @@ test("private, carrier-grade NAT, loopback and link-local addresses are not publ
 test("crane's errors read in this check's words", () => {
   const missing = "Error: GET https://index.docker.io/v2/lmsysorg/sglang/manifests/x: MANIFEST_UNKNOWN: manifest unknown; unknown tag=x\n";
   const hidden = "Error: GET https://index.docker.io/v2/org/nope/manifests/v1: UNAUTHORIZED: authentication required; [map[Action:pull]]\n";
-  const denied = "Error: GET https://ghcr.io/token?scope=repository%3Aorg%2Fapp%3Apull&service=ghcr.io: DENIED: requested access to the resource is denied\n";
+  const denied =
+    "Error: GET https://ghcr.io/token?scope=repository%3Aorg%2Fapp%3Apull&service=ghcr.io: DENIED: requested access to the resource is denied\n";
   const down = 'Error: Get "https://registry.example.io/v2/": dial tcp: lookup registry.example.io: no such host\n';
   assert.equal(craneProblem(missing), "no such manifest");
   assert.equal(craneProblem(hidden), "not pullable without a login (private, or no such repository)");
   assert.equal(craneProblem(denied), "not pullable without a login (private, or no such repository)");
-  assert.equal(craneProblem(`2026/10/11 retrying\n${down}`), 'Get "https://registry.example.io/v2/": dial tcp: lookup registry.example.io: no such host');
+  assert.equal(
+    craneProblem(`2026/10/11 retrying\n${down}`),
+    'Get "https://registry.example.io/v2/": dial tcp: lookup registry.example.io: no such host',
+  );
 });
 
 test("a tag or digest is asked for by its full reference", async () => {
@@ -88,7 +103,10 @@ test("a tag that has moved off its pinned digest warns, or is an error when they
 test("a registry on a private network fails without being asked", async () => {
   const { digestOf, calls } = registry({ "registry.example.io/team/app:v1": D1 });
   const lookup = async () => [{ address: "172.27.133.35" }];
-  assert.match((await resolveManifest("registry.example.io/team/app", "v1", { digestOf, lookup })).problem, /registry\.example\.io is on a private network \(172\.27\.133\.35\)/);
+  assert.match(
+    (await resolveManifest("registry.example.io/team/app", "v1", { digestOf, lookup })).problem,
+    /registry\.example\.io is on a private network \(172\.27\.133\.35\)/,
+  );
   assert.equal(calls.length, 0);
 });
 
@@ -96,7 +114,12 @@ test("a registry on a private network fails without being asked", async () => {
 const report = (baseline, ...attempts) => {
   const run = (image) => ({ launch: { config: { image } } });
   const comparison = { baseline: run(baseline), attempts: attempts.map(run) };
-  const data = { reports: [{ lang: "en", comparison }, { lang: "zh", comparison }] };
+  const data = {
+    reports: [
+      { lang: "en", comparison },
+      { lang: "zh", comparison },
+    ],
+  };
   return `<!doctype html><html><body><script type="application/json" id="autotune-report-data">${JSON.stringify(data)}</script></body></html>`;
 };
 

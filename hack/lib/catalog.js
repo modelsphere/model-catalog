@@ -170,7 +170,7 @@ function buildIndex() {
           digest: d,
           variants,
         })),
-      })
+      }),
     );
   }
   models.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -320,7 +320,7 @@ function buildIndexV2({ root: base = root, warn = console.warn } = {}) {
         reports,
         tuning,
         variants,
-      })
+      }),
     );
   }
   const index = prune({

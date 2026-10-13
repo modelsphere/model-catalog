@@ -56,7 +56,10 @@ function fileHistory(root) {
     const [commit, time, subject] = record.slice(0, end).split("\x1f");
     const date = new Date(Number(time) * 1000).toISOString().slice(0, 10);
     last = commit;
-    const fields = record.slice(end + 1).replace(/^\n/, "").split("\0");
+    const fields = record
+      .slice(end + 1)
+      .replace(/^\n/, "")
+      .split("\0");
     for (let i = 0; i + 1 < fields.length; i += 2) {
       const [status, file] = [fields[i], fields[i + 1]];
       if (!/^models\/[^/]+\/[^/]+\.yaml$/.test(file) || file.endsWith("/metadata.yaml")) continue;
@@ -66,7 +69,10 @@ function fileHistory(root) {
       if (!change.deleted) pending.push([change, `${commit}:${file}`]);
     }
   }
-  const bodies = blobs(root, pending.map(([, spec]) => spec));
+  const bodies = blobs(
+    root,
+    pending.map(([, spec]) => spec),
+  );
   pending.forEach(([change], i) => (change.bytes = bodies[i]));
   return { files, last };
 }

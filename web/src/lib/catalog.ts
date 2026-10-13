@@ -118,9 +118,7 @@ function comparisonFor(tuning: Tuning[], variants: Variant[]): Comparison | null
   const byId = new Map(variants.map((v) => [v.id, v]));
   const fits = tuning.filter((t) => byId.has(t.baselineId) && byId.has(t.optimizedId));
   const t =
-    fits.find((x) => byId.get(x.optimizedId)!.version === x.optimizedVersion) ||
-    fits.find((x) => byId.get(x.optimizedId)!.default) ||
-    fits[0];
+    fits.find((x) => byId.get(x.optimizedId)!.version === x.optimizedVersion) || fits.find((x) => byId.get(x.optimizedId)!.default) || fits[0];
   if (!t) return null;
   const best = t.workloads.reduce<Workload | null>((b, w) => (b && b.upliftPct >= w.upliftPct ? b : w), null);
   const bestPct = best ? best.upliftPct : t.upliftPct;
@@ -252,9 +250,7 @@ const ordered = perObject((m: Model, variants: Variant[]): Variant[] => {
     .slice()
     .sort(
       (a, b) =>
-        Number(b.isOptimized) - Number(a.isOptimized) ||
-        (gain(a) === gain(b) ? 0 : gain(b) - gain(a)) ||
-        Number(b.default) - Number(a.default)
+        Number(b.isOptimized) - Number(a.isOptimized) || (gain(a) === gain(b) ? 0 : gain(b) - gain(a)) || Number(b.default) - Number(a.default),
     );
 });
 

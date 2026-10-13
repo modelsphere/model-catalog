@@ -56,7 +56,13 @@ test("the perf reports index-v2.json lists are served, and catalog.json is gone"
 
 test("nothing outside models/ is served, and only reads are allowed", async () => {
   const name = modelNames()[0];
-  for (const p of ["/package.json", "/models/../package.json", "/models/%2e%2e/catalog.yaml", `/models/${name}/../../catalog.yaml`, "/models/nope/x.yaml"]) {
+  for (const p of [
+    "/package.json",
+    "/models/../package.json",
+    "/models/%2e%2e/catalog.yaml",
+    `/models/${name}/../../catalog.yaml`,
+    "/models/nope/x.yaml",
+  ]) {
     assert.equal((await fetch(base + p)).status, 404, p);
   }
   assert.equal((await fetch(`${base}/${versionFiles(name)[0]}`, { method: "POST" })).status, 405);

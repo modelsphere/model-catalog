@@ -2,7 +2,15 @@
 // Tuning binds to the optimized variant: a model may have several, each
 // against its own baseline, so each optimized variant carries its own results.
 import { Fragment, useEffect, type ReactNode } from "react";
-import { Link, useLoaderData, useLocation, useNavigate, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from "react-router";
+import {
+  Link,
+  useLoaderData,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+  type LoaderFunctionArgs,
+  type ShouldRevalidateFunctionArgs,
+} from "react-router";
 import type { Model, Tuning, Variant } from "@/types";
 import { anchorOf, encodePath, orderedVariants, reportLinks, REPORT_LANG, tuningFor, UPLIFT_HELP, WORKLOAD_NAMES } from "@/lib/catalog";
 import { loadCatalog, loadVariantText } from "@/lib/data";
@@ -95,7 +103,21 @@ const fact = {
   dd: "mt-[0.1rem] text-[0.86rem] wrap-anywhere",
 };
 
-function VariantDetail({ m, v, repo, scale, yaml, targeted }: { m: Model; v: Variant; repo: string | null; scale: number; yaml: string | null; targeted: boolean }) {
+function VariantDetail({
+  m,
+  v,
+  repo,
+  scale,
+  yaml,
+  targeted,
+}: {
+  m: Model;
+  v: Variant;
+  repo: string | null;
+  scale: number;
+  yaml: string | null;
+  targeted: boolean;
+}) {
   const anchor = anchorOf(v.id);
   const pairs = tuningFor(m, v.id);
   // Optimized variants measured against this one.
@@ -109,7 +131,7 @@ function VariantDetail({ m, v, repo, scale, yaml, targeted }: { m: Model; v: Var
         "data-target:border-primary data-target:bg-accent",
         // Phones: edge to edge, text lined up with the page's, so the facts
         // and bars get the whole screen width.
-        "max-[719px]:-mx-4 max-[719px]:rounded-none max-[719px]:border-x-0 max-[719px]:px-4 max-[719px]:py-4"
+        "max-[719px]:-mx-4 max-[719px]:rounded-none max-[719px]:border-x-0 max-[719px]:px-4 max-[719px]:py-4",
       )}
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-[0.35rem]">
@@ -292,7 +314,9 @@ export function ModelRoute() {
             ),
           ].filter(Boolean)}
         />
-        {m.tags.length > 0 && <div className="flex flex-wrap justify-center gap-[0.3rem]">{m.tags.map((t) => filterLink("tag", t, `hue-${tagHue(t)}`))}</div>}
+        {m.tags.length > 0 && (
+          <div className="flex flex-wrap justify-center gap-[0.3rem]">{m.tags.map((t) => filterLink("tag", t, `hue-${tagHue(t)}`))}</div>
+        )}
         {reports.length > 0 && (
           <div className="flex flex-wrap justify-center gap-2">
             {reports.map(({ r, title, text }) => (
@@ -316,7 +340,12 @@ export function ModelRoute() {
           </div>
           {labels.size > 1 && (
             <div className="mb-4">
-              <GpuToggles counts={countBy(m.variants.flatMap((v) => [...new Set(v.hardware)]))} what="Recipes for" selected={selected} onChange={setSelected} />
+              <GpuToggles
+                counts={countBy(m.variants.flatMap((v) => [...new Set(v.hardware)]))}
+                what="Recipes for"
+                selected={selected}
+                onChange={setSelected}
+              />
             </div>
           )}
           <div className="grid gap-[0.85rem]">
