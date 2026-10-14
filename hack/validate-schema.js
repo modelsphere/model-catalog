@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Schema-check this catalog, and what changed since the merge-base with master
-// (with --base REF instead: CI passes the pull request's base).
+// Schema-check this catalog, and what changed since --base REF (CI passes the
+// pull request's base), else since HEAD: the uncommitted edits.
 "use strict";
 
 const fs = require("fs");
@@ -87,17 +87,19 @@ function fail(rel, lines) {
   problems.set(rel, [...(problems.get(rel) ?? []), ...lines]);
 }
 
-// One base for every check on changes, the hook's, a local run's and CI's alike.
-const baseRef = base ?? "master";
-const baseKey = base ? `--base ${base}` : "master";
+// One base for every check on changes: --base, else HEAD. Nothing is guessed.
+const baseKey = base ? `--base ${base}` : "HEAD";
 let since;
 try {
-  since = git(["merge-base", baseRef, "HEAD"]).trim();
+  since = git(["merge-base", base ?? "HEAD", "HEAD"]).trim();
 } catch (err) {
-  fail(baseKey, [base ? err.message : `${err.message}; pass --base REF`]);
+  fail(baseKey, [err.message]);
 }
 console.log(
-  paint("bold", `Schema validation: the whole catalog${since ? `, and changes since merge-base with ${baseRef} (${since.slice(0, 7)})` : ""}`),
+  paint(
+    "bold",
+    `Schema validation: the whole catalog${since ? `, and changes since ${base ? `merge-base with ${base}` : "HEAD"} (${since.slice(0, 7)})` : ""}`,
+  ),
 );
 
 function parse(file) {

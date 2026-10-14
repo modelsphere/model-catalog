@@ -253,9 +253,9 @@ function historiesOf({ root: base = root } = {}) {
   return new Map([...variantRevisions(fileHistory(base).files, base)].map(([rel, h]) => [rel, historyDoc(rel, h)]));
 }
 
-// A variant file changed since a commit -- the branch's merge-base with master,
-// or CI's --base -- raises its version, and changes more than that. Commits in
-// between are one change, as the pull request is once merged.
+// A variant file changed since a commit -- validate:schema's --base, else HEAD
+// -- raises its version, and changes more than that. Commits in between are one
+// change, as a pull request is once merged.
 function revisionProblems({ root: dir = root, since }) {
   const git = (args) => {
     const r = spawnSync("git", args, { cwd: dir, maxBuffer: 1 << 28 });
