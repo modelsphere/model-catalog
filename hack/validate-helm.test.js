@@ -61,8 +61,10 @@ function fixture(t, failure, { chartName = "sglang", declaredVersion = "0.8.0", 
         prereleaseInserted = true;
       }
       stdout = JSON.stringify(matches);
-    } else if (args[0] === "pull") fs.writeFileSync(path.join(args.at(-1), `${chartName}-${args[args.indexOf("--version") + 1]}.tgz`), bytes);
-    else if (args[0] === "-tzf")
+    } else if (args[0] === "pull") {
+      // Like helm's atomic write, a failed download leaves no package behind.
+      if (failure !== "download") fs.writeFileSync(path.join(args.at(-1), `${chartName}-${args[args.indexOf("--version") + 1]}.tgz`), bytes);
+    } else if (args[0] === "-tzf")
       stdout = failure === "schema" ? `${chartName}/Chart.yaml\n` : `${chartName}/Chart.yaml\n${chartName}/values.schema.json\n`;
     else if (args[0] === "show") stdout = YAML.stringify({ name: chartName, version: path.basename(args.at(-1)).slice(chartName.length + 1, -4) });
     else if (args[0].endsWith("build-crds.js")) {
@@ -98,6 +100,17 @@ test("every variant uses independent values and the resolved package is reused",
   );
   // Helm may render exactly the CRD API versions that were built.
   assert(f.calls.filter((a) => a[0] === "template").every((a) => a[a.indexOf("--api-versions") + 1] === "example.dev/v1alpha1"));
+});
+
+test("a package kept from an earlier run is reused only while it matches the index", (t) => {
+  const f = fixture(t);
+  const pulls = () => f.calls.filter((a) => a[0] === "pull").length;
+  assert.equal(f.run(), true);
+  assert.equal(f.run(), true);
+  assert.equal(pulls(), 1);
+  fs.writeFileSync(path.join(f.root, ".cache/helm-validation/charts/sglang-0.8.0.tgz"), "tampered");
+  assert.equal(f.run(), true);
+  assert.equal(pulls(), 2);
 });
 
 for (const [chartName, declaredVersion, latestVersion] of [

@@ -21,6 +21,7 @@ const {
   revisionProblems,
 } = require("./lib/catalog");
 const { reportProblem } = require("./lib/report");
+const { paint, marks, plural } = require("./lib/style");
 
 const {
   values: { base },
@@ -77,18 +78,15 @@ function meaningful(errors) {
   return kept.length > 0 ? kept : errors;
 }
 
-function report(rel, lines) {
-  if (report.started) console.error("");
-  report.started = true;
-  console.error(rel);
-  for (const line of lines) console.error(`  ${line}`);
+// What was checked, path -> what it is, and the problems found, path -> lines:
+// a path's problems from every pass are reported together at the end.
+const checked = new Map();
+const problems = new Map();
+function fail(rel, lines) {
+  problems.set(rel, [...(problems.get(rel) ?? []), ...lines]);
 }
 
-let failed = false;
-function fail(rel, lines) {
-  failed = true;
-  report(rel, lines);
-}
+console.log(paint("bold", `Schema validation: the whole catalog${base ? `, and changes since merge-base with ${base}` : ""}`));
 
 function parse(file) {
   return YAML.parse(fs.readFileSync(file, "utf8"));
@@ -110,12 +108,13 @@ let schemaFor;
 try {
   schemaFor = schemaValidator();
 } catch (err) {
-  console.error(`schema/: ${err.message}`);
+  console.log(`${marks.fail} ${paint("red", "setup:")} schema/: ${err.message}`);
   process.exit(1);
 }
 
-function schemaCheck(file, schema) {
+function schemaCheck(file, schema, what) {
   const rel = path.relative(root, file);
+  checked.set(rel, what);
   let data;
   try {
     data = parse(file);
@@ -139,24 +138,26 @@ function schemaCheck(file, schema) {
 
 // Files are v1 or v2 by their content, never their name.
 const catalogFile = path.join(root, "catalog.yaml");
-if (fs.existsSync(catalogFile)) schemaCheck(catalogFile, "catalog.schema.json");
+if (fs.existsSync(catalogFile)) schemaCheck(catalogFile, "catalog.schema.json", "catalog.yaml");
 else fail("catalog.yaml", ["missing -- it names where the site is published"]);
 
 if (modelNames().length === 0) fail("models/", ["no models"]);
 for (const name of modelNames()) {
   const dir = path.join(modelsDir, name);
   const meta = path.join(dir, "metadata.yaml");
+  checked.set(path.relative(root, dir), "model");
   if (!fs.existsSync(meta)) {
     fail(path.relative(root, dir), ["missing metadata.yaml"]);
     continue;
   }
-  schemaCheck(meta, schemaOf(doc(meta)) === "v2" ? "metadata.v2.schema.json" : "metadata.schema.json");
+  schemaCheck(meta, schemaOf(doc(meta)) === "v2" ? "metadata.v2.schema.json" : "metadata.schema.json", "metadata");
   for (const { rel, kind, error } of modelFiles(name)) {
-    if (kind === "version") schemaCheck(path.join(root, rel), "version.schema.json");
-    else if (kind === "variant") schemaCheck(path.join(root, rel), "variant.schema.json");
+    if (kind === "version") schemaCheck(path.join(root, rel), "version.schema.json", "version file");
+    else if (kind === "variant") schemaCheck(path.join(root, rel), "variant.schema.json", "variant file");
     else if (error)
-      schemaCheck(path.join(root, rel), "version.schema.json"); // reports the parse error
+      schemaCheck(path.join(root, rel), "version.schema.json", "unreadable file"); // reports the parse error
     else {
+      checked.set(rel, "unrecognized file");
       fail(rel, ["neither a v1 version file (apiVersion: catalog.swiss/v1) nor a v2 variant (apiVersion: catalog.swiss/v2, kind: Variant)"]);
     }
   }
@@ -425,6 +426,7 @@ for (const name of modelNames()) {
     .readdirSync(dir)
     .filter((f) => f.endsWith(".html"))
     .sort()) {
+    checked.set(path.relative(root, path.join(dir, file)), "perf report");
     const problem =
       file === "index.html" ? "index.html is the model's page on the site; name the report something else" : reportProblem(path.join(dir, file));
     if (problem) fail(path.relative(root, path.join(dir, file)), [problem]);
@@ -504,4 +506,20 @@ if (base) {
   }
 }
 
-process.exit(failed ? 1 : 0);
+// Each path's problems under it, then what was checked and how it went.
+for (const [rel, lines] of problems) {
+  console.log();
+  console.log(paint("bold", rel));
+  for (const line of lines) console.log(`  ${marks.fail} ${line}`);
+}
+const counts = new Map();
+for (const what of checked.values()) counts.set(what, (counts.get(what) ?? 0) + 1);
+const order = ["catalog.yaml", "model", "metadata", "version file", "variant file", "perf report", "unreadable file", "unrecognized file"];
+const kinds = order
+  .filter((what) => counts.has(what))
+  .map((what) => (what === "catalog.yaml" ? what : plural(counts.get(what), what, what === "metadata" ? what : undefined)));
+const total = new Set([...checked.keys(), ...problems.keys()]).size;
+console.log();
+console.log(`Checked ${kinds.join(", ")}`);
+console.log(paint(problems.size ? "red" : "green", `${plural(total, "check")}: ${total - problems.size} passed, ${problems.size} failed`));
+process.exit(problems.size ? 1 : 0);

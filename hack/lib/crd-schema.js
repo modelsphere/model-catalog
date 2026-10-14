@@ -113,7 +113,7 @@ async function fetchPinned({ url, sha256 }) {
   return { body: bytes.toString("utf8"), sha256: digest, cached: false };
 }
 
-// Download CRD sources at their pinned commits and convert every served version.
+// Download CRD sources at their pinned release tags and convert every served version.
 // Returns the schema files and the records that lock them; onFetch hears of
 // each source as it arrives, from the cache or downloaded.
 async function buildSchemas(sources, objectMeta, onFetch = () => {}) {
@@ -123,8 +123,10 @@ async function buildSchemas(sources, objectMeta, onFetch = () => {}) {
   const files = new Map();
   const records = [];
   for (const source of sources) {
-    if (!/^[a-f0-9]{40}$/.test(source.commit)) throw new Error("source must use a full commit SHA");
-    const url = `https://raw.githubusercontent.com/${source.repository}/${source.commit}/${source.path}`;
+    if (typeof source.tag !== "string" || !source.tag) throw new Error(`${source.repository}: source must pin a release tag`);
+    // refs/tags/ resolves tags only: a branch name 404s instead of drifting.
+    // A tag moved upstream changes the bytes, which the lock's sha256 refuses.
+    const url = `https://raw.githubusercontent.com/${source.repository}/refs/tags/${source.tag}/${source.path}`;
     const { body, sha256, cached } = await fetchPinned({ url, sha256: source.sha256 });
     onFetch(url, cached);
     const schemas = YAML.parseAllDocuments(body).flatMap((doc) => {

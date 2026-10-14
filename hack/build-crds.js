@@ -2,7 +2,7 @@
 "use strict";
 
 // Build the kubeconform CRD schemas the way npm install builds node_modules.
-// crds.json pins each CRD to a commit; crds-lock.json records the sha256
+// crds.json pins each CRD to a release tag; crds-lock.json records the sha256
 // of what each pin holds. A lock in step with crds.json is honored, and
 // different bytes are refused; a missing or stale lock is written afresh.
 // --locked (CI) refuses to rewrite the lock instead, like npm ci.
@@ -30,7 +30,7 @@ function shown(file) {
 }
 
 function pins(list) {
-  return JSON.stringify(list.map(({ repository, commit, path: file, kind, group }) => [repository, commit, file, kind, group]));
+  return JSON.stringify(list.map(({ repository, tag, path: file, kind, group }) => [repository, tag, file, kind, group]));
 }
 
 async function main(args) {
@@ -52,7 +52,7 @@ async function main(args) {
   const stale = `${path.relative(root, lockFile)} is out of date; run npm run helm:build-crds and commit it`;
   if (!current && locked) throw new Error(stale);
   console.log(
-    `CRD sources, with the Kubernetes ObjectMeta schema they embed: commits pinned in ${shown(sourcesFile)}, ` +
+    `CRD sources, with the Kubernetes ObjectMeta schema they embed: tags pinned in ${shown(sourcesFile)}, ` +
       (current ? `sha256 verified against ${shown(lockFile)}` : `sha256 to be recorded in ${shown(lockFile)}`),
   );
   console.log(`Download cache: ${shown(cacheDir)}, reused only while a file matches its locked sha256`);
@@ -65,9 +65,9 @@ async function main(args) {
     console.log(`Updated ${shown(lockFile)}`);
   }
   const output = rest.length ? path.resolve(rest[0]) : defaultOutput;
-  // Like node_modules, the default directory is ours: rebuild it whole so a
-  // CRD dropped from crds.json leaves no schema behind.
-  if (!rest.length) fs.rmSync(output, { recursive: true, force: true });
+  // Like node_modules, the default directory is ours, named or not: rebuild it
+  // whole so a CRD dropped from crds.json leaves no schema behind.
+  if (output === defaultOutput) fs.rmSync(output, { recursive: true, force: true });
   for (const [file, body] of built.files) {
     fs.mkdirSync(path.dirname(path.join(output, file)), { recursive: true });
     fs.writeFileSync(path.join(output, file), body);

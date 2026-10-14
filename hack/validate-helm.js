@@ -4,10 +4,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { parseArgs, styleText, stripVTControlCharacters } = require("node:util");
+const { parseArgs, stripVTControlCharacters } = require("node:util");
 const YAML = require("yaml");
 const { root, compareVersions, isPrerelease } = require("./lib/catalog");
 const { command, selectFiles, kubeconformArgs, failureLines, parseVersions } = require("./lib/helm-validation");
+const { paint, marks } = require("./lib/style");
 const config = require("../schema/crds/config.json");
 
 function options(args) {
@@ -44,9 +45,6 @@ function main(opts, { repositoryRoot = root, runCommand = command } = {}) {
     console.log(message);
     fs.appendFileSync(path.join(runDir, "validation.log"), stripVTControlCharacters(message) + "\n");
   };
-  // Color only a terminal; validation.log stays plain.
-  const paint = (format, text) => styleText(format, text, { stream: process.stdout });
-  const marks = { pass: paint("green", "✓"), fail: paint("red", "✗"), warn: paint("yellow", "!"), skip: paint("dim", "-") };
   // Paths as a terminal in the working directory can open them.
   const shown = (file) => {
     const relative = path.relative(process.cwd(), file);
@@ -130,9 +128,12 @@ function main(opts, { repositoryRoot = root, runCommand = command } = {}) {
         throw new Error(`${name}: expected ${config[`${name}Version`]}, got ${version}; run npm run tools:install`);
       }
     }
-    // CRD schemas are not committed: build them from the lock for this run,
-    // which must not rewrite it.
-    const schemaDir = path.join(runDir, "crds");
+    // What the pins fix (CRD schemas, chart packages, Kubernetes schemas) is
+    // shared across runs under .cache; a run directory holds only its results.
+    const cache = path.join(root, ".cache/helm-validation");
+    // CRD schemas are not committed: build them from the lock, which this run
+    // must not rewrite.
+    const schemaDir = path.join(cache, "crds");
     // Several downloads, each allowed minutes: outlast them rather than kill the build.
     const built = requireSuccess(
       invoke(process.execPath, [path.join(__dirname, "build-crds.js"), "--locked", schemaDir], runDir, "crds", { timeout: 30 * 60 * 1000 }),
@@ -151,15 +152,16 @@ function main(opts, { repositoryRoot = root, runCommand = command } = {}) {
       `  Used by kubeconform, checking custom resources against ` + `${shown(schemaDir)}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json`,
     );
     log();
-    const schemaCache = path.join(runDir, "schema-cache");
-    fs.mkdirSync(schemaCache);
+    // kubeconform keys it by URL, and the URL pins a commit.
+    const schemaCache = path.join(cache, "kubeconform");
+    fs.mkdirSync(schemaCache, { recursive: true });
     requireSuccess(invoke(bin("helm"), ["repo", "add", "catalog", config.chartRepository], runDir, "chart-repository"), "chart-repository");
     const index = YAML.parse(fs.readFileSync(path.join(env.HELM_CACHE_HOME, "repository/catalog-index.yaml"), "utf8"));
     const requests = new Map();
     const resolutions = new Map();
     const packages = new Map();
-    const chartDir = path.join(runDir, "charts");
-    fs.mkdirSync(chartDir);
+    const chartDir = path.join(cache, "charts");
+    fs.mkdirSync(chartDir, { recursive: true });
     function resolveChart(name, constraint, dir, stage, stableOnly = false) {
       const key = JSON.stringify([name, constraint, stableOnly]);
       if (!resolutions.has(key)) {
@@ -206,14 +208,19 @@ function main(opts, { repositoryRoot = root, runCommand = command } = {}) {
           chartMode === "latest" ? resolveChart(chart.name, selectionConstraint, dir, "latest-chart-resolution", true) : declaredVersion;
         const key = `${chart.name}@${actualVersion}`;
         if (!packages.has(key)) {
-          requireSuccess(
-            invoke(bin("helm"), ["pull", `catalog/${chart.name}`, "--version", actualVersion, "--destination", chartDir], dir, "chart-download"),
-            "chart-download",
-          );
+          const published = index.entries[chart.name]?.find((entry) => entry.version === actualVersion)?.digest;
           const archive = path.join(chartDir, `${chart.name}-${actualVersion}.tgz`);
-          const digest = crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex");
-          const published = index.entries[chart.name]?.find((entry) => entry.version === actualVersion);
-          if (!published?.digest || digest !== published.digest) throw new Error(`chart-download: ${key}: repository digest mismatch`);
+          const digestOf = () => fs.existsSync(archive) && crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex");
+          // A package kept from an earlier run is reused only while it matches the index.
+          let digest = digestOf();
+          if (!published || digest !== published) {
+            requireSuccess(
+              invoke(bin("helm"), ["pull", `catalog/${chart.name}`, "--version", actualVersion, "--destination", chartDir], dir, "chart-download"),
+              "chart-download",
+            );
+            digest = digestOf();
+            if (!published || digest !== published) throw new Error(`chart-download: ${key}: repository digest mismatch`);
+          }
           const members = requireSuccess(invoke("tar", ["-tzf", archive], dir, "chart-package"), "chart-package").split("\n");
           if (!members.includes(`${chart.name}/values.schema.json`)) throw new Error(`${key}: published package is missing values.schema.json`);
           const metadata = YAML.parse(requireSuccess(invoke(bin("helm"), ["show", "chart", archive], dir, "chart-metadata"), "chart-metadata"));
@@ -228,21 +235,46 @@ function main(opts, { repositoryRoot = root, runCommand = command } = {}) {
         throw err;
       }
     }
+    function variantDir(file, variant) {
+      const hash = crypto.createHash("sha256").update(file).digest("hex").slice(0, 12);
+      const dir = path.join(runDir, `${path.basename(file)}-${hash}`, variant.id);
+      fs.mkdirSync(dir, { recursive: true });
+      return dir;
+    }
+    // Settle every chart before rendering, so the run names the releases it
+    // renders with up front. chartFor caches failures too: each is reported
+    // against its variants below.
+    const parsed = new Map();
+    for (const file of selection.files) {
+      try {
+        parsed.set(file, parseVersions(path.join(root, file)));
+      } catch (err) {
+        parsed.set(file, err);
+        continue;
+      }
+      for (const variant of parsed.get(file)) {
+        try {
+          chartFor(variant.chart, variantDir(file, variant));
+        } catch {}
+      }
+    }
+    if (packages.size) {
+      log(paint("bold", "Charts"));
+      const width = Math.max(...[...packages.keys()].map((key) => key.length));
+      for (const [key, pkg] of packages) log(`  ${key.padEnd(width)}  ${pkg.digest}`);
+      log();
+    }
     for (const file of selection.files) {
       log(paint("bold", file));
-      let variants;
-      try {
-        variants = parseVersions(path.join(root, file));
-      } catch (err) {
-        detail(2, `${marks.fail} ${paint("red", "parse:")}`, err.message);
-        summary.results.push({ file, stage: "parse", ok: false, error: err.message });
+      const variants = parsed.get(file);
+      if (variants instanceof Error) {
+        detail(2, `${marks.fail} ${paint("red", "parse:")}`, variants.message);
+        summary.results.push({ file, stage: "parse", ok: false, error: variants.message });
         continue;
       }
       const width = Math.max(...variants.map((variant) => String(variant.id).length));
       for (const [index, variant] of variants.entries()) {
-        const hash = crypto.createHash("sha256").update(file).digest("hex").slice(0, 12);
-        const dir = path.join(runDir, `${path.basename(file)}-${hash}`, variant.id);
-        fs.mkdirSync(dir, { recursive: true });
+        const dir = variantDir(file, variant);
         const record = {
           file,
           variant: variant.id,
@@ -332,12 +364,6 @@ function main(opts, { repositoryRoot = root, runCommand = command } = {}) {
     const failed = summary.results.filter((r) => !r.ok && !r.skipped);
     const skipped = summary.results.filter((r) => r.skipped).length;
     const warned = summary.results.filter((r) => r.ok && r.warning).length;
-    if (packages.size) {
-      log();
-      log(paint("bold", "Charts"));
-      const width = Math.max(...[...packages.keys()].map((key) => key.length));
-      for (const [key, pkg] of packages) log(`  ${key.padEnd(width)}  ${pkg.digest}`);
-    }
     if (failed.length) {
       log();
       log(paint("bold", "Failed"));

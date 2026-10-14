@@ -18,6 +18,7 @@ const YAML = require("yaml");
 const { spawnSync } = require("node:child_process");
 const { root, modelNames, versionFiles, variantFiles, kindOf, schemaOf, historiesOf } = require("./lib/catalog");
 const { checkImage, reportMismatches, changedVersionFiles } = require("./lib/images");
+const { paint, marks, plural } = require("./lib/style");
 
 function parse(args) {
   const { values, positionals } = parseArgs({
@@ -28,18 +29,22 @@ function parse(args) {
   const { base, "match-digest": matchDigest } = values;
   const files = positionals.map((file) => path.relative(root, path.resolve(file)).split(path.sep).join("/"));
   if (base && files.length) throw new Error("choose --base REF or explicit files, not both");
-  if (base) return { files: changedVersionFiles(root, base), matchDigest };
+  if (base) return { files: changedVersionFiles(root, base), matchDigest, reason: `changes since merge-base with ${base}` };
   const versions = modelNames().flatMap((name) => [...versionFiles(name), ...variantFiles(name)]);
-  if (!files.length) return { files: versions, matchDigest };
+  if (!files.length) return { files: versions, matchDigest, reason: "every version and variant file" };
   const unknown = files.filter((f) => !versions.includes(f));
   if (unknown.length) throw new Error(`not a model version or variant file: ${unknown.join(", ")}`);
-  return { files, matchDigest };
+  return { files, matchDigest, reason: "explicit files" };
 }
 
 async function main() {
-  const { files, matchDigest } = parse(process.argv.slice(2));
+  const { files, matchDigest, reason } = parse(process.argv.slice(2));
+  console.log(
+    paint("bold", `Image validation: pulled anonymously by tag and pinned digest${matchDigest ? ", each pinned digest matching its tag" : ""}`),
+  );
+  console.log(`Selected ${plural(files.length, "version or variant file")}: ${reason}`);
   if (files.length === 0) {
-    console.log("no version or variant files to check");
+    console.log("No model version or variant configuration changes (无版本配置变更).");
     return 0;
   }
 
@@ -59,6 +64,13 @@ async function main() {
 
   const results = new Map();
   const keys = [...uses.keys()];
+  const refOf = (key) => {
+    const [repository, tag, digest] = JSON.parse(key);
+    return `${repository}:${tag}${digest ? `@${digest}` : ""}`;
+  };
+  const failed = [];
+  console.log();
+  console.log(paint("bold", "Images"));
   // A few at a time: enough to be quick, few enough not to trip rate limits.
   for (let i = 0; i < keys.length; i += 4) {
     const batch = keys.slice(i, i + 4);
@@ -68,21 +80,37 @@ async function main() {
         results.set(key, await checkImage({ repository, tag, digest }, { matchDigest }));
       }),
     );
-    for (const key of batch) console.log(`${results.get(key).level.padEnd(7)} ${results.get(key).message}`);
-  }
-
-  const byFile = new Map();
-  const note = (file, line) => {
-    if (!byFile.has(file)) byFile.set(file, []);
-    byFile.get(file).push(line);
-  };
-  for (const [key, { level, message }] of results) {
-    if (level === "error") for (const { file, id } of uses.get(key)) note(file, `${id}: ${message}`);
+    // An image's line: its status and reference, then what was found. A
+    // warning or failure goes beneath it, with the variants a failure blocks.
+    for (const key of batch) {
+      const { level, message } = results.get(key);
+      const ref = refOf(key);
+      const found = message.startsWith(`${ref}: `) ? message.slice(ref.length + 2) : message;
+      if (level === "ok") {
+        console.log(`  ${marks.pass} ${ref}  ${paint("dim", found)}`);
+      } else if (level === "warning") {
+        console.log(`  ${marks.warn} ${ref}`);
+        console.log(`      ${paint("yellow", found)}`);
+      } else {
+        failed.push(ref);
+        console.log(`  ${marks.fail} ${ref}`);
+        console.log(`      ${paint("red", found)}`);
+        console.log(
+          `      ${paint(
+            "dim",
+            `used by ${uses
+              .get(key)
+              .map(({ file, id }) => `${file} :: ${id}`)
+              .join(", ")}`,
+          )}`,
+        );
+      }
+    }
   }
 
   // Tuned pairs of the selected versions. A missing report or variant is
   // validate:schema's to report.
-  let reports = 0;
+  const checked = [];
   let histories;
   const measured = (name, ref) => {
     const [id, version] = String(ref ?? "").split("@");
@@ -105,33 +133,44 @@ async function main() {
       const [b, o] = [variant("baseline"), variant("optimized")];
       const html = path.join(root, "models", name, String(t?.report ?? ""));
       if (!t?.report || !b?.image || !o?.image || !fs.existsSync(html)) return;
-      reports++;
       const image = (v) => `${v.image.repository}:${v.image.tag ?? "latest"}`;
-      for (const m of reportMismatches(fs.readFileSync(html, "utf8"), { baseline: image(b), optimized: image(o) })) {
-        note(meta, `tuning[${i}] (${t.report}): ${m}`);
-      }
+      const mismatches = reportMismatches(fs.readFileSync(html, "utf8"), { baseline: image(b), optimized: image(o) });
+      checked.push({ label: `${meta} tuning[${i}]`, report: t.report, mismatches });
     });
   }
-  [...byFile.keys()].sort().forEach((file, i) => {
-    if (i) console.error("");
-    console.error(file);
-    for (const line of byFile.get(file)) console.error(`  ${line}`);
-  });
-  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  if (checked.length) {
+    console.log();
+    console.log(paint("bold", "Perf reports, against their variants' images"));
+  }
+  for (const { label, report, mismatches } of checked) {
+    console.log(`  ${mismatches.length ? marks.fail : marks.pass} ${label}  ${paint("dim", report)}`);
+    for (const m of mismatches) console.log(`      ${paint("red", m)}`);
+    if (mismatches.length) failed.push(label);
+  }
+  if (failed.length) {
+    console.log();
+    console.log(paint("bold", "Failed"));
+    for (const name of failed) console.log(`  ${marks.fail} ${name}`);
+  }
   const count = (level) => [...results.values()].filter((r) => r.level === level).length;
-  const errors = count("error");
-  const bad = [...byFile.keys()].filter((f) => f.endsWith("metadata.yaml")).reduce((n, f) => n + byFile.get(f).length, 0);
+  const [warned, errors] = [count("warning"), count("error")];
+  const bad = checked.filter((c) => c.mismatches.length).length;
+  console.log();
   console.log(
-    `${plural(keys.length, "image")} in ${plural(files.length, "file")}: ${count("ok")} ok, ${plural(count("warning"), "warning")}, ${plural(errors, "error")}`,
+    paint(
+      errors ? "red" : "green",
+      `${plural(keys.length, "image")} in ${plural(files.length, "file")}: ` +
+        `${keys.length - errors} passed${warned ? ` (${warned} with warnings)` : ""}, ${errors} failed`,
+    ),
   );
-  console.log(`${reports} perf report${reports === 1 ? "" : "s"} checked against their variants' images, ${bad} mismatch${bad === 1 ? "" : "es"}`);
+  console.log(paint(bad ? "red" : "green", `${plural(checked.length, "perf report")}: ${checked.length - bad} passed, ${bad} failed`));
   return errors || bad ? 1 : 0;
 }
 
 main().then(
   (code) => process.exit(code),
   (err) => {
-    console.error(err.message);
+    console.error(`${marks.fail} ${paint("red", "setup:")} ${err.message}`);
     process.exit(2);
   },
 );
