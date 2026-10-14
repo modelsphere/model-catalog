@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Schema-check this catalog. --base REF also checks what changed since REF.
+// Schema-check this catalog, and what changed since the merge-base with master
+// (with --base REF instead: CI passes the pull request's base).
 "use strict";
 
 const fs = require("fs");
@@ -86,7 +87,18 @@ function fail(rel, lines) {
   problems.set(rel, [...(problems.get(rel) ?? []), ...lines]);
 }
 
-console.log(paint("bold", `Schema validation: the whole catalog${base ? `, and changes since merge-base with ${base}` : ""}`));
+// One base for every check on changes, the hook's, a local run's and CI's alike.
+const baseRef = base ?? "master";
+const baseKey = base ? `--base ${base}` : "master";
+let since;
+try {
+  since = git(["merge-base", baseRef, "HEAD"]).trim();
+} catch (err) {
+  fail(baseKey, [base ? err.message : `${err.message}; pass --base REF`]);
+}
+console.log(
+  paint("bold", `Schema validation: the whole catalog${since ? `, and changes since merge-base with ${baseRef} (${since.slice(0, 7)})` : ""}`),
+);
 
 function parse(file) {
   return YAML.parse(fs.readFileSync(file, "utf8"));
@@ -414,11 +426,13 @@ for (const name of modelNames()) {
   if (lines.length > 0) fail(path.relative(root, meta), lines);
 }
 
-// A variant file's version goes up with every change, and only with one.
-try {
-  for (const [rel, line] of revisionProblems()) fail(rel, [line]);
-} catch (err) {
-  fail("models/", [`cannot check variant versions: ${err.message}`]);
+// A variant file the branch changes raises its version, and changes more than that.
+if (since) {
+  try {
+    for (const [rel, line] of revisionProblems({ since })) fail(rel, [line]);
+  } catch (err) {
+    fail("models/", [`cannot check variant versions: ${err.message}`]);
+  }
 }
 
 // The site links every HTML file beside a model's metadata and skips one it
@@ -444,9 +458,8 @@ function git(args) {
   return r.stdout;
 }
 
-// --base: checks on what changed since the merge-base.
-function baseChecks() {
-  const mergeBase = git(["merge-base", base, "HEAD"]).trim();
+// Checks on what changed since the merge-base.
+function baseChecks(mergeBase) {
   const at = (rel) => {
     const r = spawnSync("git", ["show", `${mergeBase}:${rel}`], { cwd: root, encoding: "utf8", maxBuffer: 1 << 28 });
     return r.status === 0 ? r.stdout : null;
@@ -503,11 +516,11 @@ function baseChecks() {
   }
 }
 
-if (base) {
+if (since) {
   try {
-    baseChecks();
+    baseChecks(since);
   } catch (err) {
-    fail(`--base ${base}`, [err.message]);
+    fail(baseKey, [err.message]);
   }
 }
 

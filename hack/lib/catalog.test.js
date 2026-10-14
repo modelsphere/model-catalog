@@ -164,22 +164,39 @@ test("index-v2 lists only v2 models, each variant file at its latest version", (
   assert.equal(tp8.revisions[0].digest, m2.variants[0].digest);
   const tp4 = histories.get("models/m2/sglang-tp4.yaml");
   assert.deepEqual([tp4.revisions.map((r) => r.version), tp4.deleted.subject], [["1.0.0"], "drop tp4"]);
-  assert.deepEqual(revisionProblems({ root: repo.dir }), []);
+  assert.deepEqual(revisionProblems({ root: repo.dir, since: repo.sha(3) }), []);
 });
 
 test("a change must raise the version, and a raised version must change something", () => {
   const repo = fixture([["2026-10-01T10:00:00Z", "init", catalogFiles]]);
+  const since = repo.head();
   repo.write({ "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.0", 7) });
-  assert.deepEqual(revisionProblems({ root: repo.dir }), [
-    ["models/m2/sglang-tp8.yaml", "working copy: changed without raising version above 1.0.0"],
-  ]);
+  assert.deepEqual(revisionProblems({ root: repo.dir, since }), [["models/m2/sglang-tp8.yaml", "changed without raising version above 1.0.0"]]);
   repo.write({ "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.1") });
-  assert.deepEqual(revisionProblems({ root: repo.dir }), [["models/m2/sglang-tp8.yaml", "working copy: version 1.0.1 changes nothing else"]]);
+  assert.deepEqual(revisionProblems({ root: repo.dir, since }), [["models/m2/sglang-tp8.yaml", "version 1.0.1 changes nothing else"]]);
   repo.write({ "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.1", 7) });
   const { index } = buildIndexV2({ root: repo.dir, warn: () => {} });
   const tp8 = index.models[0].variants[1];
   assert.deepEqual([tp8.version, tp8.commit, tp8.releaseDate], ["1.0.1", undefined, undefined]);
-  assert.deepEqual(revisionProblems({ root: repo.dir }), []);
+  assert.deepEqual(revisionProblems({ root: repo.dir, since }), []);
+});
+
+test("versions are checked against one commit: the branch's commits since it are one change", () => {
+  const repo = fixture([["2026-10-01T10:00:00Z", "init", catalogFiles]]);
+  const since = repo.head();
+  repo.commit("2026-10-02T10:00:00Z", "bump", { "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.1", 7) });
+  repo.commit("2026-10-03T10:00:00Z", "fix values", { "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.1", 6) });
+  assert.deepEqual(revisionProblems({ root: repo.dir, since }), []);
+  // From the bump on, the fix alone is a change at the same version.
+  assert.deepEqual(revisionProblems({ root: repo.dir, since: repo.sha(1) }), [
+    ["models/m2/sglang-tp8.yaml", "changed without raising version above 1.0.1"],
+  ]);
+  // Uncommitted edits count too.
+  repo.write({ "models/m2/sglang-tp8.yaml": variant("sglang-tp8", "1.0.0", 5) });
+  assert.deepEqual(revisionProblems({ root: repo.dir, since }), [["models/m2/sglang-tp8.yaml", "changed without raising version above 1.0.0"]]);
+  // Back to the bytes at that commit: nothing changed, so nothing to raise.
+  repo.write({ "models/m2/sglang-tp8.yaml": variant("sglang-tp8") });
+  assert.deepEqual(revisionProblems({ root: repo.dir, since }), []);
 });
 
 test("a shallow clone is refused: its versions would be wrong", () => {

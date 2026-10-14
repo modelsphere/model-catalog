@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { isDeepStrictEqual } = require("util");
+const { spawnSync } = require("child_process");
 const yaml = require("yaml");
 const { fileHistory } = require("./history");
 
@@ -252,21 +253,31 @@ function historiesOf({ root: base = root } = {}) {
   return new Map([...variantRevisions(fileHistory(base).files, base)].map(([rel, h]) => [rel, historyDoc(rel, h)]));
 }
 
-// Each change to a variant file raises its version, and changes more than that.
-function revisionProblems({ root: base = root } = {}) {
+// A variant file changed since a commit -- the branch's merge-base with master,
+// or CI's --base -- raises its version, and changes more than that. Commits in
+// between are one change, as the pull request is once merged.
+function revisionProblems({ root: dir = root, since }) {
+  const git = (args) => {
+    const r = spawnSync("git", args, { cwd: dir, maxBuffer: 1 << 28 });
+    if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${String(r.stderr || r.error?.message || "").trim()}`);
+    return r.stdout;
+  };
   const strip = ({ version, ...rest }) => rest;
   const out = [];
-  for (const [rel, { revisions }] of variantRevisions(fileHistory(base).files, base)) {
-    revisions.forEach((r, i) => {
-      const prev = revisions[i - 1];
-      if (!prev) return;
-      const at = r.commit ? r.commit.slice(0, 7) : "working copy";
-      if (!(compareVersions(String(r.doc.version), String(prev.doc.version)) > 0)) {
-        out.push([rel, `${at}: changed without raising version above ${prev.doc.version}`]);
-      } else if (isDeepStrictEqual(strip(r.doc), strip(prev.doc))) {
-        out.push([rel, `${at}: version ${r.doc.version} changes nothing else`]);
-      }
-    });
+  // Modified only: a new file has no version to raise, a deleted one nothing to check.
+  const changed = git(["diff", "--name-only", "--no-renames", "--diff-filter=M", "-z", since, "--", "models"])
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean);
+  for (const rel of changed) {
+    const now = parseOrNull(fs.readFileSync(path.join(dir, rel)));
+    const was = parseOrNull(git(["show", `${since}:${rel}`]));
+    if (kindOf(now) !== "variant" || kindOf(was) !== "variant") continue;
+    if (!(compareVersions(String(now.version), String(was.version)) > 0)) {
+      out.push([rel, `changed without raising version above ${was.version}`]);
+    } else if (isDeepStrictEqual(strip(now), strip(was))) {
+      out.push([rel, `version ${now.version} changes nothing else`]);
+    }
   }
   return out;
 }
