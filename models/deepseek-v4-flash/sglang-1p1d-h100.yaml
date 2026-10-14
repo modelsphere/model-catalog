@@ -8,13 +8,13 @@ description: "DeepSeek-V4-Flash with prefill/decode disaggregation: 1 prefill + 
 engine: sglang
 chart:
   name: sglang
-  version: 0.9.2
+  version: ">=0.9.2"
 image:
   repository: lmsysorg/sglang
   tag: v0.5.20
 requires:
   gpus: 8
-  topology: single-node
+  topology: pd
   rdma: true
   gpuProduct:
     - NVIDIA-H100-80GB-HBM3
@@ -45,14 +45,22 @@ values:
       value: WARN
   pd:
     enabled: true
+    colocate: false
+    transferBackend: mooncake
     prefill:
+      size: 1
       gpus: "8"
+      httpPort: 30001
+      bootstrapPort: 8998
       extraArgs:
         - --chunked-prefill-size=16384
         - --max-prefill-tokens=16384
         - --max-running-requests=64
     decode:
+      size: 1
       gpus: "8"
+      httpPort: 30002
+      bootstrapPort: 8999
       extraArgs:
         - --cuda-graph-max-bs-decode=32
         - --max-running-requests=64
@@ -74,3 +82,18 @@ values:
       ephemeral-storage: 16Gi
     limits:
       ephemeral-storage: 16Gi
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 180
+  progressDeadlineSeconds: 7200
+  terminationGracePeriodSeconds: 3600
+  lifecycle:
+    preStop:
+      drainSeconds: 600
+      pollIntervalSeconds: 5
+    forceShutdown: true
+    preStopKill: true
