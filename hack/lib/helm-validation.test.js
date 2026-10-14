@@ -6,7 +6,8 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
-const { selectFiles, kubeconformArgs, failureLines } = require("./helm-validation");
+const YAML = require("yaml");
+const { selectFiles, kubeconformArgs, failureLines, parseVersions, catalogValues } = require("./helm-validation");
 const config = require("../../schema/crds/config.json");
 
 const VERSION = "apiVersion: catalog.swiss/v1\n";
@@ -175,4 +176,23 @@ test("failure lines keep the invalid resources and the errors, not every resourc
     "$ helm lint",
     "spawnSync helm ETIMEDOUT",
   ]);
+});
+
+test("variant values get swiss's projection of servedName, requires.gpus and the image, without its digest", (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "helm-values-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const image = { repository: "lmsysorg/sglang", tag: "v0.5.19", digest: `sha256:${"a".repeat(64)}` };
+  const values = { model: { name: "ignored", gpus: "1", localPath: "/models/m" }, image: { pullPolicy: "Always" }, lws: { size: 2 } };
+  const write = (file, doc) => fs.writeFileSync(path.join(dir, file), YAML.stringify(doc));
+  write("v1.yaml", { apiVersion: "catalog.swiss/v1", name: "m", version: "1.0.0", variants: [{ id: "a", image, requires: { gpus: 8 }, values }] });
+  write("v2.yaml", { apiVersion: "catalog.swiss/v2", kind: "Variant", model: "m", id: "b", servedName: "served", requires: { gpus: 2 } });
+  const [v1] = parseVersions(path.join(dir, "v1.yaml"));
+  assert.deepEqual(catalogValues(v1), {
+    model: { name: "m", gpus: "8", localPath: "/models/m" },
+    image: { pullPolicy: "Always", repository: "lmsysorg/sglang", tag: "v0.5.19" },
+    lws: { size: 2 },
+  });
+  assert.equal(v1.values.model.name, "ignored");
+  const [v2] = parseVersions(path.join(dir, "v2.yaml"));
+  assert.deepEqual(catalogValues(v2), { model: { name: "served", gpus: "2" } });
 });

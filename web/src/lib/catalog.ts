@@ -40,7 +40,7 @@ export function idIsDisplayName(m: Model): boolean {
 
 // Topologies as a reader knows them: lws by its full name. The URL keeps the
 // value itself.
-const TOPOLOGY_LABELS: Record<string, string> = { lws: "LeaderWorkerSet" };
+const TOPOLOGY_LABELS: Record<string, string> = { lws: "LeaderWorkerSet", pd: "Prefill/decode-disaggregated" };
 
 export function topologyLabel(topology: string): string {
   return TOPOLOGY_LABELS[topology] || topology;

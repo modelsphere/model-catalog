@@ -107,13 +107,36 @@ function failureLines(result) {
 }
 
 // validate:schema owns a version file's shape; this only refuses to pass a file
-// with nothing to render.
+// with nothing to render. Each variant carries the name it is served under:
+// servedName, else the model's name (a v2 variant's model, a v1 version's name).
 function parseVersions(file) {
   const doc = YAML.parse(fs.readFileSync(file, "utf8"));
-  if (kindOf(doc) === "variant") return [doc];
+  if (kindOf(doc) === "variant") return [{ ...doc, servedName: doc.servedName || doc.model }];
   const variants = doc?.variants;
   if (!Array.isArray(variants) || !variants.length) throw new Error("variants: expected a nonempty array");
-  return variants;
+  return variants.map((variant) => ({ ...variant, servedName: doc.servedName || doc.name }));
 }
 
-module.exports = { command, selectFiles, affectsValidator, kubeconformArgs, failureLines, parseVersions };
+// A variant's chart values as swiss's catalog layer composes them
+// (catalogLayer in swiss/internal/compose): its values, with the fields the
+// variant spells first-class projected on top, so they win over the same keys
+// in values. image.digest is not projected.
+function catalogValues(variant) {
+  const values = structuredClone(variant.values ?? {});
+  const set = (keys, value) => {
+    const parent = keys.slice(0, -1).reduce((node, key) => {
+      if (!node[key] || typeof node[key] !== "object" || Array.isArray(node[key])) node[key] = {};
+      return node[key];
+    }, values);
+    parent[keys.at(-1)] = value;
+  };
+  set(["model", "name"], variant.servedName);
+  set(["model", "gpus"], String(variant.requires?.gpus ?? 0));
+  if (variant.image) {
+    set(["image", "repository"], variant.image.repository);
+    set(["image", "tag"], String(variant.image.tag ?? ""));
+  }
+  return values;
+}
+
+module.exports = { command, selectFiles, affectsValidator, kubeconformArgs, failureLines, parseVersions, catalogValues };

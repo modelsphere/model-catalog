@@ -253,7 +253,7 @@ export function GpuToggles(props: TogglesProps) {
   return <FilterToggles label="GPU" hue={gpuHue} group={gpuGroup} {...props} />;
 }
 
-// The topology filter, alike: single-node, LeaderWorkerSet. counts is per topology.
+// The topology filter, alike: single-node, LeaderWorkerSet, prefill/decode-disaggregated. counts is per topology.
 export function TopologyToggles(props: TogglesProps) {
   return <FilterToggles label="Topology" hue={topologyHue} name={topologyLabel} {...props} />;
 }

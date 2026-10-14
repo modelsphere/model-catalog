@@ -41,6 +41,7 @@ const OTHER_VENDORS = ["ascend", "cambricon", "hygon", "amd"];
 const TOPOLOGY_HUES: Record<string, string> = {
   "single-node": "blue",
   lws: "purple",
+  pd: "orange",
 };
 
 export function tagHue(tag: string): string {

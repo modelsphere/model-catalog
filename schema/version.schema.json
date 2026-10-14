@@ -118,7 +118,8 @@
               "default": 1
             },
             "topology": {
-              "enum": ["single-node", "lws"],
+              "description": "How a replica runs. single-node: one pod. lws: a LeaderWorkerSet group across nodes, which needs values.lws.enabled: true. pd: prefill and decode disaggregated, which needs values.pd.enabled: true.",
+              "enum": ["single-node", "lws", "pd"],
               "default": "single-node"
             },
             "gpuProduct": {

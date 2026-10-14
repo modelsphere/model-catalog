@@ -7,7 +7,7 @@ const crypto = require("node:crypto");
 const { parseArgs, stripVTControlCharacters } = require("node:util");
 const YAML = require("yaml");
 const { root, compareVersions, isPrerelease } = require("./lib/catalog");
-const { command, selectFiles, kubeconformArgs, failureLines, parseVersions } = require("./lib/helm-validation");
+const { command, selectFiles, kubeconformArgs, failureLines, parseVersions, catalogValues } = require("./lib/helm-validation");
 const { paint, marks } = require("./lib/style");
 const config = require("../schema/crds/config.json");
 
@@ -288,9 +288,10 @@ function main(opts, { repositoryRoot = root, runCommand = command } = {}) {
         const problems = [];
         let stage = "values";
         try {
+          // What swiss composes from the variant, values and projected fields both.
           // JSON, not YAML: Helm reads YAML 1.1, where an unquoted on, no or yes is a boolean.
           const valuesFile = path.join(dir, "values.json");
-          fs.writeFileSync(valuesFile, JSON.stringify(variant.values ?? {}, null, 2) + "\n");
+          fs.writeFileSync(valuesFile, JSON.stringify(catalogValues(variant), null, 2) + "\n");
           stage = "chart";
           const pkg = chartFor(variant.chart, dir);
           if (pkg.legacy) {

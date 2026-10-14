@@ -162,6 +162,7 @@ describe("index-v2.json", () => {
     // lws keeps its value, reads as LeaderWorkerSet, and goes unsaid in the summary.
     expect(m.variants[2]).toMatchObject({ topology: "lws", requiresSummary: "2 GPUs × 2 nodes" });
     expect(topologyLabel(m.variants[2].topology)).toBe("LeaderWorkerSet");
+    expect(topologyLabel("pd")).toBe("Prefill/decode-disaggregated");
     expect(catalogOf(index({ defaultVariant: "fast" })).models[0].variants.find((v) => v.default)?.id).toBe("fast");
   });
 

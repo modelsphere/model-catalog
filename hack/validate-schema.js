@@ -192,6 +192,11 @@ function variantProblems(v, at) {
   if (v?.chart?.name && v?.engine && v.chart.name !== v.engine) {
     lines.push(`${at}chart.name ${v.chart.name} is not its engine, ${v.engine}`);
   }
+  // The chart renders what values enable, not what topology says.
+  const topology = v?.requires?.topology;
+  if (["lws", "pd"].includes(topology) && v?.values?.[topology]?.enabled !== true) {
+    lines.push(`${at}requires.topology ${topology} needs values.${topology}.enabled: true`);
+  }
   return lines;
 }
 

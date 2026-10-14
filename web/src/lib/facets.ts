@@ -15,7 +15,7 @@ export interface Facet {
   // One per variant, so the summary counts variants per engine.
   engines: string[];
   hardware: string[];
-  // Its variants' topologies: single-node, lws (shown as LeaderWorkerSet).
+  // Its variants' topologies: single-node, lws (shown as LeaderWorkerSet), pd (Prefill/decode-disaggregated).
   topology: string[];
   // Every GPU a variant takes, across its nodes; null when it names none.
   gpus?: number | null;
