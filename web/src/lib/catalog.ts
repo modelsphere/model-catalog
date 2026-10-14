@@ -149,6 +149,7 @@ function variantOf(index: Index, m: IndexModel, v: IndexVariant, tuning: Tuning[
     requiresSummary: requiresSummary(requires),
     hardware: hardwareLabels(requires),
     hardwareShort: hardwareShort(requires),
+    topology: (requires && requires.topology) || "single-node",
     isOptimized,
     isBaseline: !isOptimized && tuning.some((t) => t.baselineId === v.id),
     ...deprecation(v.deprecated),

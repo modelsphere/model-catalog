@@ -148,6 +148,8 @@ export interface Variant {
   requiresSummary: string;
   hardware: string[];
   hardwareShort: string;
+  // requires.topology: single-node when unset.
+  topology: string;
   isBaseline: boolean;
   isOptimized: boolean;
   deprecated: boolean;

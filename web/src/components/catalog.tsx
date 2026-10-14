@@ -5,7 +5,7 @@ import { ChevronDownIcon } from "lucide-react";
 import type { Model, Variant } from "@/types";
 import { anchorOf, encodePath, modelPath, reportLinks, REPORT_LANG, UPLIFT_HELP, variantBest } from "@/lib/catalog";
 import { computeSummary, type Facet } from "@/lib/facets";
-import { gpuGroup, gpuHue, tagHue } from "@/lib/hues";
+import { gpuGroup, gpuHue, tagHue, topologyHue } from "@/lib/hues";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -169,34 +169,57 @@ export function linkItems(m: Model, kind: "button" | "link", reportLabel: string
   return items;
 }
 
-// The hardware filter: one toggle per GPU, grouped by gpuGroup, most first
-// within a group. Anything on any pressed GPU matches. counts is per GPU;
-// what says what is counted, for the tooltip.
-export function GpuToggles({
+interface TogglesProps {
+  counts: Record<string, number>;
+  what: string;
+  selected: string[];
+  onChange: (values: string[]) => void;
+}
+
+// Every toggle filter's label. Each label takes the widest one's room, so
+// filters on lines of their own start their toggles at the same place.
+const TOGGLE_LABELS = ["GPU", "Topology"];
+
+// A toolbar filter: one toggle per value, labeled, each with its count and
+// hue, most first unless group says otherwise. Anything with any pressed
+// value matches. what says what is counted, for the tooltip.
+function FilterToggles({
+  label,
+  hue,
+  group = () => 0,
   counts,
   what,
   selected,
   onChange,
-}: {
-  counts: Record<string, number>;
-  what: string;
-  selected: string[];
-  onChange: (labels: string[]) => void;
-}) {
-  const labels = Object.keys(counts).sort((a, b) => gpuGroup(a) - gpuGroup(b) || counts[b] - counts[a] || a.localeCompare(b));
+}: TogglesProps & { label: string; hue: (value: string) => string; group?: (value: string) => number }) {
+  const values = Object.keys(counts).sort((a, b) => group(a) - group(b) || counts[b] - counts[a] || a.localeCompare(b));
   return (
-    <ToggleGroup type="multiple" variant="tint" aria-label="GPU" value={selected} onValueChange={onChange}>
-      <span className="mr-[0.3rem] text-[0.8rem] font-bold tracking-[0.06em] text-foreground" aria-hidden="true">
-        GPU
+    <ToggleGroup type="multiple" variant="tint" aria-label={label} value={selected} onValueChange={onChange}>
+      <span className="mr-[0.3rem] inline-grid text-[0.8rem] font-bold tracking-[0.06em] text-foreground" aria-hidden="true">
+        {TOGGLE_LABELS.map((l) => (
+          <span key={l} className={cn("[grid-area:1/1]", l !== label && "invisible")}>
+            {l}
+          </span>
+        ))}
       </span>
-      {labels.map((h) => (
-        <ToggleGroupItem key={h} value={h} className={`hue-${gpuHue(h)}`} title={`${what} ${h}`}>
-          {h}
-          <span className="text-[0.74rem] font-medium tabular-nums opacity-85">{counts[h]}</span>
+      {values.map((v) => (
+        <ToggleGroupItem key={v} value={v} className={`hue-${hue(v)}`} title={`${what} ${v}`}>
+          {v}
+          <span className="text-[0.74rem] font-medium tabular-nums opacity-85">{counts[v]}</span>
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
   );
+}
+
+// The hardware filter: one toggle per GPU, grouped by gpuGroup. counts is per GPU.
+export function GpuToggles(props: TogglesProps) {
+  return <FilterToggles label="GPU" hue={gpuHue} group={gpuGroup} {...props} />;
+}
+
+// The topology filter, alike: single-node, lws. counts is per topology.
+export function TopologyToggles(props: TogglesProps) {
+  return <FilterToggles label="Topology" hue={topologyHue} {...props} />;
 }
 
 // Radix keeps "" for no value at all, so "everything" travels as this.

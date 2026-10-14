@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { ColumnFilter, FilterSelect, GpuToggles, Summary, type FilterOption } from "./catalog";
+import { ColumnFilter, FilterSelect, GpuToggles, Summary, TopologyToggles, type FilterOption } from "./catalog";
 import { icons } from "./icons";
 import { SiteFooter, SiteHeader } from "./site";
 
@@ -33,6 +33,7 @@ interface State {
   // Model names; anything of any of them matches.
   model: string[];
   hardware: string[];
+  topology: string[];
 }
 
 // The filters a table header can carry: many values each.
@@ -54,7 +55,7 @@ export interface ListConfig {
   facets: Facet[];
   search: string;
   sorts: Array<[string, string]>;
-  // What a GPU toggle counts, for its tooltip.
+  // What a GPU or topology toggle counts, for its tooltip.
   gpuWhat: string;
   // The card grid's narrowest column.
   cardWidth: number;
@@ -72,6 +73,7 @@ function matches(m: Facet, st: State): boolean {
   if (st.family && m.family !== st.family) return false;
   if (st.engine && !m.engines.includes(st.engine)) return false;
   if (st.hardware.length && !st.hardware.some((h) => m.hardware.includes(h))) return false;
+  if (st.topology.length && !st.topology.some((t) => m.topology.includes(t))) return false;
   if (st.tag && !m.tags.includes(st.tag)) return false;
   if (st.hidedep && m.deprecated) return false;
   return true;
@@ -88,6 +90,7 @@ function queryOf(st: State): string {
   if (st.dir !== sortDir[st.sort]) params.set("dir", DIR_PARAM[st.dir]);
   for (const n of st.model) params.append("model", n);
   for (const h of st.hardware) params.append("hardware", h);
+  for (const t of st.topology) params.append("topology", t);
   return params.toString();
 }
 
@@ -105,6 +108,7 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
       tag: facets.flatMap((f) => f.tags),
       model: countBy(facets.map((f) => f.name)),
       hardware: countBy(facets.flatMap((f) => f.hardware)),
+      topology: countBy(facets.flatMap((f) => f.topology)),
     }),
     [facets],
   );
@@ -134,6 +138,7 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
       view: pick("view", ["cards", "table"], html.dataset.view === "cards" ? "cards" : "table") as View,
       model: params.getAll("model").filter((n) => n in options.model),
       hardware: params.getAll("hardware").filter((h) => h in options.hardware),
+      topology: params.getAll("topology").filter((t) => t in options.topology),
     };
   });
   const set = (patch: Partial<State>) => setSt((s) => ({ ...s, ...patch }));
@@ -386,12 +391,20 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
                   dir: sortDir[DEFAULTS.sort],
                   model: [],
                   hardware: [],
+                  topology: [],
                 })
               }
             >
               Reset
             </Button>
           </div>
+          {/* Topology on a line of its own, under the GPUs; only while there is
+              a choice: every entry on one topology leaves nothing to filter. */}
+          {Object.keys(options.topology).length > 1 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <TopologyToggles counts={options.topology} what={cfg.gpuWhat} selected={st.topology} onChange={(topology) => set({ topology })} />
+            </div>
+          )}
         </form>
         <div onClick={onResultsClick}>
           {kept.current.has("cards") && (

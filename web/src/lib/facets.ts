@@ -15,6 +15,8 @@ export interface Facet {
   // One per variant, so the summary counts variants per engine.
   engines: string[];
   hardware: string[];
+  // Its variants' topologies: single-node, lws.
+  topology: string[];
   // Every GPU a variant takes, across its nodes; null when it names none.
   gpus?: number | null;
   hasCmp: boolean;
@@ -35,6 +37,7 @@ export function facetsOf(m: Model): Facet {
     tags: m.tags,
     engines: m.variants.map((v) => v.engine),
     hardware: [...new Set(m.variants.flatMap((v) => v.hardware))].sort(),
+    topology: [...new Set(m.variants.map((v) => v.topology))].sort(),
     hasCmp: !!m.comparison,
     uplift: m.comparison ? m.comparison.bestPct : null,
     deprecated: m.deprecated,
@@ -64,6 +67,7 @@ export function variantFacetsOf(m: Model, v: Variant, rank: number): Facet {
     tags: m.tags,
     engines: [v.engine],
     hardware: [...new Set(v.hardware)].sort(),
+    topology: [v.topology],
     gpus: req.gpus == null ? null : req.gpus * (req.nodes || 1),
     hasCmp: !!m.comparison,
     uplift: best ? best.upliftPct : null,
@@ -80,6 +84,7 @@ export function variantFacetsOf(m: Model, v: Variant, rank: number): Facet {
       image,
       v.chart && v.chart.name,
       ...v.hardware,
+      v.topology,
     ]),
   };
 }

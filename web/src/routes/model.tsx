@@ -21,7 +21,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Bar, chartCode, DeprecatedBadge, Fact, GpuToggles, Hardware, imageCode, NEW_TAB, ROOT, VariantBadges } from "@/components/catalog";
+import {
+  Bar,
+  chartCode,
+  DeprecatedBadge,
+  Fact,
+  GpuToggles,
+  Hardware,
+  imageCode,
+  NEW_TAB,
+  ROOT,
+  TopologyToggles,
+  VariantBadges,
+} from "@/components/catalog";
 import { VariantHistory } from "@/components/history";
 import { icons } from "@/components/icons";
 import { SiteFooter, SiteHeader } from "@/components/site";
@@ -250,17 +262,27 @@ export function ModelRoute() {
     document.title = `${m.displayName} · Model Catalog`;
   }, [m]);
 
-  // Checked GPU toggles show only the variants that run on one of them; the
-  // choice lives in the query, beside the fragment. A model on one GPU has
-  // nothing to filter, so no toggles.
-  const labels = new Set(m.variants.flatMap((v) => v.hardware));
-  const selected = params.getAll("hardware").filter((h) => labels.has(h));
-  const setSelected = (next: string[]) => {
+  // Checked GPU and topology toggles show only the variants on one of them,
+  // each filter's own; the choice lives in the query, beside the fragment. A
+  // model on one GPU, or one topology, has nothing to filter there, so no
+  // toggles.
+  const gpus = countBy(m.variants.flatMap((v) => [...new Set(v.hardware)]));
+  const topologies = countBy(m.variants.map((v) => v.topology));
+  const selected = {
+    hardware: params.getAll("hardware").filter((h) => h in gpus),
+    topology: params.getAll("topology").filter((t) => t in topologies),
+  };
+  const select = (key: keyof typeof selected) => (values: string[]) => {
+    const next = { ...selected, [key]: values };
     const query = new URLSearchParams();
-    for (const h of next) query.append("hardware", h);
+    for (const h of next.hardware) query.append("hardware", h);
+    for (const t of next.topology) query.append("topology", t);
     navigate({ search: query.toString(), hash }, { replace: true, preventScrollReset: true });
   };
-  const shows = (v: Variant) => !selected.length || selected.some((h) => v.hardware.includes(h));
+  const filtered = selected.hardware.length > 0 || selected.topology.length > 0;
+  const shows = (v: Variant) =>
+    (!selected.hardware.length || selected.hardware.some((h) => v.hardware.includes(h))) &&
+    (!selected.topology.length || selected.topology.includes(v.topology));
 
   const all = m.variants
     .flatMap((v) => tuningFor(m, v.id))
@@ -335,17 +357,17 @@ export function ModelRoute() {
           <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-[0.1rem] pb-2">
             <h2 className="text-[1.05rem] font-bold tabular-nums">Recipes</h2>
             <span className="text-[0.84rem] text-muted-foreground">
-              <span>{selected.length ? `${shown} of ${total} ${noun}` : `${total} ${noun}`}</span>
+              <span>{filtered ? `${shown} of ${total} ${noun}` : `${total} ${noun}`}</span>
             </span>
           </div>
-          {labels.size > 1 && (
-            <div className="mb-4">
-              <GpuToggles
-                counts={countBy(m.variants.flatMap((v) => [...new Set(v.hardware)]))}
-                what="Recipes for"
-                selected={selected}
-                onChange={setSelected}
-              />
+          {(Object.keys(gpus).length > 1 || Object.keys(topologies).length > 1) && (
+            <div className="mb-4 grid gap-2">
+              {Object.keys(gpus).length > 1 && (
+                <GpuToggles counts={gpus} what="Recipes for" selected={selected.hardware} onChange={select("hardware")} />
+              )}
+              {Object.keys(topologies).length > 1 && (
+                <TopologyToggles counts={topologies} what="Recipes for" selected={selected.topology} onChange={select("topology")} />
+              )}
             </div>
           )}
           <div className="grid gap-[0.85rem]">

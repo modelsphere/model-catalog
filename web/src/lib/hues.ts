@@ -37,6 +37,12 @@ const GPU_HUES: Record<string, string> = {
 // Vendors other than NVIDIA, as their GPU labels name them.
 const OTHER_VENDORS = ["ascend", "cambricon", "hygon", "amd"];
 
+// Topologies, as the topology filter shows them.
+const TOPOLOGY_HUES: Record<string, string> = {
+  "single-node": "blue",
+  lws: "purple",
+};
+
 export function tagHue(tag: string): string {
   if (TAG_HUES[tag]) return TAG_HUES[tag];
   let h = 0;
@@ -46,6 +52,10 @@ export function tagHue(tag: string): string {
 
 export function gpuHue(label: string): string {
   return GPU_HUES[label] || tagHue(label);
+}
+
+export function topologyHue(topology: string): string {
+  return TOPOLOGY_HUES[topology] || tagHue(topology);
 }
 
 // NVIDIA's cards first, then other vendors', then "any GPU". Every other
