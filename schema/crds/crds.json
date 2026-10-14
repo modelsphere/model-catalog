@@ -29,6 +29,13 @@
       "group": "leaderworkerset.x-k8s.io"
     },
     {
+      "repository": "kubernetes-sigs/lws",
+      "commit": "03254992e177a706fc531572376a3d3153addc93",
+      "path": "config/crd/bases/disaggregatedset.x-k8s.io_disaggregatedsets.yaml",
+      "kind": "DisaggregatedSet",
+      "group": "disaggregatedset.x-k8s.io"
+    },
+    {
       "repository": "prometheus-operator/prometheus-operator",
       "commit": "5b656b46d40ee3de0c444e55bce82871b42aa959",
       "path": "example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml",
