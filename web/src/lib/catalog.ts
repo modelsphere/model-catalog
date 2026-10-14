@@ -38,15 +38,23 @@ export function idIsDisplayName(m: Model): boolean {
   return slug === m.name;
 }
 
+// Topologies as a reader knows them: lws by its full name. The URL keeps the
+// value itself.
+const TOPOLOGY_LABELS: Record<string, string> = { lws: "LeaderWorkerSet" };
+
+export function topologyLabel(topology: string): string {
+  return TOPOLOGY_LABELS[topology] || topology;
+}
+
+// The topology goes unsaid: every view shows it on its own (see Topology).
 function requiresSummary(req: Requires | null): string {
   if (!req) return "";
   let gpus = req.gpus != null ? `${req.gpus} GPU` + (req.gpus === 1 ? "" : "s") : null;
   // requires.gpus is per pod; a multi-node group needs gpus x nodes in total.
   if (gpus && req.nodes && req.nodes > 1) gpus += ` × ${req.nodes} nodes`;
-  const topo = req.topology && req.topology !== "single-node" ? req.topology : null;
   const product = Array.isArray(req.gpuProduct) ? req.gpuProduct.join(", ") : null;
   const vendor = req.vendor && req.vendor !== "nvidia" ? req.vendor : null;
-  return [gpus, topo, product, vendor].filter(Boolean).join(" · ");
+  return [gpus, product, vendor].filter(Boolean).join(" · ");
 }
 
 // Vendor names as swiss's console shows them.

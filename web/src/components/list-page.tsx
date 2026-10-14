@@ -6,7 +6,8 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactElemen
 import { useSearchParams } from "react-router";
 import { ArrowDownIcon, ArrowDownWideNarrowIcon, ArrowUpDownIcon, ArrowUpIcon, ArrowUpNarrowWideIcon, XIcon } from "lucide-react";
 import { countBy, sortDir, sorter, type Dir, type Facet } from "@/lib/facets";
-import { gpuGroup, gpuHue } from "@/lib/hues";
+import { topologyLabel } from "@/lib/catalog";
+import { gpuGroup, gpuHue, topologyHue } from "@/lib/hues";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +38,7 @@ interface State {
 }
 
 // The filters a table header can carry: many values each.
-type Multi = "model" | "hardware";
+type Multi = "model" | "hardware" | "topology";
 
 const DEFAULTS = { sort: "uplift", view: "table" };
 
@@ -45,7 +46,12 @@ const flip = (d: Dir): Dir => (d === "ascending" ? "descending" : "ascending");
 // In the URL, only when a sort runs against its usual direction.
 const DIR_PARAM: Record<Dir, string> = { ascending: "asc", descending: "desc" };
 
-export type SortHead = (col: string, label: string, opts?: { className?: string; title?: string; sub?: string; filter?: Multi }) => ReactElement;
+// col null: a header that only filters, with no sort of its own.
+export type SortHead = (
+  col: string | null,
+  label: string,
+  opts?: { className?: string; title?: string; sub?: string; filter?: Multi },
+) => ReactElement;
 
 export interface ListConfig {
   // The page's title, with what it is; heading sits above the summary.
@@ -201,10 +207,11 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
     if (sort) sortBy(sort.dataset.sort!);
   };
 
-  // What a header's filter offers: models by name, GPUs as the toolbar has them.
+  // What a header's filter offers: models by name, GPUs and topologies as the
+  // toolbar has them.
   const modelNames = useMemo(() => new Map(facets.map((f) => [f.name, f.displayName])), [facets]);
   const filterOptions = useMemo<Record<Multi, FilterOption[]>>(() => {
-    const { model, hardware } = options;
+    const { model, hardware, topology } = options;
     return {
       model: Object.keys(model)
         .map((n) => ({ value: n, label: modelNames.get(n)!, count: model[n] }))
@@ -212,13 +219,16 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
       hardware: Object.keys(hardware)
         .sort((a, b) => gpuGroup(a) - gpuGroup(b) || hardware[b] - hardware[a] || a.localeCompare(b))
         .map((h) => ({ value: h, label: h, count: hardware[h], hue: gpuHue(h) })),
+      topology: Object.keys(topology)
+        .sort((a, b) => topology[b] - topology[a] || a.localeCompare(b))
+        .map((t) => ({ value: t, label: topologyLabel(t), count: topology[t], hue: topologyHue(t) })),
     };
   }, [options, modelNames]);
 
   // A sortable header: its name, then the sort's arrow. With a filter, the
-  // name opens it, and only the arrow sorts.
+  // name opens it, and only the arrow sorts; with no sort, there is no arrow.
   const th: SortHead = (col, label, { className, title, sub, filter } = {}) => {
-    const dir = col === st.sort ? st.dir : undefined;
+    const dir = col != null && col === st.sort ? st.dir : undefined;
     return (
       <TableHead aria-sort={dir} className={className} title={title}>
         <span className="inline-flex items-center gap-[0.2rem]">
@@ -235,16 +245,21 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
               {label}
             </Button>
           )}
-          <Button
-            variant="bare"
-            size="none"
-            data-sort={col}
-            aria-label={`Sort by ${label.toLowerCase()}${dir ? `, ${dir}` : ""}`}
-            title={dir ? `Sorted ${dir}: click for ${flip(dir)}` : `Sort by ${label.toLowerCase()}`}
-            className={cn("rounded-sm p-[0.2rem] text-faint hover:bg-accent hover:text-foreground [&_svg]:size-[0.85rem]", dir && "text-foreground")}
-          >
-            {dir === "ascending" ? <ArrowUpIcon /> : dir === "descending" ? <ArrowDownIcon /> : <ArrowUpDownIcon />}
-          </Button>
+          {col != null && (
+            <Button
+              variant="bare"
+              size="none"
+              data-sort={col}
+              aria-label={`Sort by ${label.toLowerCase()}${dir ? `, ${dir}` : ""}`}
+              title={dir ? `Sorted ${dir}: click for ${flip(dir)}` : `Sort by ${label.toLowerCase()}`}
+              className={cn(
+                "rounded-sm p-[0.2rem] text-faint hover:bg-accent hover:text-foreground [&_svg]:size-[0.85rem]",
+                dir && "text-foreground",
+              )}
+            >
+              {dir === "ascending" ? <ArrowUpIcon /> : dir === "descending" ? <ArrowDownIcon /> : <ArrowUpDownIcon />}
+            </Button>
+          )}
         </span>
         {sub && <span className="mt-[0.1rem] block text-[0.68rem] font-normal text-faint">{sub}</span>}
       </TableHead>

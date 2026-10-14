@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Index, Model, Tuning, Variant } from "../types";
-import { catalogOf, hardwareLabels, hardwareShort, measuredAs, orderedVariants, reportLinks, tuningFor, variantBest } from "./catalog";
+import { catalogOf, hardwareLabels, hardwareShort, measuredAs, orderedVariants, reportLinks, topologyLabel, tuningFor, variantBest } from "./catalog";
 import { computeSummary, sorter, variantFacetsOf, type Facet } from "./facets";
 import { compareVersions } from "./versions";
 
@@ -159,6 +159,9 @@ describe("index-v2.json", () => {
     expect(m.variants[1]).toMatchObject({ servedName: "m-served", deprecated: true, deprecatedReason: "superseded" });
     // Uncommitted: nothing to pin, no release yet.
     expect(m.variants[2]).toMatchObject({ source: null, releaseDate: null, hardware: ["any GPU"], hardwareShort: "2 × GPU × 2 nodes" });
+    // lws keeps its value, reads as LeaderWorkerSet, and goes unsaid in the summary.
+    expect(m.variants[2]).toMatchObject({ topology: "lws", requiresSummary: "2 GPUs × 2 nodes" });
+    expect(topologyLabel(m.variants[2].topology)).toBe("LeaderWorkerSet");
     expect(catalogOf(index({ defaultVariant: "fast" })).models[0].variants.find((v) => v.default)?.id).toBe("fast");
   });
 

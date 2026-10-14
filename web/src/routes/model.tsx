@@ -31,6 +31,7 @@ import {
   imageCode,
   NEW_TAB,
   ROOT,
+  Topology,
   TopologyToggles,
   VariantBadges,
 } from "@/components/catalog";
@@ -187,6 +188,9 @@ function VariantDetail({
               <span className="text-faint"> · {v.requiresSummary}</span>
             </>
           )}
+        </Fact>
+        <Fact label="Topology" {...fact}>
+          <Topology v={v} />
         </Fact>
         <Fact label="Chart" {...fact}>
           {chartCode(v)}

@@ -20,6 +20,7 @@ import {
   NEW_TAB,
   none,
   tableVariantLine,
+  Topology,
   VariantLine,
   variantLine,
 } from "@/components/catalog";
@@ -32,7 +33,7 @@ function variantLinks(m: Model, v: Variant, kind: "button" | "link", reportLabel
     .map((x) => x.el);
 }
 
-// Engine, image and chart, each label beside its value.
+// Engine, topology, image and chart, each label beside its value.
 const fact = {
   className: "contents",
   dt: "text-[0.7rem] tracking-[0.04em] text-faint uppercase",
@@ -75,6 +76,9 @@ const VariantCard = memo(function VariantCard({ m, v, scale, hidden }: { m: Mode
       <dl className="mt-[0.1rem] grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-[0.15rem] text-[0.84rem]">
         <Fact label="Engine" {...fact}>
           {v.engine}
+        </Fact>
+        <Fact label="Topology" {...fact}>
+          <Topology v={v} />
         </Fact>
         <Fact label="Image" {...fact}>
           {imageCode(v)}
@@ -139,6 +143,9 @@ const VariantRow = memo(function VariantRow({ m, v, scale, hidden }: { m: Model;
       </TableCell>
       <TableCell className="tabular-nums" title={v.requiresSummary || undefined}>
         {v.hardwareShort ? <HardwareCell v={v} /> : none}
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        <Topology v={v} />
       </TableCell>
       <TableCell className="text-right">{improvementBar(m, v, scale, "h-[1.45rem]") || none}</TableCell>
       <TableCell>{links.length ? <div className="grid justify-items-start gap-[0.2rem]">{links}</div> : none}</TableCell>
@@ -215,6 +222,7 @@ export function VariantsRoute() {
               Recipe<span className="mt-[0.1rem] block text-[0.68rem] font-normal text-faint">engine · image</span>
             </TableHead>
             {th("gpus", "Hardware", { filter: "hardware" })}
+            {th(null, "Topology", { filter: "topology" })}
             {th("uplift", "Improvement vs baseline", { className: "text-right", title: UPLIFT_HELP, sub: "best workload" })}
             <TableHead>Links</TableHead>
           </>

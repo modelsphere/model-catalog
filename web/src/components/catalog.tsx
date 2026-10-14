@@ -3,7 +3,7 @@ import { Fragment, useState, type ReactElement, type ReactNode } from "react";
 import { Link } from "react-router";
 import { ChevronDownIcon } from "lucide-react";
 import type { Model, Variant } from "@/types";
-import { anchorOf, encodePath, modelPath, reportLinks, REPORT_LANG, UPLIFT_HELP, variantBest } from "@/lib/catalog";
+import { anchorOf, encodePath, modelPath, reportLinks, REPORT_LANG, topologyLabel, UPLIFT_HELP, variantBest } from "@/lib/catalog";
 import { computeSummary, type Facet } from "@/lib/facets";
 import { gpuGroup, gpuHue, tagHue, topologyHue } from "@/lib/hues";
 import { cn } from "@/lib/utils";
@@ -104,6 +104,40 @@ export function Hardware({ v, short = v.hardwareShort, mark = highlight }: { v: 
   );
 }
 
+// A variant's topology in its hue, by its label. LeaderWorkerSet opens what
+// it is on a click.
+export function Topology({ v }: { v: Variant }) {
+  const hue = `hue-${topologyHue(v.topology)}`;
+  if (v.topology !== "lws") {
+    return (
+      <Badge variant="gpu" className={hue}>
+        {topologyLabel(v.topology)}
+      </Badge>
+    );
+  }
+  const n = v.requires?.nodes;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Badge variant="gpu" className={cn(hue, "cursor-help underline decoration-dotted underline-offset-2")} asChild>
+          <button type="button" title="What is LeaderWorkerSet?">
+            {topologyLabel(v.topology)}
+          </button>
+        </Badge>
+      </PopoverTrigger>
+      <PopoverContent className="grid w-[19rem] gap-2 p-3 text-[0.84rem]">
+        <p>
+          <strong>LeaderWorkerSet</strong> (lws) is a Kubernetes API that runs each replica as one group of pods: here{" "}
+          {n ? `${n} pods across ${n} nodes, a leader and ${n - 1} worker${n - 1 === 1 ? "" : "s"}` : "a leader and its workers, across nodes"}.
+        </p>
+        <a className="inline-flex items-center gap-[0.3rem] justify-self-start" href="https://github.com/kubernetes-sigs/lws" {...NEW_TAB}>
+          {icons.external}kubernetes-sigs/lws
+        </a>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // A bar from the left, rounded at the data end, in the improvement's green.
 export function Bar({ pct, className }: { pct: number; className?: string }) {
   return (
@@ -181,17 +215,19 @@ interface TogglesProps {
 const TOGGLE_LABELS = ["GPU", "Topology"];
 
 // A toolbar filter: one toggle per value, labeled, each with its count and
-// hue, most first unless group says otherwise. Anything with any pressed
-// value matches. what says what is counted, for the tooltip.
+// hue, most first unless group says otherwise; name is what a value reads as.
+// Anything with any pressed value matches. what says what is counted, for the
+// tooltip.
 function FilterToggles({
   label,
   hue,
   group = () => 0,
+  name = (value) => value,
   counts,
   what,
   selected,
   onChange,
-}: TogglesProps & { label: string; hue: (value: string) => string; group?: (value: string) => number }) {
+}: TogglesProps & { label: string; hue: (value: string) => string; group?: (value: string) => number; name?: (value: string) => string }) {
   const values = Object.keys(counts).sort((a, b) => group(a) - group(b) || counts[b] - counts[a] || a.localeCompare(b));
   return (
     <ToggleGroup type="multiple" variant="tint" aria-label={label} value={selected} onValueChange={onChange}>
@@ -203,8 +239,8 @@ function FilterToggles({
         ))}
       </span>
       {values.map((v) => (
-        <ToggleGroupItem key={v} value={v} className={`hue-${hue(v)}`} title={`${what} ${v}`}>
-          {v}
+        <ToggleGroupItem key={v} value={v} className={`hue-${hue(v)}`} title={`${what} ${name(v)}`}>
+          {name(v)}
           <span className="text-[0.74rem] font-medium tabular-nums opacity-85">{counts[v]}</span>
         </ToggleGroupItem>
       ))}
@@ -217,9 +253,9 @@ export function GpuToggles(props: TogglesProps) {
   return <FilterToggles label="GPU" hue={gpuHue} group={gpuGroup} {...props} />;
 }
 
-// The topology filter, alike: single-node, lws. counts is per topology.
+// The topology filter, alike: single-node, LeaderWorkerSet. counts is per topology.
 export function TopologyToggles(props: TogglesProps) {
-  return <FilterToggles label="Topology" hue={topologyHue} {...props} />;
+  return <FilterToggles label="Topology" hue={topologyHue} name={topologyLabel} {...props} />;
 }
 
 // Radix keeps "" for no value at all, so "everything" travels as this.
@@ -268,7 +304,7 @@ export interface FilterOption {
   value: string;
   label: string;
   count: number;
-  // A GPU's hue: the label then wears it, as in hardware lines.
+  // A GPU's or topology's hue: the label then wears it, as in hardware lines.
   hue?: string;
 }
 
