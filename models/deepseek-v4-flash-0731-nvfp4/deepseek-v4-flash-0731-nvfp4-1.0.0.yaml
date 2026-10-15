@@ -238,6 +238,102 @@ variants:
       volumeMounts:
         - name: engine-cache
           mountPath: /root/.cache
+  - id: vllm-2p1d-tp4-6000d
+    description: >-
+      NVIDIA's NVFP4 build, prefill/decode disaggregated 2P1D: two prefill instances and one decode, TP4 on four RTX 6000D GPUs each, Mooncake over RDMA, vllm-router in front. The 1P1D/2P1D shape was verified at TP8 (decode KV arrived over the connector, both prefills used) with a vLLM build carrying PD fixes; this TP4 shape has not been run. Same-role pods use host ports, so they land on different nodes. FlashInfer autotune is off: with it on, vLLM v0.30.0 hangs on these cards at the whole-model autotune pass.
+    engine: vllm
+    chart:
+      name: vllm
+      version: ">=0.8.7"
+    image:
+      repository: vllm/vllm-openai
+      tag: v0.30.0
+    requires:
+      gpus: 4
+      topology: pd
+      rdma: true
+      gpuProduct:
+        - NVIDIA-RTX-6000D
+    values:
+      model:
+        localPath: /data/models/DeepSeek-V4-Flash-0731-NVFP4
+        mountPath: /models
+        hostPathType: Directory
+        contextLength: ""
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+          - config.json
+          - "*.safetensors"
+      extraArgs:
+        - --tensor-parallel-size=4
+        - --gpu-memory-utilization=0.85
+        - --no-enable-flashinfer-autotune
+        - --block-size=256
+        - --max-num-seqs=256
+        - --enable-prefix-caching
+        - --trust-remote-code
+        - --enable-prompt-tokens-details
+        - --allowed-media-domains=none.invalid
+        - --enable-auto-tool-choice
+        - --tool-call-parser=deepseek_v4
+        - --reasoning-parser=deepseek_v4
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:False
+        - name: VLLM_MEDIA_URL_ALLOW_REDIRECTS
+          value: "0"
+        - name: VLLM_MOONCAKE_BOOTSTRAP_PORT
+          value: "8998"
+      hostNetwork: true
+      rdma:
+        enabled: true
+      shm:
+        enabled: true
+        sizeLimit: 8Gi
+      pd:
+        enabled: true
+        colocate: false
+        transferBackend: mooncake
+        prefill:
+          replicas: 2
+          size: 1
+          gpus: "4"
+          httpPort: 8001
+          extraArgs:
+            - --max-num-batched-tokens=16384
+        decode:
+          replicas: 1
+          size: 1
+          gpus: "4"
+          httpPort: 8002
+          extraArgs:
+            - --max-num-batched-tokens=16384
+        router:
+          replicas: 1
+          policy: round_robin
+      scaler:
+        enabled: false
+      service:
+        port: 8050
+      progressDeadlineSeconds: 7200
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 180
+      hangWatcher:
+        enabled: true
+      volumes:
+        - name: engine-cache
+          hostPath:
+            path: /data/cache/deepseek-v4-flash-0731-nvfp4/vllm
+            type: DirectoryOrCreate
+      volumeMounts:
+        - name: engine-cache
+          mountPath: /root/.cache
   - id: sglang-tp8-6000d
     description: >-
       NVIDIA's NVFP4 build with TP8 on one RTX 6000D node. Measured: ready in ~7 min on a cold cache, KV 6,274,304 tokens, deployed with this chart. --moe-runner-backend=marlin is required: the default trtllm backend has no sm120 kernels, and flashinfer_cutlass serves but silently miscomputes (identical temperature-0 requests answer 23*47 as 161, 1721, 1551); marlin was correct and stable. /root/.cache is a hostPath so compiled kernels survive a restart.
