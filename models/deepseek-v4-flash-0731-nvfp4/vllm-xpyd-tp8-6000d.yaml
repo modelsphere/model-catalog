@@ -1,11 +1,11 @@
 apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
-id: vllm-1p1d-6000d
-version: 1.0.4
+id: vllm-xpyd-tp8-6000d
+version: 1.0.0
 servedName: deepseek-v4-flash-0731-nvfp4
 description: >-
-  NVIDIA's NVFP4 build, prefill/decode disaggregated: one prefill and one decode pod, TP8 each, Mooncake over RDMA, vllm-router in front; expandable_segments off so Mooncake can register GPU memory. Not yet run. FlashInfer autotune is off: with it on, vLLM v0.30.0 hangs on these cards at the whole-model autotune pass. /root/.cache is a hostPath so compiled kernels survive a restart.
+  NVIDIA's NVFP4 build, prefill/decode disaggregated: TP8 on a whole RTX 6000D node per instance, Mooncake over RDMA, vllm-router in front. Verified as 2P1D: decode's KV arrived over the connector and both prefills took work. Defaults to 1P1D; set pd.prefill.replicas and pd.decode.replicas for xPyD. Same-role pods use host ports, so each lands on its own node. FlashInfer autotune is off: with it on, vLLM v0.30.0 hangs on these cards at the whole-model autotune pass.
 engine: vllm
 chart:
   name: vllm
@@ -94,3 +94,4 @@ values:
   volumeMounts:
     - name: engine-cache
       mountPath: /root/.cache
+replaces: vllm-1p1d-6000d
