@@ -1,7 +1,8 @@
 apiVersion: catalog.swiss/v2
 name: deepseek-v4-flash-0731-nvfp4
 displayName: DeepSeek-V4-Flash-0731 (NVFP4)
-description: NVIDIA's NVFP4 build of DeepSeek-V4-Flash-0731 (routed experts in NVFP4, attention and shared experts in FP8), served with vLLM on 4 or 8 RTX 6000D GPUs, or as a 1P1D prefill/decode-disaggregated pair. The FP4 kernels require Blackwell GPUs.
+description: >-
+  NVIDIA's NVFP4 build of DeepSeek-V4-Flash-0731 (routed experts in NVFP4, attention and shared experts in FP8) on RTX 6000D: SGLang or vLLM with TP4 or TP8 on one node, or a vLLM 1P1D prefill/decode-disaggregated pair. The FP4 kernels require Blackwell GPUs.
 family: deepseek
 series: deepseek-v4-flash
 quantization: nvfp4
@@ -10,6 +11,6 @@ tags:
   - reasoning
   - tool-use
   - fp4
-defaultVariant: vllm-tp8-6000d
+defaultVariant: sglang-tp8-6000d
 source:
   hf: nvidia/DeepSeek-V4-Flash-0731-NVFP4

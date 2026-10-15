@@ -2,10 +2,10 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: vllm-tp4-6000d
-version: 1.0.0
+version: 1.0.1
 servedName: deepseek-v4-flash-0731-nvfp4
 description: >-
-  NVIDIA's NVFP4 build (experts in NVFP4, attention and shared experts in FP8) with TP4 on four RTX 6000D GPUs, single node. Same flags as the deepseek-v4-flash vllm-tp4-6000d variant; not yet load-tested on this checkpoint.
+  NVIDIA's NVFP4 build (NVFP4 routed experts, FP8 elsewhere) with TP4 on four RTX 6000D GPUs, single node. FlashInfer autotune is off: with it on, vLLM v0.30.0 hangs on these cards at the whole-model autotune pass. /root/.cache is a hostPath so compiled kernels survive a restart.
 engine: vllm
 chart:
   name: vllm
@@ -32,6 +32,7 @@ values:
   extraArgs:
     - --tensor-parallel-size=4
     - --gpu-memory-utilization=0.90
+    - --no-enable-flashinfer-autotune
     - --block-size=256
     - --max-num-batched-tokens=8192
     - --max-num-seqs=48
@@ -63,3 +64,11 @@ values:
     failureThreshold: 180
   hangWatcher:
     enabled: true
+  volumes:
+    - name: engine-cache
+      hostPath:
+        path: /data/cache/deepseek-v4-flash-0731-nvfp4/vllm
+        type: DirectoryOrCreate
+  volumeMounts:
+    - name: engine-cache
+      mountPath: /root/.cache
