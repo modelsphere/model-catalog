@@ -2,11 +2,11 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: sglang-tp8-6000d
-version: 1.0.2
+version: 1.0.3
 servedName: deepseek-v4-flash-0731-nvfp4
 engine: sglang
 description: >-
-  NVIDIA's NVFP4 build with TP8 on one RTX 6000D node. Measured: ready in ~7 min on a cold cache, KV 6,274,304 tokens, deployed with this chart. --moe-runner-backend=flashinfer_cutlass is required: the default trtllm backend has no sm120 kernels. Known issue: at temperature 0 the emitted token is sometimes not the top-logprob one, so answers vary between identical requests; use vLLM. /root/.cache is a hostPath so compiled kernels survive a restart.
+  NVIDIA's NVFP4 build with TP8 on one RTX 6000D node. Measured: ready in ~7 min on a cold cache, KV 6,274,304 tokens, deployed with this chart. --moe-runner-backend=marlin is required: the default trtllm backend has no sm120 kernels, and flashinfer_cutlass serves but silently miscomputes (identical temperature-0 requests answer 23*47 as 161, 1721, 1551); marlin was correct and stable. /root/.cache is a hostPath so compiled kernels survive a restart.
 chart:
   name: sglang
   version: ">=0.9.14"
@@ -32,7 +32,7 @@ values:
   extraArgs:
     - --tp-size=8
     - --mem-fraction-static=0.85
-    - --moe-runner-backend=flashinfer_cutlass
+    - --moe-runner-backend=marlin
     - --trust-remote-code
     - --max-running-requests=256
     - --enable-cache-report
