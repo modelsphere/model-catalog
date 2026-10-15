@@ -1,13 +1,14 @@
 apiVersion: catalog.swiss/v2
 name: deepseek-v4-flash-0731
 displayName: DeepSeek-V4-Flash-0731
-description: DeepSeek-V4-Flash-0731 on 8 H100 GPUs. Configs use DSPARK speculative decoding.
+description: DeepSeek-V4-Flash-0731 on 8 H100 GPUs with DSPARK speculative decoding, or NVIDIA's NVFP4 build with vLLM on 4 or 8 RTX 6000D GPUs, including a 1P1D prefill/decode-disaggregated variant.
 family: deepseek
 tags:
   - chat
   - reasoning
   - tool-use
   - speculative-decoding
+  - fp4
 defaultVariant: sglang-tp8-h100-optimized
 source:
   hf: deepseek-ai/DeepSeek-V4-Flash-0731
