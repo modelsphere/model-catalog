@@ -183,16 +183,12 @@ variants:
         - --tool-call-parser=deepseek_v4
         - --reasoning-parser=deepseek_v4
       env:
-        - name: NVIDIA_DISABLE_REQUIRE
-          value: "1"
         - name: PYTORCH_ALLOC_CONF
           value: expandable_segments:False
         - name: VLLM_MEDIA_URL_ALLOW_REDIRECTS
           value: "0"
         - name: VLLM_MOONCAKE_BOOTSTRAP_PORT
           value: "8998"
-        - name: NCCL_DEBUG
-          value: WARN
       hostNetwork: true
       rdma:
         enabled: true
