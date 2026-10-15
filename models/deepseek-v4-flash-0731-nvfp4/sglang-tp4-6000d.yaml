@@ -2,11 +2,11 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: sglang-tp4-6000d
-version: 1.0.0
+version: 1.0.2
 servedName: deepseek-v4-flash-0731-nvfp4
 engine: sglang
 description: >-
-  NVIDIA's NVFP4 build with TP4 on four RTX 6000D GPUs. Measured in docker: ready in ~6.5 min, 40.94 GB of weights per card, KV 3,674,368 tokens, answers correct. Two fit one node. --moe-runner-backend=flashinfer_cutlass is required: by default sglang v0.5.20 picks flashinfer_trtllm_routed, which has no sm120 kernels, and dies in autotune. /root/.cache is a hostPath so compiled kernels survive a restart.
+  NVIDIA's NVFP4 build with TP4 on four RTX 6000D GPUs. Measured: ready in ~6.5 min, 40.94 GB of weights per card, KV ~3.6M tokens. Two fit one node. --moe-runner-backend=flashinfer_cutlass is required: the default trtllm backend has no sm120 kernels. Known issue: at temperature 0 the emitted token is sometimes not the top-logprob one, so answers vary between identical requests; use vLLM. /root/.cache is a hostPath so compiled kernels survive a restart.
 chart:
   name: sglang
   version: ">=0.9.14"
@@ -23,7 +23,7 @@ values:
     localPath: /data/models/DeepSeek-V4-Flash-0731-NVFP4
     mountPath: /models
     hostPathType: Directory
-    contextLength: "32768"
+    contextLength: ""
   modelCheck:
     enabled: true
     requiredGlobs:
@@ -34,8 +34,9 @@ values:
     - --mem-fraction-static=0.85
     - --moe-runner-backend=flashinfer_cutlass
     - --trust-remote-code
-    - --enable-metrics
+    - --max-running-requests=256
     - --enable-cache-report
+    - '--default-chat-template-kwargs={"thinking": true}'
     - --reasoning-parser=deepseek-v4
     - --tool-call-parser=deepseekv4
   env:
