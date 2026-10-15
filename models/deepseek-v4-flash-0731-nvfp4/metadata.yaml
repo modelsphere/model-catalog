@@ -11,6 +11,6 @@ tags:
   - reasoning
   - tool-use
   - fp4
-defaultVariant: sglang-tp8-6000d
+defaultVariant: vllm-tp8-6000d
 source:
   hf: nvidia/DeepSeek-V4-Flash-0731-NVFP4
