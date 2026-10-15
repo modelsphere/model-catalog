@@ -36,7 +36,7 @@ variants:
         - --no-enable-flashinfer-autotune
         - --block-size=256
         - --max-num-batched-tokens=8192
-        - --max-num-seqs=48
+        - --max-num-seqs=256
         - --enable-prefix-caching
         - --trust-remote-code
         - --enable-prompt-tokens-details
@@ -105,7 +105,7 @@ variants:
         - --no-enable-flashinfer-autotune
         - --block-size=256
         - --max-num-batched-tokens=8192
-        - --max-num-seqs=48
+        - --max-num-seqs=256
         - --enable-prefix-caching
         - --trust-remote-code
         - --enable-prompt-tokens-details
@@ -174,7 +174,7 @@ variants:
         - --gpu-memory-utilization=0.85
         - --no-enable-flashinfer-autotune
         - --block-size=256
-        - --max-num-seqs=48
+        - --max-num-seqs=256
         - --enable-prefix-caching
         - --trust-remote-code
         - --enable-prompt-tokens-details
@@ -244,7 +244,7 @@ variants:
           mountPath: /root/.cache
   - id: sglang-tp8-6000d
     description: >-
-      NVIDIA's NVFP4 build with TP8 on one RTX 6000D node. Measured: ready in ~7 min on a cold cache, KV 6,274,304 tokens, deployed with this chart and answering correctly through the router; context 32768 as tested; thinking off by default. --moe-runner-backend=flashinfer_cutlass is required: by default sglang v0.5.20 picks flashinfer_trtllm_routed, which has no sm120 kernels, and dies in autotune. /root/.cache is a hostPath so compiled kernels survive a restart.
+      NVIDIA's NVFP4 build with TP8 on one RTX 6000D node. Measured: ready in ~7 min on a cold cache, KV 6,274,304 tokens, deployed with this chart. --moe-runner-backend=flashinfer_cutlass is required: the default trtllm backend has no sm120 kernels. Known issue: at temperature 0 the emitted token is sometimes not the top-logprob one, so answers vary between identical requests; use vLLM. /root/.cache is a hostPath so compiled kernels survive a restart.
     engine: sglang
     chart:
       name: sglang
@@ -262,7 +262,7 @@ variants:
         localPath: /data/models/DeepSeek-V4-Flash-0731-NVFP4
         mountPath: /models
         hostPathType: Directory
-        contextLength: "32768"
+        contextLength: ""
       modelCheck:
         enabled: true
         requiredGlobs:
@@ -273,8 +273,9 @@ variants:
         - --mem-fraction-static=0.85
         - --moe-runner-backend=flashinfer_cutlass
         - --trust-remote-code
-        - --enable-metrics
+        - --max-running-requests=256
         - --enable-cache-report
+        - '--default-chat-template-kwargs={"thinking": true}'
         - --reasoning-parser=deepseek-v4
         - --tool-call-parser=deepseekv4
       env:
@@ -304,7 +305,7 @@ variants:
         enabled: true
   - id: sglang-tp4-6000d
     description: >-
-      NVIDIA's NVFP4 build with TP4 on four RTX 6000D GPUs. Measured in docker: ready in ~6.5 min, 40.94 GB of weights per card, KV 3,674,368 tokens, answers correct. Two fit one node. --moe-runner-backend=flashinfer_cutlass is required: by default sglang v0.5.20 picks flashinfer_trtllm_routed, which has no sm120 kernels, and dies in autotune. /root/.cache is a hostPath so compiled kernels survive a restart.
+      NVIDIA's NVFP4 build with TP4 on four RTX 6000D GPUs. Measured: ready in ~6.5 min, 40.94 GB of weights per card, KV ~3.6M tokens. Two fit one node. --moe-runner-backend=flashinfer_cutlass is required: the default trtllm backend has no sm120 kernels. Known issue: at temperature 0 the emitted token is sometimes not the top-logprob one, so answers vary between identical requests; use vLLM. /root/.cache is a hostPath so compiled kernels survive a restart.
     engine: sglang
     chart:
       name: sglang
@@ -322,7 +323,7 @@ variants:
         localPath: /data/models/DeepSeek-V4-Flash-0731-NVFP4
         mountPath: /models
         hostPathType: Directory
-        contextLength: "32768"
+        contextLength: ""
       modelCheck:
         enabled: true
         requiredGlobs:
@@ -333,8 +334,9 @@ variants:
         - --mem-fraction-static=0.85
         - --moe-runner-backend=flashinfer_cutlass
         - --trust-remote-code
-        - --enable-metrics
+        - --max-running-requests=256
         - --enable-cache-report
+        - '--default-chat-template-kwargs={"thinking": true}'
         - --reasoning-parser=deepseek-v4
         - --tool-call-parser=deepseekv4
       env:
