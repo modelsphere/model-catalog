@@ -355,3 +355,75 @@ variants:
         failureThreshold: 180
       hangWatcher:
         enabled: true
+  - id: vllm-tp8-pd-l2-6000d
+    description: 'NVIDIA''s NVFP4 build, prefill/decode disaggregated: TP8 per instance on RTX 6000D nodes, NIXL transfer backend, 2 prefill + 1 decode, with L2 KV-offload to mooncakeStore (global segment 100GB, local buffer 4GB). Production-shape values pinned to the harbor v0.30.0-pd-fix2 image, 0.85 GPU memory utilization and 850Gi shm for the large KV offload; node affinity pins pods to RTX-6000D. ModelRoute deepseek-v4-flash publishes the service via the llm-route openresty gateway.'
+    engine: vllm
+    chart:
+      name: vllm
+      version: '>=0.8.12'
+    image:
+      repository: 4pdosc/vllm-openai
+      tag: v0.30.0-pd-fix2
+    requires:
+      gpus: 1
+      topology: pd
+      rdma: true
+      gpuProduct:
+      - NVIDIA-RTX-6000D
+    values:
+      model:
+        localPath: /data/models/DeepSeek-V4-Flash-0731-NVFP4
+        mountPath: /models
+        hostPathType: Directory
+        contextLength: ''
+      modelCheck:
+        enabled: true
+        requiredGlobs:
+        - config.json
+        - '*.safetensors'
+      extraArgs:
+      - --tensor-parallel-size=8
+      - --gpu-memory-utilization=0.85
+      - --no-enable-flashinfer-autotune
+      - --block-size=256
+      - --max-num-batched-tokens=8192
+      - --max-num-seqs=256
+      - --enable-prefix-caching
+      - --trust-remote-code
+      - --enable-prompt-tokens-details
+      - --allowed-media-domains=none.invalid
+      - --enable-auto-tool-choice
+      - --tool-call-parser=deepseek_v4
+      - --reasoning-parser=deepseek_v4
+      env:
+      - name: PYTORCH_ALLOC_CONF
+        value: expandable_segments:False
+      - name: VLLM_MEDIA_URL_ALLOW_REDIRECTS
+        value: '0'
+      rdma:
+        enabled: true
+      hostNetwork: true
+      service:
+        port: 8050
+      shm:
+        enabled: true
+        sizeLimit: 850Gi
+      scaler:
+        enabled: false
+      pd:
+        enabled: true
+        colocate: false
+        transferBackend: nixl
+        prefill:
+          replicas: 2
+          gpus: '8'
+        decode:
+          replicas: 1
+          gpus: '8'
+      localKVOffload:
+        enabled: true
+        backend: mooncakeStore
+        mooncakeStore:
+          globalSegmentSize: 100GB
+          localBufferSize: 4GB
+          enableOffload: false
