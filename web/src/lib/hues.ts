@@ -32,6 +32,7 @@ const GPU_HUES: Record<string, string> = {
   "RTX-6000D": "orange",
   "Ascend 910B3": "red",
   "any GPU": "grey",
+  "NO-GPU": "grey",
 };
 
 // Vendors other than NVIDIA, as their GPU labels name them.
@@ -59,9 +60,11 @@ export function topologyHue(topology: string): string {
   return TOPOLOGY_HUES[topology] || tagHue(topology);
 }
 
-// NVIDIA's cards first, then other vendors', then "any GPU". Every other
-// vendor's label carries its name, so the label alone says whose card it is.
+// NVIDIA's cards first, then other vendors', then "any GPU", then "NO-GPU" (CPU only).
+// Every other vendor's label carries its name, so the label alone says whose
+// card it is.
 export function gpuGroup(label: string): number {
+  if (label === "NO-GPU") return 3;
   if (label === "any GPU") return 2;
   const l = label.toLowerCase();
   return OTHER_VENDORS.some((v) => l.includes(v)) ? 1 : 0;

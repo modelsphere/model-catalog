@@ -181,6 +181,11 @@ describe("index-v2.json", () => {
     expect(hardwareLabels({ gpus: 1, vendor: "ascend", gpuProduct: ["Ascend-910B3"] })).toEqual(["Ascend 910B3"]);
     expect(hardwareShort({ gpus: 1, vendor: "ascend" })).toBe("1 × Ascend");
   });
+
+  test("hardware labels: gpus 0 is CPU only", () => {
+    expect(hardwareLabels({ gpus: 0 })).toEqual(["NO-GPU"]);
+    expect(hardwareShort({ gpus: 0 })).toBe("NO-GPU");
+  });
 });
 
 describe("facets", () => {

@@ -61,7 +61,8 @@
           "type": "boolean"
         },
         "engine": {
-          "enum": ["sglang", "vllm"]
+          "description": "The server the variant runs. mock is a stand-in server for tests, such as mock-llmd: it has no chart of its own and runs on the sglang or vllm chart through commandOverride. Every other engine's chart is its own.",
+          "enum": ["sglang", "vllm", "mock"]
         },
         "chart": {
           "description": "Chart name and version only. Never a repository -- the site profile maps the name to its own registry, because this file cannot know it.",
@@ -106,9 +107,9 @@
           "required": ["gpus"],
           "properties": {
             "gpus": {
-              "description": "GPUs per pod. For a multi-node variant this is per pod, not per group -- total is gpus x nodes.",
+              "description": "GPUs per pod. For a multi-node variant this is per pod, not per group -- total is gpus x nodes. 0 is CPU only: the pod requests no accelerator, so vendor, gpuProduct, minGpuMemoryGiB and rdma have nothing to describe.",
               "type": "integer",
-              "minimum": 1,
+              "minimum": 0,
               "maximum": 8
             },
             "nodes": {

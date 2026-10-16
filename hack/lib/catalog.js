@@ -126,14 +126,15 @@ function prune(value) {
 // index.json: the published surface. Each version carries a sha256 of its
 // file -- the lock a deploy records -- and metadata.yaml is inlined, since a
 // consumer never fetches it. A v2 model keeps only its tuning with a v1 version.
-function buildIndex() {
+function buildIndex({ root: base = root } = {}) {
+  const dir = path.join(base, "models");
   const models = [];
-  for (const name of modelNames()) {
-    const metaPath = path.join(modelsDir, name, "metadata.yaml");
+  for (const name of modelNames(dir)) {
+    const metaPath = path.join(dir, name, "metadata.yaml");
     if (!fs.existsSync(metaPath)) throw new Error(`models/${name}/: no metadata.yaml`);
     const meta = readYaml(metaPath) ?? {};
-    const versions = versionFiles(name).map((rel) => {
-      const body = fs.readFileSync(path.join(root, rel));
+    const versions = versionFiles(name, dir).map((rel) => {
+      const body = fs.readFileSync(path.join(base, rel));
       const doc = yaml.parse(body.toString("utf8"));
       return {
         name: doc.name,
@@ -175,7 +176,7 @@ function buildIndex() {
     );
   }
   models.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  const site = readYaml(path.join(root, "catalog.yaml"))?.site;
+  const site = readYaml(path.join(base, "catalog.yaml"))?.site;
   return prune({ apiVersion: V1, site, count: models.length, models });
 }
 

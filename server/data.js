@@ -100,8 +100,8 @@ function publishCatalog(index, outDir) {
 }
 
 // index-v2.json and its histories; throws when they fail their checks.
-function checkedIndexV2() {
-  const built = buildIndexV2();
+function checkedIndexV2({ root: base } = {}) {
+  const built = buildIndexV2({ root: base });
   const problems = checkIndexV2(built);
   if (problems.length) throw new Error(problems.join("\n"));
   return built;

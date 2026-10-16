@@ -4,7 +4,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
-const { root, buildIndex, compareVersions, digest, latestOf } = require("./catalog");
+const { buildIndex, compareVersions, digest, latestOf } = require("./catalog");
+const { fixture, variant, catalogFiles } = require("./fixture");
 
 const sorted = (vs) => [...vs].sort(compareVersions);
 
@@ -24,89 +25,20 @@ test("latest is never a prerelease while a release exists", () => {
 });
 
 test("the index locks every version to its file's bytes", () => {
-  const index = buildIndex();
-  assert.ok(index.count > 0);
-  for (const m of index.models) {
-    assert.ok(
-      m.versions.some((v) => v.version === m.latest),
-      `${m.name}: latest is not one of its versions`,
-    );
-    for (const v of m.versions) {
-      assert.equal(v.digest, digest(fs.readFileSync(path.join(root, v.path))), v.path);
-    }
+  const { dir } = fixture([["2026-10-01T10:00:00Z", "init", catalogFiles]]);
+  const index = buildIndex({ root: dir });
+  assert.deepEqual(
+    index.models.map((m) => [m.name, m.latest]),
+    [["m1", "1.0.0"]],
+  );
+  for (const v of index.models[0].versions) {
+    assert.equal(v.digest, digest(fs.readFileSync(path.join(dir, v.path))), v.path);
   }
 });
 
 const os = require("node:os");
 const { execFileSync } = require("node:child_process");
-const YAML = require("yaml");
 const { buildIndexV2, checkIndexV2, modelFiles, revisionProblems, versionFiles, variantFiles } = require("./catalog");
-
-// A git repo; each step writes files (null deletes) and commits at a UTC time.
-function fixture(steps) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "catalog-"));
-  const git = (args, at) =>
-    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], {
-      cwd: dir,
-      env: { ...process.env, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at },
-      stdio: "pipe",
-    });
-  git(["init", "-q", "-b", "master"]);
-  const write = (files) => {
-    for (const [rel, body] of Object.entries(files)) {
-      const file = path.join(dir, rel);
-      if (body === null) fs.rmSync(file);
-      else {
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, typeof body === "string" ? body : YAML.stringify(body));
-      }
-    }
-  };
-  const commit = (at, subject, files) => {
-    write(files);
-    git(["add", "-A"], at);
-    git(["commit", "-q", "-m", subject], at);
-  };
-  for (const step of steps) commit(...step);
-  return {
-    dir,
-    write,
-    commit,
-    head: () => git(["rev-parse", "HEAD"]).toString().trim(),
-    sha: (n) =>
-      git(["rev-parse", `HEAD~${n}`])
-        .toString()
-        .trim(),
-  };
-}
-
-const variant = (id, version = "1.0.0", gpus = 8) => ({
-  apiVersion: "catalog.swiss/v2",
-  kind: "Variant",
-  model: "m2",
-  id,
-  version,
-  engine: "sglang",
-  chart: { name: "sglang", version: ">=0.7.0" },
-  requires: { gpus },
-});
-
-const catalogFiles = {
-  "catalog.yaml": { apiVersion: "catalog.swiss/v1", site: "https://example.com/c/", repo: "https://github.com/o/c" },
-  "models/m1/metadata.yaml": { apiVersion: "catalog.swiss/v1", name: "m1", source: { hf: "o/m1" } },
-  "models/m1/m1-1.0.0.yaml": {
-    apiVersion: "catalog.swiss/v1",
-    name: "m1",
-    version: "1.0.0",
-    variants: [
-      { id: "a", engine: "vllm", chart: { name: "vllm", version: "0.1.0" }, requires: { gpus: 1 } },
-      { id: "b", default: true, engine: "vllm", chart: { name: "vllm", version: "0.1.0" }, requires: { gpus: 2 } },
-    ],
-  },
-  "models/m2/metadata.yaml": { apiVersion: "catalog.swiss/v2", name: "m2", source: { hf: "o/m2" }, defaultVariant: "sglang-tp8" },
-  "models/m2/sglang-tp8.yaml": variant("sglang-tp8"),
-  "models/m2/sglang-tp4.yaml": variant("sglang-tp4", "1.0.0", 4),
-};
 
 test("a file is a v1 version or a v2 variant by its content, never its name", () => {
   const { dir } = fixture([["2026-10-01T10:00:00Z", "init", catalogFiles]]);
@@ -220,10 +152,4 @@ test("a shallow clone is refused: its versions would be wrong", () => {
   const clone = fs.mkdtempSync(path.join(os.tmpdir(), "catalog-shallow-"));
   execFileSync("git", ["clone", "-q", "--depth=1", `file://${repo.dir}`, clone]);
   assert.throws(() => buildIndexV2({ root: clone, warn: () => {} }), /shallow clone/);
-});
-
-test("the catalog's own index-v2.json passes its checks", () => {
-  const built = buildIndexV2({ warn: () => {} });
-  assert.deepEqual(checkIndexV2(built), []);
-  assert.ok(built.index.models.every((m) => m.variants.every((v) => v.history)));
 });

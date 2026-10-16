@@ -5,7 +5,7 @@
   "description": "models/<name>/metadata.yaml for a v2 model: what the model is, its default variant and tuning results. Edited in place.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "name", "source"],
+  "required": ["apiVersion", "name"],
   "properties": {
     "apiVersion": {
       "const": "catalog.swiss/v2"
@@ -83,6 +83,7 @@
       }
     },
     "source": {
+      "description": "Absent only for a model with no weights, such as a mock server: every variant then sets values.model.localPath to \"\", mounting none.",
       "$ref": "metadata.schema.json#/properties/source"
     }
   },

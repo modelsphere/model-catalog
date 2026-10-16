@@ -1,0 +1,10 @@
+apiVersion: catalog.swiss/v2
+name: mock-llm
+displayName: Mock LLM
+description: A CPU-only stand-in for an LLM server, for tests. mock-llmd answers /v1/chat/completions, /v1/completions and /v1/messages, streaming or not, with synthetic tokens at a TTFT and chunk rate set per request. No GPU and no weights, so routing, scaling and deploy flows can run on any node.
+family: mock
+tags:
+  - chat
+  - test
+defaultVariant: mock-cpu
+# No source: there are no weights. Its variant mounts none (model.localPath "").

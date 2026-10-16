@@ -23,6 +23,8 @@ const {
   schemaValidator,
   historiesOf,
   revisionProblems,
+  buildIndexV2,
+  checkIndexV2,
 } = require("./lib/catalog");
 const { reportProblem } = require("./lib/report");
 const { paint, marks, plural } = require("./lib/style");
@@ -208,13 +210,20 @@ function variantProblems(v, at) {
   if (lws?.enabled === true && lws.size !== v?.requires?.nodes) {
     lines.push(`${at}values.lws.size ${lws.size} is not requires.nodes ${v?.requires?.nodes}`);
   }
-  if (v?.chart?.name && v?.engine && v.chart.name !== v.engine) {
+  // A mock has no chart of its own: it runs on an engine's chart (the schema limits chart.name to those).
+  if (v?.chart?.name && v?.engine && v.engine !== "mock" && v.chart.name !== v.engine) {
     lines.push(`${at}chart.name ${v.chart.name} is not its engine, ${v.engine}`);
   }
   // The chart renders what values enable, not what topology says.
   const topology = v?.requires?.topology;
   if (["lws", "pd"].includes(topology) && v?.values?.[topology]?.enabled !== true) {
     lines.push(`${at}requires.topology ${topology} needs values.${topology}.enabled: true`);
+  }
+  // CPU only: no accelerator, so nothing that picks or sizes one.
+  if (v?.requires?.gpus === 0) {
+    for (const key of ["vendor", "gpuProduct", "minGpuMemoryGiB", "rdma"]) {
+      if (v.requires[key] !== undefined) lines.push(`${at}requires.${key} is set, but requires.gpus 0 is CPU only`);
+    }
   }
   return lines;
 }
@@ -274,6 +283,10 @@ for (const name of modelNames()) {
     else if (stems.has(d.id)) lines.push(`id: ${d.id} is a v1 version file's name; choose another id`);
     else if (path.basename(rel) !== `${d.id}.yaml`) lines.push(`must be named ${d.id}.yaml, after the id it declares`);
     lines.push(...variantProblems(d, ""));
+    // No source is no weights: without source.hf swiss derives no path, and the chart's default would mount.
+    if (meta?.source === undefined && d.values?.model?.localPath !== "") {
+      lines.push(`values.model.localPath must be "": its model has no source, so there are no weights to mount`);
+    }
     if (d.replaces !== undefined && d.replaces === d.id) lines.push("replaces: names the variant itself");
     if (lines.length > 0) fail(rel, lines);
     ids.add(d.id);
@@ -460,6 +473,17 @@ for (const name of modelNames()) {
   }
 }
 
+// What the site build publishes from all of the above: index-v2.json and its
+// histories, held to their own checks, so a catalog the build cannot publish
+// fails here rather than in the Pages build.
+checked.set("index-v2.json", "index-v2.json");
+try {
+  const lines = checkIndexV2(buildIndexV2({ warn: () => {} }));
+  if (lines.length > 0) fail("index-v2.json", lines);
+} catch (err) {
+  fail("index-v2.json", [`cannot build: ${err.message}`]);
+}
+
 function git(args) {
   const r = spawnSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 1 << 28 });
   if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${(r.stderr || r.error?.message || "").trim()}`);
@@ -540,10 +564,20 @@ for (const [rel, lines] of problems) {
 }
 const counts = new Map();
 for (const what of checked.values()) counts.set(what, (counts.get(what) ?? 0) + 1);
-const order = ["catalog.yaml", "model", "metadata", "version file", "variant file", "perf report", "unreadable file", "unrecognized file"];
+const order = [
+  "catalog.yaml",
+  "model",
+  "metadata",
+  "version file",
+  "variant file",
+  "perf report",
+  "index-v2.json",
+  "unreadable file",
+  "unrecognized file",
+];
 const kinds = order
   .filter((what) => counts.has(what))
-  .map((what) => (what === "catalog.yaml" ? what : plural(counts.get(what), what, what === "metadata" ? what : undefined)));
+  .map((what) => (what.endsWith(".yaml") || what.endsWith(".json") ? what : plural(counts.get(what), what, what === "metadata" ? what : undefined)));
 const total = new Set([...checked.keys(), ...problems.keys()]).size;
 console.log();
 console.log(`Checked ${kinds.join(", ")}`);

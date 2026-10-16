@@ -21,23 +21,24 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { execFileSync } = require("child_process");
-const { root, modelsDir, historyPath } = require("../hack/lib/catalog");
+const { root, historyPath } = require("../hack/lib/catalog");
 const { checkedIndexV2, buildIndex, serializeIndex } = require("./data");
 
 const TYPES = { ".json": "application/json", ".yaml": "text/yaml; charset=utf-8", ".html": "text/html; charset=utf-8" };
 
 // A catalog server. index-v2.json is built once and again after an edit under
 // models/ or a commit: it reads git history, which takes a moment. index.json
-// is cheap, so it is always built fresh.
-function createServer() {
+// is cheap, so it is always built fresh. root is the checkout served.
+function createServer({ root: base = root } = {}) {
+  const modelsDir = path.join(base, "models");
   let v2 = null;
   const watcher = fs.watch(modelsDir, { recursive: true }, () => (v2 = null));
   // Rebuilt after a commit too: versions come from git.
-  const head = () => execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const head = () => execFileSync("git", ["rev-parse", "HEAD"], { cwd: base, encoding: "utf8" }).trim();
   const indexV2 = () => {
     const at = head();
     if (v2?.at !== at) {
-      const { index, histories } = checkedIndexV2();
+      const { index, histories } = checkedIndexV2({ root: base });
       v2 = {
         at,
         index: serializeIndex(index),
@@ -65,13 +66,13 @@ function createServer() {
       return send(400, "text/plain", "bad path\n");
     }
     try {
-      if (url === "/index.json") return send(200, TYPES[".json"], serializeIndex(buildIndex()));
+      if (url === "/index.json") return send(200, TYPES[".json"], serializeIndex(buildIndex({ root: base })));
       if (url === "/index-v2.json") return send(200, TYPES[".json"], indexV2().index);
       if (/^\/models\/[^/]+\/[^/]+\.history\.json$/.test(url)) {
         const body = indexV2().histories.get(url.slice(1));
         return body ? send(200, TYPES[".json"], body) : send(404, "text/plain", "not in this catalog\n");
       }
-      const file = path.join(root, url);
+      const file = path.join(base, url);
       if (/^\/models\/[^/]+\/[^/]+\.(yaml|html)$/.test(url) && file.startsWith(modelsDir + path.sep) && fs.existsSync(file)) {
         return send(200, TYPES[path.extname(file)], fs.readFileSync(file));
       }
