@@ -1,5 +1,5 @@
 import type { Model, Variant } from "../types";
-import { topologyLabel, variantBest } from "./catalog";
+import { showsGpuCount, topologyLabel, variantBest } from "./catalog";
 
 // What a list page filters, sorts and summarizes on: one entry per model, or
 // per variant. Variant entries take their model's name, family and tags.
@@ -68,7 +68,7 @@ export function variantFacetsOf(m: Model, v: Variant, rank: number): Facet {
     engines: [v.engine],
     hardware: [...new Set(v.hardware)].sort(),
     topology: [v.topology],
-    gpus: req.gpus == null ? null : req.gpus * (req.nodes || 1),
+    gpus: req.gpus == null || !showsGpuCount(req) ? null : req.gpus * (req.nodes || 1),
     hasCmp: !!m.comparison,
     uplift: best ? best.upliftPct : null,
     deprecated: m.deprecated,
