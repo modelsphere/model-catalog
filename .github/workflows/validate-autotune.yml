@@ -1,0 +1,74 @@
+name: Original track validation
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  statuses: write
+  pull-requests: read
+
+concurrency:
+  group: autotune-track-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Replay new variants on original tracks
+    environment: autotune-validation
+    runs-on: ${{ vars.AUTOTUNE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 310
+    steps:
+      # NEVER check out the PR head here: this job has access to a service key.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install trusted validator dependencies
+        run: npm ci --ignore-scripts
+      - name: Test trusted validator
+        run: node --test hack/lib/autotune-validation.test.js
+      - name: Fetch PR data without checking it out
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head"
+          test "$(git rev-parse FETCH_HEAD)" = "$HEAD_SHA"
+      - name: Submit and wait for original-track results
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_TOKEN: ${{ github.token }}
+          AUTOTUNE_API_URL: ${{ secrets.AUTOTUNE_API_URL }}
+          AUTOTUNE_USERNAME: ${{ secrets.AUTOTUNE_USERNAME }}
+          AUTOTUNE_PASSWORD: ${{ secrets.AUTOTUNE_PASSWORD }}
+          AUTOTUNE_TIMEOUT_MINUTES: ${{ vars.AUTOTUNE_TIMEOUT_MINUTES || '240' }}
+        run: node hack/validate-autotune.js
+      - name: Mark infrastructure or cancellation failures on the exact PR commit
+        if: failure() || cancelled()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              ...context.repo,
+              sha: context.payload.pull_request.head.sha,
+              context: 'autotune/track-validation',
+              state: 'failure',
+              description: 'Validation did not complete successfully; see workflow run',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
+      - name: Save validation references
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autotune-validation-${{ github.event.pull_request.head.sha }}
+          path: artifacts/autotune-validation/
+          if-no-files-found: ignore
+          retention-days: 14

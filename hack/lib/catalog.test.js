@@ -4,9 +4,46 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
-const { root, buildIndex, compareVersions, digest, latestOf } = require("./catalog");
+const { root, buildIndex, compareVersions, digest, latestOf, schemaValidator } = require("./catalog");
 
 const sorted = (vs) => [...vs].sort(compareVersions);
+
+test("v1 and v2 tuning results do not require a report file", () => {
+  const validateMetadata = schemaValidator()("metadata.schema.json");
+  const validateMetadataV2 = schemaValidator()("metadata.v2.schema.json");
+  const tuning = { baseline: "baseline@1.0.0", optimized: "optimized@1.0.0", uplift: 1.2 };
+  assert.ok(
+    validateMetadata({
+      apiVersion: "catalog.swiss/v1",
+      name: "demo",
+      source: { hf: "org/demo" },
+      tuning: [{ version: "1.0.0", baseline: "baseline", optimized: "optimized", uplift: 1.2 }],
+    }),
+    JSON.stringify(validateMetadata.errors),
+  );
+  assert.ok(
+    validateMetadataV2({ apiVersion: "catalog.swiss/v2", name: "demo", source: { hf: "org/demo" }, tuning: [tuning] }),
+    JSON.stringify(validateMetadataV2.errors),
+  );
+  assert.ok(
+    validateMetadataV2({
+      apiVersion: "catalog.swiss/v2",
+      name: "demo",
+      source: { hf: "org/demo" },
+      tuning: [{ ...tuning, report: "missing.html" }],
+    }),
+    "A supplied safe report filename remains valid at schema level",
+  );
+  assert.ok(
+    !validateMetadataV2({
+      apiVersion: "catalog.swiss/v2",
+      name: "demo",
+      source: { hf: "org/demo" },
+      tuning: [{ ...tuning, report: "../outside.html" }],
+    }),
+    "A supplied report must remain a safe filename",
+  );
+});
 
 test("versions sort by semver precedence", () => {
   assert.deepEqual(sorted(["1.10.0", "1.2.0", "1.9.0"]), ["1.2.0", "1.9.0", "1.10.0"]);

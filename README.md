@@ -24,6 +24,33 @@ Filters live in the URL, so a view can be shared, e.g.
  It is the deployment backend of [ModelSphere](https://github.com/modelsphere/modelsphere), with [Console](https://github.com/modelsphere/console) as its web portal;
  see ModelSphere to get started.
 
+## Original-track validation
+
+The autotune PR workflow replays new optimized configurations against their
+Baseline Hub track. It supports both v1 version files and v2 variant files.
+See the [Chinese setup guide](docs/autotune-validation-setup.zh-CN.md) to
+configure the GitHub Environment, credentials, approvals and branch protection.
+For a v2 export, include `models/<model>/<model>.validation.json` beside the
+variant YAML files, using the exported `schema_version: 2` manifest. Each entry
+binds `variant_id`, `version`, `file`, `content_sha256`, `track_slug`,
+`source_run_id`, and `role` to its model. The content hash covers the parsed YAML
+as compact JSON with recursively sorted object keys; comments and formatting do
+not affect it. Keep the exported YAML and manifest together when updating them.
+
+Unchanged variants are skipped. An edited v2 variant keeps its ID but must raise
+its version and update its manifest entry. New or updated `optimized` entries
+are replayed; entries marked `baseline` are checked against the manifest but are
+not replayed. Existing v1 version files remain immutable. The workflow runs the
+validator from the PR's base commit, so that branch must contain v2 support first.
+
+Replay submits `repository:tag` and requires that reference and engine to be
+registered on the track. An exported image digest remains part of the manifest's
+content hash but is not appended to the submitted image reference.
+Replay checks the current track gates, not a claimed uplift or the
+Swiss/Helm deployment. `source_run_id` is recorded for traceability, not verified
+against the original run. Run the local regression tests with
+`node --test hack/lib/autotune-validation.test.js`.
+
 ## Add a model or variant
 
 One file per variant, edited in place
@@ -114,12 +141,11 @@ tuning:
         uplift: 58.0
       - name: 8k + 1k                           # shown as "Document QA"
         uplift: 23.4
-    report: my-model-h100-report.html
+    # TODO: CI will generate and attach the report.
 ```
 
 A measured version may be older than the variant's current one: the site shows the newest result for each tuned variant.
-A report must be a complete HTML document whose embedded JSON parses. `validate:schema` fails on a missing, empty or invalid one; the site skips
-linking it. The images it records must be the two variants' own (registry, repository and tag), which `validate:images` checks.
+Reports are optional in a catalog PR; CI generation and attachment are a TODO. If a report is provided, it must be a complete HTML document whose embedded JSON parses. The images it records must be the two variants' own (registry, repository and tag), which `validate:images` checks.
 
 ## Development
 

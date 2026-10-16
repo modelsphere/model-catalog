@@ -50,12 +50,12 @@
       "type": ["boolean", "string"]
     },
     "tuning": {
-      "description": "Measured tuning results: a tuned variant against a baseline, both in one published version, on the tuning benchmark. Display only -- nothing composes from it -- so a re-measurement is an edit here, not a new version. hack/validate-schema.js checks that the version is published, that both ids are variants of it, and that the report sits beside this file.",
+      "description": "Measured tuning results: a tuned variant against a baseline, both in one published version, on the tuning benchmark. Display only -- nothing composes from it -- so a re-measurement is an edit here, not a new version. hack/validate-schema.js checks that the version is published and that both ids are variants of it. The report is optional until CI generates it.",
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["version", "baseline", "optimized", "report"],
+        "required": ["version", "baseline", "optimized"],
         "properties": {
           "version": {
             "description": "The published version both variants belong to.",
@@ -99,7 +99,7 @@
             }
           },
           "report": {
-            "description": "File name of the measurement beside this metadata.yaml, such as the AutoTune HTML report. Required: it is the tuned variant's link, served at <site>models/<name>/<report> with the site from catalog.yaml.",
+            "description": "Optional HTML report filename beside this metadata.yaml. TODO: generate and link this report from CI.",
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
           }

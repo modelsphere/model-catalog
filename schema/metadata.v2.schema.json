@@ -56,7 +56,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["baseline", "optimized", "report"],
+        "required": ["baseline", "optimized"],
         "properties": {
           "version": {
             "description": "Legacy: the v1 version measured, for index.json.",
