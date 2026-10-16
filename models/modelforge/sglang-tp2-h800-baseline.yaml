@@ -1,0 +1,78 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: modelforge
+id: sglang-tp2-h800-baseline
+version: 1.0.0
+description: 'Baseline: TP2 on two H800 GPUs, single node.'
+engine: sglang
+chart:
+  name: sglang
+  version: '>=0.8.0'
+image:
+  repository: harbor.4pd.io/hardcore-tech/sglang
+  tag: v0.5.19-cu129
+  digest: sha256:b7a3051b9e15939a5afc74de3564a72fd5b0b42bef80bbaacea9649d09f63d76
+requires:
+  gpus: 2
+  topology: single-node
+  gpuProduct:
+    - NVIDIA-H800
+values:
+  model:
+    hostPathType: Directory
+    contextLength: ''
+  modelCheck:
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - '*.safetensors'
+  extraArgs:
+    - --chunked-prefill-size=8192
+    - --enable-cache-report
+    - --mamba-scheduler-strategy=extra_buffer
+    - --mem-fraction-static=0.85
+    - --reasoning-parser=qwen3
+    - --stream-response-default-include-usage
+    - --tool-call-parser=qwen3_coder
+    - --tp-size=2
+  env:
+    - name: NVIDIA_DISABLE_REQUIRE
+      value: '1'
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+  volumes:
+    - name: dot-cache
+      emptyDir:
+        sizeLimit: 10Gi
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Gi
+  volumeMounts:
+    - name: dot-cache
+      mountPath: /root/.cache
+    - name: dshm
+      mountPath: /dev/shm
+  resources:
+    requests:
+      ephemeral-storage: 16Gi
+    limits:
+      ephemeral-storage: 16Gi
+  progressDeadlineSeconds: 7200
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 180
+  terminationGracePeriodSeconds: 3600
+  lifecycle:
+    preStop:
+      drainSeconds: 600
+      pollIntervalSeconds: 5
+    forceShutdown: true
+    preStopKill: true
+  hangWatcher:
+    enabled: true

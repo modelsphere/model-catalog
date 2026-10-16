@@ -1,0 +1,12 @@
+apiVersion: catalog.swiss/v2
+name: modelforge
+displayName: modelforge
+description: modelforge on 2 H800 GPUs.
+family: modelforge
+tags:
+  - chat
+  - reasoning
+  - tool-use
+defaultVariant: sglang-tp2-h800-optimized
+source:
+  hf: modelforge/release_260817-794782
