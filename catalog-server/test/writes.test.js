@@ -289,3 +289,36 @@ test("plain http, and a slash or none, are fine: the index puts the slash each n
   const index = (await s.json("index-v2.json")).body;
   assert.deepEqual([index.site, index.raw, index.repo], ["http://127.0.0.1:8000/", "http://127.0.0.1:8000/raw/", "http://127.0.0.1:8000"]);
 });
+
+test("a history's links are served: the commit that made a revision, and the file as it was there", async () => {
+  const before = await (await s.fetch("models/m2/sglang-tp4.yaml")).text();
+  const etag = (await s.fetch(tp4)).headers.get("etag");
+  const done = await put(tp4, YAML.stringify(variant("sglang-tp4", "1.0.1", 2)), { "If-Match": etag, "X-Commit-Message": "tp4: two GPUs" });
+  const { revisions } = await (await s.fetch("models/m2/sglang-tp4.history.json")).json();
+  assert.equal(revisions[0].commit, done.body.commit);
+
+  // <repo>/commit/<sha>, as the history dialog links it.
+  const commit = await s.fetch(`commit/${done.body.commit}`);
+  const text = await commit.text();
+  assert.match(commit.headers.get("content-type"), /^text\/plain/);
+  assert.match(commit.headers.get("cache-control"), /immutable/);
+  assert.match(text, /^Author:\s+Ada Lovelace <ada@example\.com>$/m);
+  assert.match(text, /^\s+tp4: two GPUs$/m);
+  assert.match(text, /^-version: 1\.0\.0$/m);
+  assert.match(text, /^\+version: 1\.0\.1$/m);
+  assert.equal((await s.fetch(`commit/${done.body.commit.slice(0, 7)}`)).status, 200, "a short one too");
+
+  // <repo>/blob/<commit>/<path>: the file at an older revision, byte for byte.
+  const old = await s.fetch(`blob/${revisions[1].commit}/models/m2/sglang-tp4.yaml`);
+  assert.equal(await old.text(), before);
+  assert.equal(sha(before), revisions[1].digest);
+
+  for (const p of [
+    `commit/${"0".repeat(40)}`,
+    `blob/${done.body.commit}/models/m2/nope.yaml`,
+    `blob/${done.body.commit}/../outside`,
+    "commit/HEAD",
+  ]) {
+    assert.equal((await s.fetch(p)).status, 404, p);
+  }
+});

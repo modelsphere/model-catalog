@@ -194,11 +194,23 @@ const textarea =
 // sends back), or a new one, from a template.
 type File = { label: string; read?: () => Promise<{ text: string; etag: string }>; template?: string };
 
+// A name the dialog asks for in a field of its own -- a new recipe's id, a new
+// model's name -- kept in step with the YAML: the field shows what the files
+// say, and typing in it writes into them. Either may be edited.
+type Name = {
+  label: string;
+  get: (texts: string[]) => string;
+  set: (texts: string[], value: string) => string[];
+  // What the name makes: the file or directory it names.
+  hint: (value: string) => ReactNode;
+};
+
 // A dialog that edits files and commits them: check runs commit as a dry run.
 function EditorDialog({
   trigger,
   title,
   description,
+  names = [],
   files,
   commit,
   done,
@@ -206,6 +218,7 @@ function EditorDialog({
   trigger: ReactNode;
   title: ReactNode;
   description: ReactNode;
+  names?: Name[];
   files: File[];
   commit: (texts: string[], etags: string[], o: { dryRun: boolean; message: string }) => Promise<Written>;
   done?: (w: Written) => void;
@@ -277,22 +290,48 @@ function EditorDialog({
           ) : !texts ? (
             <p className="text-[0.88rem] text-muted-foreground">Loading…</p>
           ) : (
-            files.map((f, i) => (
-              <label key={f.label} className="grid gap-1 text-[0.8rem] text-muted-foreground">
-                <span className="font-mono">{f.label}</span>
-                <textarea
-                  className={cn(textarea, files.length > 1 && "h-[min(16rem,32dvh)]")}
-                  spellCheck={false}
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  value={texts[i]}
-                  onChange={(e) => {
-                    setTexts(texts.map((t, j) => (j === i ? e.target.value : t)));
-                    setOutcome(null);
-                  }}
-                />
-              </label>
-            ))
+            <>
+              {names.map((n, i) => {
+                const value = n.get(texts);
+                return (
+                  <label key={n.label} className="grid gap-1 text-[0.84rem]">
+                    {n.label}
+                    <Input
+                      className="font-mono"
+                      spellCheck={false}
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      value={value}
+                      // The first is what the dialog is for: it opens there,
+                      // its default selected, so typing replaces it.
+                      autoFocus={i === 0}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        setTexts(n.set(texts, e.target.value.trim()));
+                        setOutcome(null);
+                      }}
+                    />
+                    <span className="text-[0.78rem] text-faint">{n.hint(value)}</span>
+                  </label>
+                );
+              })}
+              {files.map((f, i) => (
+                <label key={f.label} className="grid gap-1 text-[0.8rem] text-muted-foreground">
+                  <span className="font-mono">{f.label}</span>
+                  <textarea
+                    className={cn(textarea, files.length > 1 && "h-[min(16rem,32dvh)]")}
+                    spellCheck={false}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    value={texts[i]}
+                    onChange={(e) => {
+                      setTexts(texts.map((t, j) => (j === i ? e.target.value : t)));
+                      setOutcome(null);
+                    }}
+                  />
+                </label>
+              ))}
+            </>
           )}
           <OutcomeNote outcome={outcome} onReload={load} />
           {token && !refused && <TokenForm refused={false} />}
@@ -359,9 +398,24 @@ export function NewVariant({ m, from }: { m: Model; from: { id: string; yaml: st
               A copy of <code>{from.id}</code> to start from.
             </>
           ) : null}{" "}
-          Its <code>id</code> names its file, <code>models/{m.name}/&lt;id&gt;.yaml</code>.
+          Name it: its <code>id</code> names its file.
         </>
       }
+      names={[
+        {
+          label: "Recipe id",
+          get: ([text]) => topLevel(text, "id") ?? "",
+          set: ([text], id) => [withTopLevel(text, "id", id)],
+          hint: (id) => (
+            <>
+              Its file:{" "}
+              <code>
+                models/{m.name}/{id || "<id>"}.yaml
+              </code>
+            </>
+          ),
+        },
+      ]}
       files={[{ label: `models/${m.name}/<id>.yaml`, template }]}
       commit={([text], _, o) => {
         const id = topLevel(text, "id");
@@ -451,6 +505,30 @@ export function NewModel() {
           recipe's <code>model</code> is that name.
         </>
       }
+      names={[
+        {
+          label: "Model name",
+          get: ([meta]) => topLevel(meta, "name") ?? "",
+          // The recipe's model is the model's name.
+          set: ([meta, variant], name) => [withTopLevel(meta, "name", name), withTopLevel(variant, "model", name)],
+          hint: (name) => (
+            <>
+              Its directory: <code>models/{name || "<name>"}/</code>
+            </>
+          ),
+        },
+        {
+          label: "First recipe id",
+          get: ([, variant]) => topLevel(variant, "id") ?? "",
+          // The first recipe is the model's default.
+          set: ([meta, variant], id) => [withTopLevel(meta, "defaultVariant", id), withTopLevel(variant, "id", id)],
+          hint: (id) => (
+            <>
+              Its file: <code>{id || "<id>"}.yaml</code>, the model&apos;s default recipe
+            </>
+          ),
+        },
+      ]}
       files={[
         { label: "models/<name>/metadata.yaml", template: NEW_METADATA },
         { label: "models/<name>/<id>.yaml", template: NEW_VARIANT },
@@ -549,7 +627,9 @@ export function SetupCatalog() {
   // catalog.yaml. To start from, where this page reaches it.
   const here = new URL(base, document.baseURI).href;
   const [site, setSite] = useState(here);
-  const [repo, setRepo] = useState("");
+  // Where its history's links go (commit/, blob/): a git host's web address,
+  // or this server, which serves them too.
+  const [repo, setRepo] = useState(here.replace(/\/+$/, ""));
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>(null);
   useEffect(() => {
@@ -599,8 +679,8 @@ export function SetupCatalog() {
             <Input type="url" value={site} onChange={(e) => setSite(e.target.value)} />
           </label>
           <label className="grid gap-1 text-[0.84rem]">
-            The repository&apos;s web address, for links to its commits (optional)
-            <Input type="url" placeholder="https://git.example.com/ml/catalog" value={repo} onChange={(e) => setRepo(e.target.value)} />
+            Where its history links to commits and files: a git host&apos;s web address, or this server, which shows them too (optional)
+            <Input type="url" value={repo} onChange={(e) => setRepo(e.target.value)} />
           </label>
           <OutcomeNote outcome={outcome} />
           {token && <TokenForm refused={outcome?.kind === "failed" && outcome.err.status === 401} />}

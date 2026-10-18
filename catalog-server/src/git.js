@@ -137,6 +137,17 @@ class Repo {
     return blobs(this.dir, specs);
   }
 
+  // A commit as git show has it -- who, when, why, and what it changed -- or
+  // null when there is no such commit.
+  commitText(commit) {
+    if (!this.made) return null;
+    const r = spawnSync("git", ["show", "--no-color", "--format=fuller", "--stat", "--patch", `${commit}^{commit}`, "--"], {
+      cwd: this.dir,
+      maxBuffer: 1 << 28,
+    });
+    return r.status === 0 ? r.stdout : null;
+  }
+
   // The file at path in commit, or null when it has none.
   show(commit, file) {
     const r = spawnSync("git", ["cat-file", "blob", `${commit}:${file}`], { cwd: this.dir, maxBuffer: 1 << 28 });

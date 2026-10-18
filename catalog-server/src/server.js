@@ -9,6 +9,10 @@
 //   GET    models/<name>/<report>.html         perf reports
 //   GET    raw/<commit>/models/<name>/<f>.yaml a file as committed: where
 //                                              swiss fetches an old revision
+//   GET    commit/<sha>                        a commit, as git show has it
+//   GET    blob/<commit>/<path>                a file as it was at a commit:
+//                                              with commit/, what a history
+//                                              links to, for repo: this server
 //
 //   GET    api/v2/models/<name>/variants/<id>  a variant file, its digest as ETag
 //   PUT    api/v2/models/<name>/variants/<id>  add it (If-None-Match: *) or
@@ -182,6 +186,20 @@ function createServer({ store, tokens = null, base = "/", pages = null, template
       if (/^models\/[^/]+\/[^/]+\.history\.json$/.test(rel)) {
         const body = snap.histories.get(rel);
         return body ? file(TYPES[".json"], body, snap.commit) : notFound();
+      }
+      // What a recipe's history links to, at a git host's paths (GitHub's), so
+      // a catalog whose repo is this server links to it: a commit, and a file
+      // as it was at one. Plain text, to be read; a full commit's is for good.
+      const commitPage = /^commit\/([0-9a-f]{7,64})$/.exec(rel);
+      if (commitPage) {
+        const text = store.repo.commitText(commitPage[1]);
+        const cache = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(commitPage[1]) ? "public, max-age=31536000, immutable" : "no-cache";
+        return text ? file("text/plain; charset=utf-8", text, null, cache) : notFound();
+      }
+      const blob = /^blob\/([0-9a-f]{40}|[0-9a-f]{64})\/(.+)$/.exec(rel);
+      if (blob) {
+        const body = store.repo.show(blob[1], blob[2]);
+        return body ? file("text/plain; charset=utf-8", body, null, "public, max-age=31536000, immutable") : notFound();
       }
       // A commit's file never changes, so it may be kept for good.
       const raw = /^raw\/([0-9a-f]{40}|[0-9a-f]{64})\/(models\/[^/]+\/[^/]+\.yaml)$/.exec(rel);

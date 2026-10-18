@@ -103,7 +103,8 @@ curl -s -X POST https://catalog.example.com/api/v2/init \
 
 The template is [`template/`](template): a `catalog.yaml`, saying where the catalog is served -- `site` as given, and
 `raw`, its `raw/`, where swiss fetches old revisions -- and its `repo` as given (each left out when unset), and a
-`README.md` saying what the repository is. The web app's Set up dialog offers the address it is viewed at.
+`README.md` saying what the repository is. The web app's Set up dialog offers the address it is viewed at for both: the server serves the `commit/` and `blob/`
+pages a recipe's history links to, so `repo` can be the server itself, or a git host's web address.
 `repository.template` in the config points to a directory of your own instead: every file in it is committed, with
 `{{site}}`, `{{raw}}` and `{{repo}}` filled in. A catalog is initialized once it has a `catalog.yaml`; a repository that
 already has models but no `catalog.yaml` is initialized around them, and a file it already has is never replaced.
@@ -176,6 +177,8 @@ curl -s -X PUT "$V" -H "$T" -H "If-Match: $(grep -i ^etag headers | cut -d' ' -f
 | `GET`, `PUT api/v2/models/<name>/metadata`  | the model's `metadata.yaml`, replaced at its digest (`If-Match`)                                                                                                                           |
 | `POST api/v2/models`                        | a new model, in one commit: `{"metadata": "<metadata.yaml>", "variants": ["<variant YAML>", ...]}`                                                                                         |
 | `GET api/v2/`                               | what the server takes: `{"apiVersion": "catalog.swiss/v2", "write": <whether tokensFile is set>, "auth": "bearer"}`. The web app turns editing on by it                                    |
+| `GET commit/<sha>`                          | a commit as `git show` prints it: author, message, and its diff (plain text)                                                                                                               |
+| `GET blob/<commit>/<path>`                  | a file as it was at a commit (plain text). With `commit/`, at a git host's paths: what a recipe's history and **Source** link to when `repo` is this server                                |
 | `GET api/v2/catalog`                        | `catalog.yaml`, with its digest as `ETag`                                                                                                                                                  |
 | `PUT api/v2/catalog`                        | replaces it (`If-Match`): `site`, `raw` and `repo`, each an http(s) URL with no credentials in it, a trailing slash or none (the index puts the one each needs). The index follows at once |
 | `GET api/v2/init`                           | whether the catalog is initialized: `{"initialized": <bool>, "commit": <its tip, or null>}`                                                                                                |
