@@ -130,6 +130,43 @@ function initialize(snap, { files, message }) {
   return { rel: "catalog.yaml", created: true, changes, message: message || "Initialize the catalog" };
 }
 
+// catalog.yaml's settings, model-catalog's (schema/catalog.schema.json):
+// where the catalog is served (site), where its old revisions are fetched
+// (raw, as <raw><commit>/<path>), its repository (repo). Each an http(s) URL
+// with no credentials in it -- a catalog's own server or git host may well be
+// plain http -- its trailing slash as written: the index puts the one each
+// needs (catalog.js). Nothing checks site against what routes to the server:
+// the catalog says, the deployment routes.
+const URL_ = /^https?:\/\/[^/@\s]+(\/\S*)?$/;
+const SETTINGS = { site: URL_, raw: URL_, repo: URL_ };
+
+function settingsProblems(rel, doc) {
+  const problems = [];
+  if (doc.apiVersion !== "catalog.swiss/v1") problems.push(`${rel}: apiVersion: want catalog.swiss/v1`);
+  for (const [key, value] of Object.entries(doc)) {
+    if (key === "apiVersion") continue;
+    const s = SETTINGS[key];
+    if (!s) problems.push(`${rel}: ${key}: not a setting (${Object.keys(SETTINGS).join(", ")})`);
+    else if (typeof value !== "string" || !s.test(value))
+      problems.push(`${rel}: ${key}: ${JSON.stringify(value)} is not an http(s) URL with no credentials in it`);
+  }
+  return problems;
+}
+
+// PUT catalog: replaces catalog.yaml, at its digest. The index follows it at
+// once: its site and raw are the catalog's.
+function putSettings(snap, { body, ifMatch, message }) {
+  mustBeInitialized(snap);
+  const rel = "catalog.yaml";
+  const current = fileDigest(snap, rel);
+  if (current === digest(body)) return { unchanged: true, rel };
+  if (ifMatch == null) throw new HttpError(428, `${rel}: send If-Match with the digest it was read at`, { current });
+  precondition(current, { ifMatch }, rel);
+  const problems = settingsProblems(rel, parseDoc(body, rel));
+  if (problems.length) throw invalid(problems);
+  return { rel, changes: new Map([[rel, body]]), message: message || "catalog: settings" };
+}
+
 // PUT models/<model>/variants/<id>: adds the variant file, or replaces it.
 function putVariant(snap, { model, id, body, ifMatch, ifNoneMatch, message }) {
   mustBeInitialized(snap);
@@ -238,4 +275,4 @@ function createModel(snap, { metadata, variants, message }) {
   return { rel, created: true, model: name, changes, message: message || `${name}: add model` };
 }
 
-module.exports = { HttpError, initialized, initialize, putVariant, deleteVariant, putMetadata, createModel, tag };
+module.exports = { HttpError, initialized, initialize, putSettings, settingsProblems, putVariant, deleteVariant, putMetadata, createModel, tag };

@@ -1,2 +1,4 @@
 # Templates: {{placeholders}} are not YAML, and prettier would rewrite them.
 template/
+# Helm templates: Go templates, not YAML.
+chart/templates/

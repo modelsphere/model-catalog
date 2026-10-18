@@ -1,0 +1,25 @@
+{{- $public := include "catalog-server.ingressUrl" . | default (include "catalog-server.url" .) -}}
+catalog-server is deployed as {{ include "catalog-server.fullname" . }}, serving the catalog on its
+volume at {{ include "catalog-server.url" . }}{{ with include "catalog-server.ingressUrl" . }} and {{ . }}{{ end }}.
+
+Where the catalog is served is its own say: its catalog.yaml's site, and raw (where old revisions
+are fetched). Setting it up writes them; nothing checks they match this ingress or service.
+{{- if include "catalog-server.writes" . }}
+
+Writes are on. Set an empty catalog up from the web app ("Set up this catalog"), or:
+
+  curl -X POST {{ include "catalog-server.url" . }}api/v2/init -H "Authorization: Bearer $TOKEN" \
+    -d '{"site": "{{ $public }}"}'
+{{- else }}
+
+Writes are off: set tokens.existingSecret or tokens.entries to edit the catalog.
+{{- end }}
+
+Point swiss at it in the site profile:
+
+  catalogs:
+    - name: internal
+      url: {{ $public }}
+      schemaVersion: v2
+
+Check it:  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}

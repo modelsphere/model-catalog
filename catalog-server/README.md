@@ -1,5 +1,9 @@
 # catalog-server
 
+[![catalog-server](https://github.com/modelsphere/model-catalog/actions/workflows/catalog-server.yml/badge.svg?branch=master)](https://github.com/modelsphere/model-catalog/actions/workflows/catalog-server.yml)
+[![image](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmodelsphere%2Fmodel-catalog%2Fmaster%2Fcatalog-server%2Fpackage.json&query=%24.version&label=ghcr.io%2Fmodelsphere%2Fcatalog-server&logo=docker&logoColor=white&color=2496ED)](https://github.com/modelsphere/model-catalog/pkgs/container/catalog-server)
+[![chart](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmodelsphere%2Fmodel-catalog%2Fmaster%2Fcatalog-server%2Fchart%2FChart.yaml&query=%24.version&label=helm%20oci%3A%2F%2Fghcr.io%2Fmodelsphere%2Fcharts%2Fcatalog-server&logo=helm&logoColor=white&color=0F1689)](https://github.com/modelsphere/model-catalog/pkgs/container/charts%2Fcatalog-server)
+
 A swiss model catalog of your own, served from its git repository and written to over HTTP. It serves
 schema v2 only: `index-v2.json`, the variant files it names, each variant's `history.json`, and old revisions at
 `raw/<commit>/`, at the same paths as [model-catalog](https://github.com/modelsphere/model-catalog)'s published site, so swiss and the web app read
@@ -16,7 +20,6 @@ setting and what it does. Copy it, and set at least where the catalog is:
 
 ```yaml
 # catalog-server.yaml
-publicUrl: https://catalog.example.com/
 repository:
   dir: /data/catalog # a local directory: the catalog's git repository
 committer:
@@ -30,16 +33,55 @@ npm ci && npm start                              # ./catalog-server.yaml
 node src/main.js --config /etc/catalog-server/config.yaml
 ```
 
-In a container, the image reads `/etc/catalog-server/config.yaml`; a relative path in it, like `tokens.yaml`, is
-from that directory:
+### In a container
+
+The image is catalog-server with model-catalog's web app built in, published from master
+([`.github/workflows/catalog-server.yml`](../.github/workflows/catalog-server.yml)) as
+`ghcr.io/modelsphere/catalog-server` -- `:latest`, `:<version>` and `:sha-<commit>`. Its own config
+([`image.yaml`](image.yaml)) serves the catalog at `/data/catalog`, a volume, with the pages, and lets no one write:
 
 ```sh
-docker build -t catalog-server .
+docker run -d -p 8000:8000 -v catalog:/data ghcr.io/modelsphere/catalog-server
+```
+
+To edit it, mount a config of your own over `/etc/catalog-server/config.yaml`, keeping `pagesDir: /app/web`; a
+relative path in it, like `tokens.yaml`, is from that directory:
+
+```sh
 docker run -d -p 8000:8000 -v catalog:/data \
   -v "$PWD/catalog-server.yaml:/etc/catalog-server/config.yaml:ro" \
   -v "$PWD/tokens.yaml:/etc/catalog-server/tokens.yaml:ro" \
-  catalog-server
+  ghcr.io/modelsphere/catalog-server
 ```
+
+To build it, from the repository root -- the image builds the web app in, and
+[`Dockerfile.dockerignore`](Dockerfile.dockerignore) is what it sees of the root:
+
+```sh
+docker build -f catalog-server/Dockerfile -t catalog-server .
+```
+
+### On Kubernetes
+
+The chart ([`chart/`](chart)) is published beside the image, as an OCI artifact. It runs one pod -- the image -- on a
+volume that holds the catalog's repository (kept on `helm uninstall`), and renders the config file from its values:
+
+```sh
+helm install catalog oci://ghcr.io/modelsphere/charts/catalog-server \
+  --set ingress.enabled=true --set ingress.host=catalog.example.com \
+  --set tokens.existingSecret=catalog-tokens    # a Secret with tokens.yaml: see Tokens below
+helm test catalog
+```
+
+| value                                 | does                                                                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `config.*`                            | `basePath`, `branch`, `syncInterval`, `committer`; `pages` (the web app, on by default); `extra`, any other setting |
+| `tokens.existingSecret`, `tokens.key` | a Secret of your own holding the tokens file, at key `tokens.yaml`; or `tokens.entries`, the entries themselves     |
+| `persistence.*`                       | the volume: `size` (2Gi), `storageClass`, `existingClaim` (one holding a catalog already), `keep`                   |
+| `ingress.*`, `service.*`              | how it is reached                                                                                                   |
+
+Without tokens the catalog is read-only, and the web app offers no editing. A changed config rolls the pod; a changed
+tokens Secret is read again in place.
 
 A setting it does not know, or one of the wrong type, stops the server with what is wrong, rather than being
 ignored.
@@ -54,15 +96,26 @@ it is edited like any other:
 ```sh
 curl -s https://catalog.example.com/api/v2/init                        # {"initialized": false, "commit": null}
 curl -s -X POST https://catalog.example.com/api/v2/init \
-  -H "Authorization: Bearer $TOKEN" -d '{"repo": "https://git.example.com/ml/catalog"}'
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"site": "https://catalog.example.com/", "repo": "https://git.example.com/ml/catalog"}'
 # {"commit": "…", "initialized": true, "files": ["README.md", "catalog.yaml"]}
 ```
 
-The template is [`template/`](template): a `catalog.yaml`, naming `publicUrl` as its `site` and the `repo` given as
-its repository (each left out when unset), and a `README.md` saying what the repository is. `repository.template`
-in the config points to a directory of your own instead: every file in it is committed, `{{site}}` and `{{repo}}`
-filled in. A catalog is initialized once it has a `catalog.yaml`; a repository that already has models but no
-`catalog.yaml` is initialized around them, and a file it already has is never replaced.
+The template is [`template/`](template): a `catalog.yaml`, saying where the catalog is served -- `site` as given, and
+`raw`, its `raw/`, where swiss fetches old revisions -- and its `repo` as given (each left out when unset), and a
+`README.md` saying what the repository is. The web app's Set up dialog offers the address it is viewed at.
+`repository.template` in the config points to a directory of your own instead: every file in it is committed, with
+`{{site}}`, `{{raw}}` and `{{repo}}` filled in. A catalog is initialized once it has a `catalog.yaml`; a repository that
+already has models but no `catalog.yaml` is initialized around them, and a file it already has is never replaced.
+
+### Where it is served
+
+The catalog says where it is served, not the server: `index-v2.json` names its `catalog.yaml`'s `site`, and its `raw`
+as where old revisions are fetched, so the repository is complete on its own -- copy it, and the copy says the same.
+What routes clients to the server -- a port, an ingress, a gateway -- is the deployment's, and nothing compares the
+two: if they drift, the catalog still says what its `catalog.yaml` says. To move it, change `catalog.yaml` -- **Catalog
+settings** in the web app, `PUT api/v2/catalog`, or a commit pushed to the repository -- and the route, each in its
+own place.
 
 ### Try it locally
 
@@ -98,7 +151,7 @@ read.
 ```yaml
 catalogs:
   - name: internal
-    url: https://catalog.example.com/ # publicUrl
+    url: https://catalog.example.com/ # its catalog.yaml's site
     schemaVersion: v2
     default: true
 ```
@@ -115,16 +168,18 @@ curl -s -X PUT "$V" -H "$T" -H "If-Match: $(grep -i ^etag headers | cut -d' ' -f
   -H "X-Commit-Message: tp4: mem fraction 0.86" --data-binary @v.yaml
 ```
 
-| request                                     | does                                                                                                                                                    |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET api/v2/models/<name>/variants/<id>`    | the variant file, with its digest as `ETag`                                                                                                             |
-| `PUT api/v2/models/<name>/variants/<id>`    | adds it (`If-None-Match: *`) or replaces it (`If-Match: <digest>`); the body is the YAML, kept byte for byte                                            |
-| `DELETE api/v2/models/<name>/variants/<id>` | deletes it (`If-Match`), unless it is the `defaultVariant`, a tuning entry names it, or it is the model's last                                          |
-| `GET`, `PUT api/v2/models/<name>/metadata`  | the model's `metadata.yaml`, replaced at its digest (`If-Match`)                                                                                        |
-| `POST api/v2/models`                        | a new model, in one commit: `{"metadata": "<metadata.yaml>", "variants": ["<variant YAML>", ...]}`                                                      |
-| `GET api/v2/`                               | what the server takes: `{"apiVersion": "catalog.swiss/v2", "write": <whether tokensFile is set>, "auth": "bearer"}`. The web app turns editing on by it |
-| `GET api/v2/init`                           | whether the catalog is initialized: `{"initialized": <bool>, "commit": <its tip, or null>}`                                                             |
-| `POST api/v2/init`                          | initializes it: commits the template's files, `{"repo": "<web URL>"}` optional. `409` once initialized ([start from nothing](#start-from-nothing))      |
+| request                                     | does                                                                                                                                                                                       |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET api/v2/models/<name>/variants/<id>`    | the variant file, with its digest as `ETag`                                                                                                                                                |
+| `PUT api/v2/models/<name>/variants/<id>`    | adds it (`If-None-Match: *`) or replaces it (`If-Match: <digest>`); the body is the YAML, kept byte for byte                                                                               |
+| `DELETE api/v2/models/<name>/variants/<id>` | deletes it (`If-Match`), unless it is the `defaultVariant`, a tuning entry names it, or it is the model's last                                                                             |
+| `GET`, `PUT api/v2/models/<name>/metadata`  | the model's `metadata.yaml`, replaced at its digest (`If-Match`)                                                                                                                           |
+| `POST api/v2/models`                        | a new model, in one commit: `{"metadata": "<metadata.yaml>", "variants": ["<variant YAML>", ...]}`                                                                                         |
+| `GET api/v2/`                               | what the server takes: `{"apiVersion": "catalog.swiss/v2", "write": <whether tokensFile is set>, "auth": "bearer"}`. The web app turns editing on by it                                    |
+| `GET api/v2/catalog`                        | `catalog.yaml`, with its digest as `ETag`                                                                                                                                                  |
+| `PUT api/v2/catalog`                        | replaces it (`If-Match`): `site`, `raw` and `repo`, each an http(s) URL with no credentials in it, a trailing slash or none (the index puts the one each needs). The index follows at once |
+| `GET api/v2/init`                           | whether the catalog is initialized: `{"initialized": <bool>, "commit": <its tip, or null>}`                                                                                                |
+| `POST api/v2/init`                          | initializes it: commits the template's files, `{"repo": "<web URL>"}` optional. `409` once initialized ([start from nothing](#start-from-nothing))                                         |
 
 Every write takes `?dryRun=true`, which checks it and answers with what it would serve, without committing, and
 `X-Commit-Message`, or `?message=` for text a header cannot carry (default: `<model>/<id>: <version>`). It answers with the commit and the catalog's entry for what it
@@ -185,7 +240,8 @@ for both; what it shows comes from the server it is served with:
 
 The app asks the server at `api/v2/` whether it takes writes; a static host has nothing there, so the app stays
 read-only. Where it does, each recipe gets **Edit** and **Delete**, each model **New recipe** and **Edit model**, and
-the front and models pages **New model** -- or, on an empty catalog, **Set up this catalog**. Each opens the file's
+the front and models pages **New model** and **Catalog settings** -- or, on an empty catalog, **Set up this
+catalog**. Each opens the file's
 YAML, checks a change with the server before committing it, and says so when someone else changed the file first.
 The token is asked for once, and kept for the tab, or the browser when remembered.
 
@@ -213,11 +269,12 @@ any origin, and a write needs a token all the same.
 
 ## Development
 
-| command          | does                                                      |
-| ---------------- | --------------------------------------------------------- |
-| `npm test`       | the tests, against throwaway repositories (`node --test`) |
-| `npm start`      | the server, with `./catalog-server.yaml`                  |
-| `npm run format` | Prettier                                                  |
+| command                    | does                                                      |
+| -------------------------- | --------------------------------------------------------- |
+| `npm test`                 | the tests, against throwaway repositories (`node --test`) |
+| `npm start`                | the server, with `./catalog-server.yaml`                  |
+| `npm run format`           | Prettier                                                  |
+| `helm lint chart --strict` | the chart                                                 |
 
 | file              | is                                                                                          |
 | ----------------- | ------------------------------------------------------------------------------------------- |
@@ -230,3 +287,6 @@ any origin, and a write needs a token all the same.
 | `src/git.js`      | the repository, through git plumbing: reading commits, writing one                          |
 | `src/tokens.js`   | who may write                                                                               |
 | `src/template.js` | what initializing an empty catalog commits: the files under `template/`                     |
+| `Dockerfile`      | the image: the web app built in, from the repository root                                   |
+| `image.yaml`      | the image's own config                                                                      |
+| `chart/`          | the Helm chart                                                                              |

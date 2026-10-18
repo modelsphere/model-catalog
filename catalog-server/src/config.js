@@ -15,11 +15,15 @@ const yaml = require("yaml");
 const SETTINGS = {
   port: "number",
   basePath: "string",
-  publicUrl: "string",
   repository: { dir: "string", branch: "string", syncInterval: "number", template: "string" },
   committer: { name: "string", email: "string" },
   tokensFile: "string",
   pagesDir: "string",
+};
+
+// Settings that are no longer the server's, and where they went.
+const MOVED = {
+  publicUrl: " -- where the catalog is served is its catalog.yaml's site and raw, which setting it up writes",
 };
 
 // What is wrong with doc against shape, as "key: problem" lines.
@@ -29,7 +33,7 @@ function shapeProblems(doc, shape, at = "") {
   return Object.entries(doc).flatMap(([k, v]) => {
     const key = at ? `${at}.${k}` : k;
     const want = shape[k];
-    if (!want) return [`${key}: not a setting (${Object.keys(shape).join(", ")})`];
+    if (!want) return [`${key}: not a setting (${Object.keys(shape).join(", ")})${MOVED[key] ?? ""}`];
     if (typeof want === "object") return shapeProblems(v, want, key);
     return v == null || typeof v === want ? [] : [`${key}: want a ${want}`];
   });
@@ -57,8 +61,6 @@ function loadConfig(file) {
 
   const port = doc.port ?? 8000;
   if (!Number.isInteger(port) || port < 0 || port > 65535) problems.push(`port: ${port} is not a port`);
-  const publicUrl = doc.publicUrl ? doc.publicUrl.replace(/\/*$/, "/") : null;
-  if (publicUrl && !/^https?:\/\/[^/]+\//.test(publicUrl)) problems.push(`publicUrl: ${doc.publicUrl} is not an http(s) url`);
   const syncInterval = repo.syncInterval ?? 30;
   if (!(syncInterval >= 0)) problems.push(`repository.syncInterval: want seconds, 0 for never`);
   const template = from(repo.template);
@@ -74,7 +76,6 @@ function loadConfig(file) {
   return {
     port,
     basePath: `/${doc.basePath ?? "/"}/`.replace(/\/+/g, "/"),
-    publicUrl,
     repository: {
       dir: from(repo.dir ?? "data/catalog"),
       branch: repo.branch ?? null,

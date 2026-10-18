@@ -12,8 +12,10 @@ const sha = (s) => "sha256:" + crypto.createHash("sha256").update(s).digest("hex
 let repo;
 let s;
 beforeEach(async () => {
-  repo = catalogRepo([["2026-10-01T10:00:00Z", "init", catalogFiles]]);
-  s = await serve({ dir: repo.dir, publicUrl: PUBLIC });
+  // Served, its catalog.yaml says, at PUBLIC: old revisions at its raw/.
+  const settings = { ...catalogFiles["catalog.yaml"], site: PUBLIC, raw: `${PUBLIC}raw/` };
+  repo = catalogRepo([["2026-10-01T10:00:00Z", "init", { ...catalogFiles, "catalog.yaml": settings }]]);
+  s = await serve({ dir: repo.dir });
 });
 afterEach(() => {
   s.close();
@@ -238,4 +240,52 @@ test("the server says it takes writes, and how", async () => {
   } finally {
     closed.close();
   }
+});
+
+test("catalog.yaml is read at its digest, and replaced there: the index follows it at once", async () => {
+  const res = await s.fetch("api/v2/catalog", { auth: null });
+  const text = await res.text();
+  assert.match(text, /^site: https:\/\/catalog\.example\.com\/$/m);
+  const moved = text
+    .replace(/^site: .*$/m, "site: https://catalog.internal.example/")
+    .replace(/^raw: .*$/m, "raw: https://catalog.internal.example/raw/");
+
+  assert.equal((await put("api/v2/catalog", moved)).status, 428);
+  assert.equal((await put("api/v2/catalog", moved, { "If-Match": `"${sha("other")}"` })).status, 412);
+  const dry = await put("api/v2/catalog?dryRun=true", moved, { "If-Match": res.headers.get("etag") });
+  assert.deepEqual([dry.status, dry.body.commit, dry.body.site], [200, null, "https://catalog.internal.example/"]);
+  assert.equal((await s.json("index-v2.json")).body.site, PUBLIC, "a dry run moves nothing");
+
+  const done = await put("api/v2/catalog?message=catalog%3A+moved", moved, { "If-Match": res.headers.get("etag") });
+  assert.equal(done.status, 200);
+  assert.equal(done.body.commit, repo.head());
+  assert.match(repo.show(done.body.commit), /^Ada Lovelace <ada@example\.com>\|catalog-server\|catalog: moved$/);
+  const index = (await s.json("index-v2.json")).body;
+  assert.deepEqual([index.site, index.raw], ["https://catalog.internal.example/", "https://catalog.internal.example/raw/"]);
+});
+
+test("catalog.yaml's settings are model-catalog's, each an http(s) URL with no credentials in it", async () => {
+  const etag = (await s.fetch("api/v2/catalog")).headers.get("etag");
+  const bad = await put(
+    "api/v2/catalog",
+    "apiVersion: catalog.swiss/v2\nsite: catalog.example.com\nraw: https://u:pw@catalog.example.com/raw/\nrepo: ssh://git@git.example.com/c\ntitle: x\n",
+    { "If-Match": etag },
+  );
+  assert.equal(bad.status, 422);
+  assert.deepEqual(
+    bad.body.problems.map((p) => p.split(":")[1].trim()),
+    ["apiVersion", "site", "raw", "repo", "title"],
+  );
+});
+
+test("plain http, and a slash or none, are fine: the index puts the slash each needs", async () => {
+  const etag = (await s.fetch("api/v2/catalog")).headers.get("etag");
+  const done = await put(
+    "api/v2/catalog",
+    "apiVersion: catalog.swiss/v1\nsite: http://127.0.0.1:8000\nraw: http://127.0.0.1:8000/raw\nrepo: http://127.0.0.1:8000/\n",
+    { "If-Match": etag },
+  );
+  assert.equal(done.status, 200);
+  const index = (await s.json("index-v2.json")).body;
+  assert.deepEqual([index.site, index.raw, index.repo], ["http://127.0.0.1:8000/", "http://127.0.0.1:8000/raw/", "http://127.0.0.1:8000"]);
 });

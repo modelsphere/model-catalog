@@ -16,8 +16,8 @@ const { buildSnapshot } = require("./catalog");
 const { HttpError } = require("./writes");
 
 class Store {
-  constructor({ repo, publicUrl = null, log = console }) {
-    Object.assign(this, { repo, publicUrl, log });
+  constructor({ repo, log = console }) {
+    Object.assign(this, { repo, log });
     this.queue = Promise.resolve();
     this.snapshot = null;
     // What went wrong last, for /healthz: a tip that does not build. The
@@ -26,7 +26,7 @@ class Store {
   }
 
   build(commit) {
-    return buildSnapshot(this.repo, commit, { publicUrl: this.publicUrl });
+    return buildSnapshot(this.repo, commit);
   }
 
   // One at a time, in order: a write never plans on a tip another is moving.

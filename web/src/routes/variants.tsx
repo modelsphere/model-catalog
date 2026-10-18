@@ -26,7 +26,7 @@ import {
   variantLine,
 } from "@/components/catalog";
 import { ListPage } from "@/components/list-page";
-import { NewModel, SetupCatalog, useEditable, useSetupable } from "@/components/edit";
+import { EditSettings, NewModel, SetupCatalog, useEditable, useSetupable } from "@/components/edit";
 
 // A variant's own perf reports and link.
 function variantLinks(base: string, m: Model, v: Variant, kind: "button" | "link", reportLabel: string) {
@@ -194,7 +194,16 @@ export function VariantsRoute() {
               </span>
             </>
           ),
-          children: setupable ? <SetupCatalog /> : editable && <NewModel />,
+          children: setupable ? (
+            <SetupCatalog />
+          ) : (
+            editable && (
+              <div className="flex flex-wrap justify-center gap-2">
+                <NewModel />
+                <EditSettings />
+              </div>
+            )
+          ),
         },
         heading: (
           <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-[0.1rem] pb-2">

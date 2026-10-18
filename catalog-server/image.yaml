@@ -1,0 +1,9 @@
+# The image's own settings, at /etc/catalog-server/config.yaml: the catalog in
+# /data, the volume, served with the web app built into the image. No one may
+# write -- mount a config of your own over this one, with tokensFile, to edit
+# the catalog; keep pagesDir as it is. Every setting is in
+# catalog-server.example.yaml.
+port: 8000
+repository:
+  dir: /data/catalog
+pagesDir: /app/web

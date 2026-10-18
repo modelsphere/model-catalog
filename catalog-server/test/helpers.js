@@ -89,7 +89,7 @@ const tokensYaml = `- name: Ada Lovelace\n  email: ada@example.com\n  token: ${T
 
 // A server over the catalog repository at dir (null: a new one). Resolves to {base, store, fetch, close}; fetch takes a path
 // under the base, with the token unless auth says otherwise.
-async function serve({ dir = null, publicUrl = null, tokens = tokensYaml, base: basePath = "/", template } = {}) {
+async function serve({ dir = null, tokens = tokensYaml, base: basePath = "/", template } = {}) {
   const home = tmp("server-");
   const repo = Repo.open({ dir: dir ?? path.join(home, "catalog"), branch: "main" });
   let tokenFile = null;
@@ -98,7 +98,7 @@ async function serve({ dir = null, publicUrl = null, tokens = tokensYaml, base: 
     fs.writeFileSync(tokenFile, tokens);
   }
   const quiet = { log() {}, warn() {} };
-  const store = await new Store({ repo, publicUrl, log: quiet }).start();
+  const store = await new Store({ repo, log: quiet }).start();
   const server = createServer({ store, tokens: tokenFile && new Tokens(tokenFile), base: basePath, template, log: quiet });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}${basePath}`;

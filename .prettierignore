@@ -2,3 +2,5 @@
 package-lock.json
 # catalog-server's templates: {{placeholders}} are not YAML.
 catalog-server/template/
+# catalog-server's Helm templates: Go templates, not YAML.
+catalog-server/chart/templates/

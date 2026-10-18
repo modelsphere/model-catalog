@@ -6,14 +6,10 @@
 port: 8000
 
 # The path it is served under: /catalog/ behind an ingress that keeps the
-# prefix.
+# prefix. Where clients reach it is not a setting here: the catalog says, in
+# its catalog.yaml's site and raw, which setting it up writes. Nothing checks
+# the two agree with what routes to the server.
 basePath: /
-
-# Where clients reach it, basePath included. index-v2.json names it as its
-# site, and its raw/ as where swiss fetches old revisions, so a deploy pinned
-# to one finds it here; setting a catalog up writes it to catalog.yaml as its
-# site. Unset, catalog.yaml's site and raw (or repo) say.
-# publicUrl: https://catalog.example.com/
 
 repository:
   # The catalog: a local directory (a volume, in a container) holding its git
@@ -30,8 +26,8 @@ repository:
   # branch: main
 
   # What setting a catalog up commits: every file in this directory, with
-  # {{site}} (publicUrl) and {{repo}} (the repository address given when
-  # setting up) filled in, and a line whose value is unset left out. A file
+  # {{site}}, {{raw}} (its raw/) and {{repo}} -- the addresses given when
+  # setting up -- filled in, and a line whose value is unset left out. A file
   # the repository has already is kept. It needs a catalog.yaml. Unset, the
   # template/ that comes with the server: catalog.yaml and a README.md.
   # template: catalog-template

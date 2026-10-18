@@ -1,0 +1,140 @@
+# catalog-server (catalog-server/): tests it, then, from master, publishes its
+# image -- catalog-server with the web app built in -- and its Helm chart, both
+# to GitHub's container registry:
+#
+#   ghcr.io/<owner>/catalog-server:latest, :<version>, :sha-<commit>
+#   oci://ghcr.io/<owner>/charts/catalog-server --version <Chart.yaml version>
+#
+# A pull request runs the tests and builds the image, publishing neither.
+# GITHUB_TOKEN publishes, so there is no secret to rotate.
+name: catalog-server
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - catalog-server/**
+      # The web app the image builds in, and what it is built with.
+      - web/**
+      - asserts/**
+      - server/**
+      - hack/lib/**
+      - catalog.yaml
+      - package.json
+      - package-lock.json
+      - .github/workflows/catalog-server.yml
+  pull_request:
+    paths:
+      - catalog-server/**
+      - web/**
+      - asserts/**
+      - server/**
+      - hack/lib/**
+      - catalog.yaml
+      - package.json
+      - package-lock.json
+      - .github/workflows/catalog-server.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: catalog-server-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # One job: test, then build the image, then publish it and the chart -- the
+  # chart after the image, so a published chart names an image that exists.
+  catalog-server:
+    name: Test and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUBLISH: ${{ github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: catalog-server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix catalog-server
+
+      - name: Test
+        run: npm --prefix catalog-server test
+
+      - name: Format
+        run: npm --prefix catalog-server run format:check
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.0
+
+      - name: Lint the chart
+        run: helm lint catalog-server/chart --strict
+
+      # The chart's default image is its appVersion: one that is never published
+      # would leave a default install pulling nothing.
+      - name: The chart's appVersion is the image's version
+        id: version
+        run: |
+          app=$(sed -n 's/^appVersion: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' catalog-server/chart/Chart.yaml)
+          pkg=$(node -p "require('./catalog-server/package.json').version")
+          echo "chart appVersion $app, package.json version $pkg"
+          test "$app" = "$pkg"
+          echo "version=$pkg" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/catalog-server
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }},enable={{is_default_branch}}
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.title=catalog-server
+            org.opencontainers.image.description=A schema v2 swiss model catalog of your own, served from its git repository and written to over HTTP, with model-catalog's web app
+
+      # From the repository root: the image builds the web app in too.
+      # catalog-server/Dockerfile.dockerignore is what it sees of the root.
+      - name: Image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: catalog-server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ env.PUBLISH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Chart
+        if: env.PUBLISH == 'true'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          printf %s "$TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          helm package catalog-server/chart --destination dist
+          # The same version pushed again replaces it: the chart follows master.
+          helm push dist/catalog-server-*.tgz "oci://ghcr.io/$owner/charts"

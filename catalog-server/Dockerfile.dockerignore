@@ -1,0 +1,21 @@
+# What the image's build, from the repository root, sees of it: the web app
+# and what it is built with, and catalog-server -- nothing else.
+*
+!package.json
+!package-lock.json
+!catalog.yaml
+!asserts/
+!hack/lib/
+!server/
+!web/
+!catalog-server/
+**/node_modules
+**/.DS_Store
+web/**/*.test.ts
+server/**/*.test.js
+hack/lib/**/*.test.js
+catalog-server/test/
+catalog-server/data/
+catalog-server/chart/
+catalog-server/catalog-server.yaml
+catalog-server/tokens.yaml

@@ -98,6 +98,8 @@ export function onTokens(f: () => void) {
 export const variantApi = (model: string, id: string) => `api/v2/models/${encodeURIComponent(model)}/variants/${encodeURIComponent(id)}`;
 export const metadataApi = (model: string) => `api/v2/models/${encodeURIComponent(model)}/metadata`;
 export const modelsApi = "api/v2/models";
+// catalog.yaml: where the catalog is served (site, raw) and its repository.
+export const settingsApi = "api/v2/catalog";
 
 // What a write did, as the server says: its commit (null for a dry run) and
 // the catalog's entry for what it wrote.

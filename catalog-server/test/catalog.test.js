@@ -58,11 +58,17 @@ test("index-v2.json has the v2 models, each variant at its last change", () => {
   }
 });
 
-test("a public url is the index's site and raw location", () => {
-  const repo = catalogRepo([["2026-10-01T10:00:00Z", "init", catalogFiles]]);
+test("catalog.yaml says where the catalog is served and its old revisions fetched", () => {
+  const settings = {
+    apiVersion: "catalog.swiss/v1",
+    site: "https://c.example.com/x/",
+    raw: "https://c.example.com/x/raw/",
+    repo: "https://git.example.com/c",
+  };
+  const repo = catalogRepo([["2026-10-01T10:00:00Z", "init", { ...catalogFiles, "catalog.yaml": settings }]]);
   try {
-    const { index } = snapshotOf(repo, { publicUrl: "https://c.example.com/x/" });
-    assert.deepEqual([index.site, index.raw, index.repo], ["https://c.example.com/x/", "https://c.example.com/x/raw/", "https://github.com/o/c"]);
+    const { index } = snapshotOf(repo);
+    assert.deepEqual([index.site, index.raw, index.repo], [settings.site, settings.raw, settings.repo]);
   } finally {
     repo.rm();
   }

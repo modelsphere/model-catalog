@@ -2,9 +2,12 @@
 # models/<name>/metadata.yaml.
 apiVersion: catalog.swiss/v1
 
-# Where the catalog is served: the catalog-server's publicUrl. index-v2.json
-# names it as its site, and its raw/ as where old revisions are fetched.
+# Where the catalog is served. index-v2.json names it as its site; the
+# catalog decides it, whatever routes to its server.
 site: {{site}}
+
+# Where old revisions are fetched, at <raw><commit>/<path>: the server's raw/.
+raw: {{raw}}
 
 # The catalog's repository, for links to its commits and files.
 repo: {{repo}}

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: catalog-server
+description: "A schema v2 swiss model catalog of your own: served from its git repository, written to over HTTP (every write is a commit), with model-catalog's web app to read and edit it"
+home: https://github.com/modelsphere/model-catalog/tree/master/catalog-server
+sources:
+  - https://github.com/modelsphere/model-catalog
+type: application
+version: 0.1.0
+# The image's version: catalog-server/package.json's.
+appVersion: "0.1.0"
+keywords: [swiss, model-catalog, catalog-server]

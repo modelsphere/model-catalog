@@ -1,9 +1,9 @@
 "use strict";
 // What POST api/v2/init commits to an empty catalog: every file under a
 // template directory (template/ here, or the config's repository.template),
-// at the same path. {{site}} and {{repo}} in a file are filled in; a line
-// with one left empty is left out, so an unset setting is not written as an
-// empty one.
+// at the same path. {{site}}, {{raw}} and {{repo}} in a file are filled in; a line
+// with one left empty is left out, with its comment, so an unset setting is not
+// written as an empty one.
 
 const fs = require("fs");
 const path = require("path");
@@ -25,16 +25,24 @@ function templateFiles(dir, values) {
   return files;
 }
 
+// A line left out takes the comment just above it along, and the blank line
+// before that: the comment is that line's.
 function fill(text, values) {
-  const lines = text.split("\n").flatMap((line) => {
+  const out = [];
+  for (const line of text.split("\n")) {
     let empty = false;
-    const out = line.replace(/\{\{(\w+)\}\}/g, (_, k) => {
+    const filled = line.replace(/\{\{(\w+)\}\}/g, (_, k) => {
       if (!values[k]) empty = true;
       return values[k] ?? "";
     });
-    return empty ? [] : [out];
-  });
-  return Buffer.from(lines.join("\n"));
+    if (!empty) {
+      out.push(filled);
+      continue;
+    }
+    while (out.length && /^\s*#/.test(out.at(-1))) out.pop();
+    if (out.length && out.at(-1).trim() === "") out.pop();
+  }
+  return Buffer.from(out.join("\n"));
 }
 
 module.exports = { templateFiles, BUILT_IN };

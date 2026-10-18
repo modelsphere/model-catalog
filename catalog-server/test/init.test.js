@@ -16,7 +16,7 @@ const model = JSON.stringify({
 
 test("an empty directory is a catalog to initialize, and nothing is written to it until it is", async (t) => {
   const dir = path.join(tmp("empty-"), "catalog");
-  const s = await serve({ dir, publicUrl: PUBLIC });
+  const s = await serve({ dir });
   t.after(() => (s.close(), fs.rmSync(path.dirname(dir), { recursive: true, force: true })));
   assert.equal(fs.existsSync(dir), false, "nothing made at start");
   assert.deepEqual((await s.json("api/v2/init", { auth: null })).body, { initialized: false, commit: null });
@@ -31,14 +31,17 @@ test("an empty directory is a catalog to initialize, and nothing is written to i
 
   const done = await s.json("api/v2/init?message=Start+the+catalog", {
     method: "POST",
-    body: JSON.stringify({ repo: "https://git.example.com/ml/catalog/" }),
+    body: JSON.stringify({ site: "https://catalog.example.com", repo: "https://git.example.com/ml/catalog/" }),
   });
   assert.equal(done.status, 201);
   assert.equal(git(dir, ["rev-parse", "--is-bare-repository"]), "true", "made by setting it up");
   assert.deepEqual(done.body, { commit: s.repo.tip(), initialized: true, files: ["README.md", "catalog.yaml"] });
   assert.equal(git(dir, ["log", "--format=%an|%s", "main"]), "Ada Lovelace|Start the catalog");
   const settings = YAML.parse(git(dir, ["show", "main:catalog.yaml"]));
-  assert.deepEqual(settings, { apiVersion: "catalog.swiss/v1", site: PUBLIC, repo: "https://git.example.com/ml/catalog" });
+  // Where it is served is the catalog's to say: the index follows it.
+  assert.deepEqual(settings, { apiVersion: "catalog.swiss/v1", site: PUBLIC, raw: `${PUBLIC}raw/`, repo: "https://git.example.com/ml/catalog" });
+  const index = (await s.json("index-v2.json")).body;
+  assert.deepEqual([index.site, index.raw], [PUBLIC, `${PUBLIC}raw/`]);
   assert.deepEqual((await s.json("api/v2/init")).body, { initialized: true, commit: done.body.commit });
   assert.equal((await s.json("index-v2.json")).body.repo, "https://git.example.com/ml/catalog");
 
@@ -52,14 +55,24 @@ test("a setting left unset is left out of catalog.yaml, not written empty", asyn
   await s.json("api/v2/init", { method: "POST" });
   const text = git(s.repo.dir, ["show", "main:catalog.yaml"]);
   assert.deepEqual(YAML.parse(text), { apiVersion: "catalog.swiss/v1" });
-  assert.doesNotMatch(text, /^(site|repo):/m);
+  assert.doesNotMatch(text, /^(site|raw|repo):/m);
+  // Nor their comments: the file reads as one with nothing unset.
+  assert.doesNotMatch(text, /served|revisions|repository/);
+  assert.match(text, /^apiVersion: catalog\.swiss\/v1$/m);
 });
 
-test("a repo with credentials in it is refused", async (t) => {
+test("a site or repo that is not an http(s) URL, or has credentials in it, is refused", async (t) => {
   const s = await serve();
   t.after(() => s.close());
-  const bad = await s.json("api/v2/init", { method: "POST", body: JSON.stringify({ repo: "https://u:secret@git.example.com/c" }) });
+  const bad = await s.json("api/v2/init", {
+    method: "POST",
+    body: JSON.stringify({ site: "catalog.example.com", repo: "https://u:secret@git.example.com/c" }),
+  });
   assert.equal(bad.status, 422);
+  assert.deepEqual(
+    bad.body.problems.map((p) => p.split(":")[1].trim()),
+    ["site", "repo"],
+  );
   assert.equal(s.repo.tip(), null);
 });
 
@@ -81,9 +94,9 @@ test("a template of one's own", async (t) => {
   fs.mkdirSync(path.join(template, "docs"));
   fs.writeFileSync(path.join(template, "catalog.yaml"), "apiVersion: catalog.swiss/v1\nsite: {{site}}\n");
   fs.writeFileSync(path.join(template, "docs/HOWTO.md"), "Served at {{site}}.\n");
-  const s = await serve({ publicUrl: PUBLIC, template });
+  const s = await serve({ template });
   t.after(() => (s.close(), fs.rmSync(template, { recursive: true, force: true })));
-  const done = await s.json("api/v2/init", { method: "POST" });
+  const done = await s.json("api/v2/init", { method: "POST", body: JSON.stringify({ site: PUBLIC }) });
   assert.deepEqual(done.body.files, ["catalog.yaml", "docs/HOWTO.md"]);
   assert.equal(git(s.repo.dir, ["show", "main:docs/HOWTO.md"]), `Served at ${PUBLIC}.`);
 });

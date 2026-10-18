@@ -22,7 +22,7 @@ import {
   variantLine,
 } from "@/components/catalog";
 import { ListPage } from "@/components/list-page";
-import { NewModel, SetupCatalog, useEditable, useSetupable } from "@/components/edit";
+import { EditSettings, NewModel, SetupCatalog, useEditable, useSetupable } from "@/components/edit";
 
 const ModelCard = memo(function ModelCard({ m, scale, hidden }: { m: Model; scale: number; hidden: boolean }) {
   const { base } = useHost();
@@ -184,7 +184,16 @@ export function ModelsRoute() {
           eyebrow: <Link to="/">model-catalog</Link>,
           title: "Models",
           description: "Every model in the catalog: its recipes, the GPUs they need, and the tuned recipe's improvement over its baseline.",
-          children: setupable ? <SetupCatalog /> : editable && <NewModel />,
+          children: setupable ? (
+            <SetupCatalog />
+          ) : (
+            editable && (
+              <div className="flex flex-wrap justify-center gap-2">
+                <NewModel />
+                <EditSettings />
+              </div>
+            )
+          ),
         },
         noun: "models",
         facets,

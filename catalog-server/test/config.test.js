@@ -25,7 +25,6 @@ test("an empty config is every default, paths from its directory", () => {
     assert.deepEqual(loadConfig(file), {
       port: 8000,
       basePath: "/",
-      publicUrl: null,
       repository: { dir: path.join(dir, "data/catalog"), branch: null, syncInterval: 30, template: null },
       committer: { name: "catalog-server", email: "catalog-server@localhost" },
       tokensFile: null,
@@ -44,7 +43,6 @@ test("the example is a config, every setting in it known", () => {
     .replace(/^(\s*)(pagesDir|template): .*$/gm, "");
   withConfig(all, (file) => {
     const cfg = loadConfig(file);
-    assert.equal(cfg.publicUrl, "https://catalog.example.com/");
     assert.equal(cfg.repository.branch, "main");
   });
 });
@@ -53,7 +51,6 @@ test("settings are read as given", () => {
   const text = [
     "port: 9000",
     "basePath: catalog",
-    "publicUrl: https://c.example.com/catalog",
     "repository: {dir: /srv/catalog, branch: main, syncInterval: 0}",
     "committer: {name: Catalog Bot, email: bot@example.com}",
     "tokensFile: secrets/tokens.yaml",
@@ -61,11 +58,10 @@ test("settings are read as given", () => {
   withConfig(text, (file, dir) => {
     const cfg = loadConfig(file);
     assert.deepEqual(
-      [cfg.port, cfg.basePath, cfg.publicUrl, cfg.repository, cfg.committer.name, cfg.tokensFile],
+      [cfg.port, cfg.basePath, cfg.repository, cfg.committer.name, cfg.tokensFile],
       [
         9000,
         "/catalog/",
-        "https://c.example.com/catalog/",
         { dir: "/srv/catalog", branch: "main", syncInterval: 0, template: null },
         "Catalog Bot",
         path.join(dir, "secrets/tokens.yaml"),
@@ -85,7 +81,7 @@ test("a mistake is named, every one of them", () => {
           /port: want a number/,
           /repository\.upstream: not a setting/,
           /repository\.syncInterval: want seconds/,
-          /publicUrl: catalog\.example\.com is not an http\(s\) url/,
+          /publicUrl: not a setting .* -- where the catalog is served is its catalog\.yaml's site and raw/,
           /pagesDir: .*nowhere has no index\.html/,
         ].every((re) => re.test(err.message)),
     );

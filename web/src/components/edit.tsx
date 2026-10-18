@@ -19,6 +19,7 @@ import {
   onTokens,
   readFile,
   setToken,
+  settingsApi,
   tokenFor,
   topLevel,
   variantApi,
@@ -391,6 +392,28 @@ export function EditMetadata({ m }: { m: Model }) {
   );
 }
 
+// The catalog's own settings, catalog.yaml: where it is served and its old
+// revisions fetched, and its repository. The catalog says where it is; what
+// routes to the server is the deployment's, and nothing compares the two.
+export function EditSettings() {
+  const { base } = useHost();
+  return (
+    <EditorDialog
+      trigger={<Button>{icons.edit}Catalog settings</Button>}
+      title="Catalog settings"
+      description={
+        <>
+          <code>catalog.yaml</code>: <code>site</code>, where the catalog is served; <code>raw</code>, where swiss fetches its old revisions;{" "}
+          <code>repo</code>, its repository. The index follows a change at once; where the catalog is routed to is the deployment&apos;s, and nothing
+          checks the two agree.
+        </>
+      }
+      files={[{ label: "catalog.yaml", read: () => readFile(base, settingsApi) }]}
+      commit={([text], [etag], o) => write(base, { method: "PUT", api: settingsApi, body: text, etag, ...o })}
+    />
+  );
+}
+
 const NEW_METADATA = `apiVersion: catalog.swiss/v2
 name: my-model
 displayName: My Model
@@ -522,6 +545,10 @@ export function SetupCatalog() {
   const token = useToken(base);
   const reload = useReload();
   const [open, setOpen] = useState(false);
+  // Where the catalog is served: the catalog's own say, written to its
+  // catalog.yaml. To start from, where this page reaches it.
+  const here = new URL(base, document.baseURI).href;
+  const [site, setSite] = useState(here);
   const [repo, setRepo] = useState("");
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>(null);
@@ -532,7 +559,8 @@ export function SetupCatalog() {
     setBusy(true);
     setOutcome(null);
     try {
-      await write(base, { method: "POST", api: initApi, body: JSON.stringify(repo.trim() ? { repo: repo.trim() } : {}) });
+      const body = { ...(site.trim() && { site: site.trim() }), ...(repo.trim() && { repo: repo.trim() }) };
+      await write(base, { method: "POST", api: initApi, body: JSON.stringify(body) });
       await reload();
       setUp(base);
       setOpen(false);
@@ -559,13 +587,17 @@ export function SetupCatalog() {
         <DialogHeader>
           <DialogTitle>Set up this catalog</DialogTitle>
           <DialogDescription>
-            Its repository is empty. Setting it up commits a <code>catalog.yaml</code> and a <code>README.md</code> to it, as you; then it takes
-            models.
+            Its repository is empty. Setting it up commits a <code>catalog.yaml</code>, saying where the catalog is served, and a{" "}
+            <code>README.md</code> to it, as you. Then it takes models.
           </DialogDescription>
         </DialogHeader>
         {/* Not a form: the token's is one of its own. */}
         <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto px-5 py-4">
           {!token && <TokenForm refused={false} />}
+          <label className="grid gap-1 text-[0.84rem]">
+            Where the catalog is served: swiss reads it there, and fetches old revisions from its <code>raw/</code>
+            <Input type="url" value={site} onChange={(e) => setSite(e.target.value)} />
+          </label>
           <label className="grid gap-1 text-[0.84rem]">
             The repository&apos;s web address, for links to its commits (optional)
             <Input type="url" placeholder="https://git.example.com/ml/catalog" value={repo} onChange={(e) => setRepo(e.target.value)} />

@@ -144,8 +144,13 @@ function historyDoc(rel, { revisions, gone }) {
   });
 }
 
+// A URL that has a path joined onto it ends with one slash; a repository's,
+// which links append /commit/<sha> to, with none.
+const withSlash = (u) => (typeof u === "string" && u ? u.replace(/\/*$/, "/") : undefined);
+const withoutSlash = (u) => (typeof u === "string" && u ? u.replace(/\/+$/, "") : undefined);
+
 function rawBase(settings) {
-  if (settings.raw) return settings.raw;
+  if (settings.raw) return withSlash(settings.raw);
   const m = /^https:\/\/github\.com\/([^/]+\/[^/]+?)\/?$/.exec(settings.repo ?? "");
   return m ? `https://raw.githubusercontent.com/${m[1]}/` : undefined;
 }
@@ -161,11 +166,11 @@ function summary(v) {
   };
 }
 
-// The catalog at commit (null: an empty one). publicUrl, where clients reach
-// the server, names it as the site and as where old revisions are fetched
-// (raw/); without it, catalog.yaml says. A file that does not parse is
-// skipped, with a warning, rather than taking the catalog down.
-function buildSnapshot(repo, commit, { publicUrl = null } = {}) {
+// The catalog at commit (null: an empty one). Where it is served, and where
+// its old revisions are fetched, are its catalog.yaml's site and raw: the
+// repository decides, whatever routes to the server. A file that does not
+// parse is skipped, with a warning, rather than taking the catalog down.
+function buildSnapshot(repo, commit) {
   const warnings = [];
   const tree = repo.tree(commit);
   const paths = [...tree.keys()];
@@ -259,9 +264,9 @@ function buildSnapshot(repo, commit, { publicUrl = null } = {}) {
 
   const index = prune({
     apiVersion: V2,
-    site: publicUrl ?? settings.site,
-    repo: settings.repo,
-    raw: publicUrl ? `${publicUrl}raw/` : rawBase(settings),
+    site: withSlash(settings.site),
+    repo: withoutSlash(settings.repo),
+    raw: rawBase(settings),
     commit: last,
     count: models.length,
     models,
