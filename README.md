@@ -131,8 +131,9 @@ linking it. The images it records must be the two variants' own (registry, repos
 | `npm run validate:helm` | render every variant against the charts (`--chart-mode declared` for what a deploy uses) |
 | `npm run validate:images` | (needs `tools:install`, for crane) every image is publicly pullable without a login, by tag and by any pinned `digest`, and every perf report measured its variants' builds<br> a tag that has moved off its pinned digest is a warning; `--match-digest` makes it an error |
 | `npm run validate` | `validate:schema`, `validate:helm` and `validate:images` |
-| `npm run dev:site` | the site at <http://localhost:5173/model-catalog/>, live from `models/` |
-| `npm run build:site` | the site into `site/`: the pages, `index-v2.json` with every variant file and its `history.json`, and the perf reports; `npm run preview:site` serves it |
+| `npm run dev:site` | the site at <http://localhost:5173/model-catalog/>, live from `models/`; `CATALOG=<url>` reads another server, such as a `catalog-server` (editing on) |
+| `npm run build:web` | the web app into `dist/web/`: the pages and the `<model-catalog>` element, for any server to serve under any path |
+| `npm run build:site` | `build:web`, then `site/` for GitHub Pages (`hack/build-site.js`): `dist/web/` at `/model-catalog/`, with `index-v2.json`, every variant file and its `history.json`, and the perf reports beside it; `npm run preview:site` serves it |
 | `npm run serve` | the catalog server: the same files, live from `models/` |
 
 `validate:helm` and `validate:images` check every variant file; pass files, or

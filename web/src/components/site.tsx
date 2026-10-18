@@ -1,8 +1,10 @@
 // What every page has around its content: the header, with the logo, the
 // GitHub links and the theme button, and the footer.
 import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, useRouteLoaderData } from "react-router";
 import { StarIcon } from "lucide-react";
+import type { Catalog } from "@/types";
+import { useHost } from "@/lib/host";
 import { Button } from "@/components/ui/button";
 import { icons } from "./icons";
 
@@ -12,7 +14,7 @@ const THEMES: Theme[] = ["system", "light", "dark"];
 // Cycles system -> light -> dark. The choice is stored per browser; the boot
 // script in index.html applies it before first paint.
 function ThemeButton() {
-  const html = document.documentElement;
+  const { root: html } = useHost();
   const [theme, setTheme] = useState<Theme>(() => (html.dataset.theme as Theme) || "system");
   const next = () => {
     const t = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
@@ -42,11 +44,17 @@ function ThemeButton() {
 const topButton = "gap-[0.4rem] px-3 py-[0.4rem] text-[0.85rem] text-muted-foreground hover:border-input hover:text-foreground [&_svg]:size-4";
 
 // A repository's stars, asked of GitHub once per visit; null until known,
-// or when GitHub will not say (rate limit, offline): the link shows without.
+// or when GitHub will not say (rate limit, offline, a repository elsewhere):
+// the link shows without.
 const starsAsked = new Map<string, Promise<number | null>>();
+const onGitHub = (repo: string) => repo.startsWith("https://github.com/");
+// Kept with the repository they are of: the repository can change under the
+// link, when the catalog is set up or edited.
 function useStars(repo: string): number | null {
-  const [stars, setStars] = useState<number | null>(null);
+  const [stars, setStars] = useState<{ repo: string; n: number | null } | null>(null);
   useEffect(() => {
+    if (!onGitHub(repo)) return;
+    let live = true;
     let asked = starsAsked.get(repo);
     if (!asked) {
       asked = fetch(repo.replace("https://github.com/", "https://api.github.com/repos/"))
@@ -55,9 +63,12 @@ function useStars(repo: string): number | null {
         .catch(() => null);
       starsAsked.set(repo, asked);
     }
-    asked.then(setStars);
+    asked.then((n) => live && setStars({ repo, n }));
+    return () => {
+      live = false;
+    };
   }, [repo]);
-  return stars;
+  return stars?.repo === repo ? stars.n : null;
 }
 
 const compact = (n: number) => (n < 1000 ? String(n) : `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`);
@@ -72,13 +83,14 @@ const githubMark = (
 // The deployment solution the catalog serves.
 const MODELSPHERE = "https://github.com/modelsphere/modelsphere";
 
-// A repository on GitHub, with its stars.
+// A repository on GitHub, with its stars; one elsewhere (a self-hosted
+// catalog's), as a plain link.
 function GitHubLink({ repo, title }: { repo: string; title: string }) {
   const stars = useStars(repo);
   return (
     <Button asChild className={topButton}>
       <a href={repo} target="_blank" rel="noopener" title={title}>
-        {githubMark}
+        {onGitHub(repo) ? githubMark : icons.external}
         <span className="max-[560px]:hidden">{repo.split("/").pop()}</span>
         {stars != null && (
           <span className="ml-[0.15rem] inline-flex items-center gap-1 border-l border-border pl-2 tabular-nums" title={`${stars} stars on GitHub`}>
@@ -106,25 +118,28 @@ export function SiteHeader({
   description?: ReactNode;
   children?: ReactNode;
 }) {
+  const { base, embedded } = useHost();
+  // The catalog's own repository, as its index names it; the site's when the
+  // index is not in.
+  const repo = (useRouteLoaderData("root") as Catalog | undefined)?.repo ?? __REPO__;
   return (
     <header className="pt-5 pb-6 min-[1024px]:pb-8">
       <div className="wrap">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 min-[1024px]:mb-8">
-          {/* The mark's black ink turns white in dark mode, its blues kept. */}
-          <Link to="/" className="shrink-0">
-            <img
-              src={`${import.meta.env.BASE_URL}logo.png`}
-              alt="ModelSphere"
-              className="h-6 w-auto min-[720px]:h-7 dark:invert dark:hue-rotate-180"
-            />
-          </Link>
-          {/* The buttons wrap together, never one by one. */}
-          <div className="ml-auto flex gap-2">
-            <GitHubLink repo={MODELSPHERE} title="ModelSphere, the deployment solution, on GitHub" />
-            <GitHubLink repo={__REPO__} title="This catalog's source on GitHub" />
-            <ThemeButton />
+        {/* In another page, the page has its own. */}
+        {!embedded && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 min-[1024px]:mb-8">
+            {/* The mark's black ink turns white in dark mode, its blues kept. */}
+            <Link to="/" className="shrink-0">
+              <img src={`${base}logo.png`} alt="ModelSphere" className="h-6 w-auto min-[720px]:h-7 dark:invert dark:hue-rotate-180" />
+            </Link>
+            {/* The buttons wrap together, never one by one. */}
+            <div className="ml-auto flex gap-2">
+              <GitHubLink repo={MODELSPHERE} title="ModelSphere, the deployment solution, on GitHub" />
+              <GitHubLink repo={repo} title="This catalog's source" />
+              <ThemeButton />
+            </div>
           </div>
-        </div>
+        )}
         {eyebrow && (
           <p className="mb-4 text-[0.75rem] tracking-[0.08em] text-muted-foreground uppercase min-[1024px]:mb-6 [&_a]:text-inherit">{eyebrow}</p>
         )}

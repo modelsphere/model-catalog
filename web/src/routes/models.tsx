@@ -1,11 +1,12 @@
 // The models list: a legacy page of its own, reached only from the deployment
 // recipes' "All models" link. Everything else -- a model page's family and tag
 // chips, its breadcrumb, a missing page -- leads back to the recipes.
-import { Fragment, memo, useEffect, useMemo } from "react";
+import { Fragment, memo, useMemo } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { Catalog, Model } from "@/types";
 import { idIsDisplayName, modelPath, orderedVariants, UPLIFT_HELP, variantBest } from "@/lib/catalog";
 import { facetsOf } from "@/lib/facets";
+import { useHost, useTitle } from "@/lib/host";
 import { Card } from "@/components/ui/card";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import {
@@ -21,9 +22,11 @@ import {
   variantLine,
 } from "@/components/catalog";
 import { ListPage } from "@/components/list-page";
+import { NewModel, SetupCatalog, useEditable, useSetupable } from "@/components/edit";
 
 const ModelCard = memo(function ModelCard({ m, scale, hidden }: { m: Model; scale: number; hidden: boolean }) {
-  const links = linkItems(m, "button", "Perf report");
+  const { base } = useHost();
+  const links = linkItems(base, m, "button", "Perf report");
   return (
     <Card hidden={hidden} className="max-[560px]:p-4">
       <h2 className="text-[1.1rem] font-[650] tracking-[-0.01em]">
@@ -104,8 +107,8 @@ function improvementCell(m: Model, scale: number) {
 
 // The table's links sit on the row of the variant each belongs to, like the
 // bars beside them; any no listed variant owns go below.
-function linksCell(m: Model) {
-  const items = linkItems(m, "link", "Report");
+function linksCell(base: string, m: Model) {
+  const items = linkItems(base, m, "link", "Report");
   if (!items.length) return null;
   const variants = orderedVariants(m);
   const ids = new Set(variants.map((v) => v.id));
@@ -126,6 +129,7 @@ function linksCell(m: Model) {
 
 // Compact: no descriptions (the description is the name's tooltip).
 const ModelRow = memo(function ModelRow({ m, scale, hidden }: { m: Model; scale: number; hidden: boolean }) {
+  const { base } = useHost();
   const gpus = [...new Set(m.variants.flatMap((v) => v.hardware))];
   return (
     <TableRow hidden={hidden}>
@@ -154,16 +158,16 @@ const ModelRow = memo(function ModelRow({ m, scale, hidden }: { m: Model; scale:
         ))}
       </TableCell>
       <TableCell className="text-right">{improvementCell(m, scale) || none}</TableCell>
-      <TableCell>{linksCell(m) || none}</TableCell>
+      <TableCell>{linksCell(base, m) || none}</TableCell>
     </TableRow>
   );
 });
 
 export function ModelsRoute() {
   const catalog = useRouteLoaderData("root") as Catalog;
-  useEffect(() => {
-    document.title = "Models · Model Catalog";
-  }, []);
+  const editable = useEditable();
+  const setupable = useSetupable();
+  useTitle("Models · Model Catalog");
   const models = catalog.models;
   const { facets, scale } = useMemo(
     () => ({
@@ -180,6 +184,7 @@ export function ModelsRoute() {
           eyebrow: <Link to="/">model-catalog</Link>,
           title: "Models",
           description: "Every model in the catalog: its recipes, the GPUs they need, and the tuned recipe's improvement over its baseline.",
+          children: setupable ? <SetupCatalog /> : editable && <NewModel />,
         },
         noun: "models",
         facets,

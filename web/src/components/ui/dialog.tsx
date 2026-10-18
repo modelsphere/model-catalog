@@ -3,6 +3,7 @@
 import * as React from "react";
 import { XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useHost } from "@/lib/host";
 import { Dialog as DialogPrimitive } from "radix-ui";
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
@@ -17,7 +18,7 @@ function DialogTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive
 // screen's width less the gutter. Its body scrolls, its header stays.
 function DialogContent({ className, children, ...props }: React.ComponentProps<typeof DialogPrimitive.Content>) {
   return (
-    <DialogPrimitive.Portal>
+    <DialogPrimitive.Portal container={useHost().portal}>
       <DialogPrimitive.Overlay
         data-slot="dialog-overlay"
         className="fixed inset-0 z-50 bg-black/45 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0"

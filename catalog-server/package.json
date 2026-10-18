@@ -1,0 +1,24 @@
+{
+  "name": "catalog-server",
+  "version": "0.1.0",
+  "description": "A schema v2 swiss model catalog, served from its git repository and written to over HTTP: every write is a commit.",
+  "main": "src/main.js",
+  "bin": {
+    "catalog-server": "src/main.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node --test 'test/*.test.js'",
+    "format": "prettier --write \"**/*.{js,json,yaml,yml,md}\"",
+    "format:check": "prettier --check \"**/*.{js,json,yaml,yml,md}\""
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10"
+  }
+}

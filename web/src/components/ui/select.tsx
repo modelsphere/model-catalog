@@ -3,6 +3,7 @@
 import * as React from "react";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useHost } from "@/lib/host";
 import { Select as SelectPrimitive } from "radix-ui";
 
 function Select({ ...props }: React.ComponentProps<typeof SelectPrimitive.Root>) {
@@ -42,7 +43,7 @@ function SelectContent({
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={useHost().portal}>
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(

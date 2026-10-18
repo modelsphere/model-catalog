@@ -1,0 +1,57 @@
+# catalog-server's settings: copy this to catalog-server.yaml, or pass
+# --config <file>. Every setting is optional; the value shown is the default
+# where there is one. A relative path is from this file's directory.
+
+# The port it listens on, on every interface.
+port: 8000
+
+# The path it is served under: /catalog/ behind an ingress that keeps the
+# prefix.
+basePath: /
+
+# Where clients reach it, basePath included. index-v2.json names it as its
+# site, and its raw/ as where swiss fetches old revisions, so a deploy pinned
+# to one finds it here; setting a catalog up writes it to catalog.yaml as its
+# site. Unset, catalog.yaml's site and raw (or repo) say.
+# publicUrl: https://catalog.example.com/
+
+repository:
+  # The catalog: a local directory (a volume, in a container) holding its git
+  # repository, bare. Every write is a commit here. Missing or empty, it is
+  # left as it is and the catalog served empty, until setting it up -- the web
+  # app's "Set up this catalog" button, or POST api/v2/init -- makes the
+  # repository. To serve a catalog you have, make it a bare clone of it
+  # (git clone --bare).
+  dir: data/catalog
+
+  # The branch served and written: the repository's HEAD when unset. For a
+  # repository the server makes, the name of its first branch (git's default
+  # name otherwise).
+  # branch: main
+
+  # What setting a catalog up commits: every file in this directory, with
+  # {{site}} (publicUrl) and {{repo}} (the repository address given when
+  # setting up) filled in, and a line whose value is unset left out. A file
+  # the repository has already is kept. It needs a catalog.yaml. Unset, the
+  # template/ that comes with the server: catalog.yaml and a README.md.
+  # template: catalog-template
+
+  # Seconds between looks at the branch, for a change pushed to dir by
+  # someone else; 0 never (a write still reads the branch first).
+  syncInterval: 30
+
+# Who commits. Each commit's author is the token's holder (tokensFile).
+committer:
+  name: catalog-server
+  email: catalog-server@localhost
+
+# Who may write -- and set the catalog up: a YAML list of {name, email,
+# token} or {name, email, sha256}, see README.md. Read again when it changes.
+# Unset, no one: the catalog is read-only, and the web app offers no editing
+# and no setup.
+# tokensFile: tokens.yaml
+
+# model-catalog's npm run build:web output, to serve the web app and the
+# <model-catalog> element beside the catalog, under basePath. With tokens, it
+# edits the catalog, and offers to set an empty one up.
+# pagesDir: ../dist/web

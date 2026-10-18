@@ -151,6 +151,7 @@ function variantOf(index: Index, m: IndexModel, v: IndexVariant, tuning: Tuning[
     version: v.version,
     releaseDate: v.releaseDate || null,
     path: v.path,
+    digest: v.digest,
     source: index.repo && v.commit ? `${index.repo}/blob/${v.commit}/${encodePath(v.path)}` : null,
     history: v.history,
     servedName: v.servedName || null,

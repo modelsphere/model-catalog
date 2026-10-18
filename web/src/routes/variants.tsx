@@ -1,11 +1,12 @@
 // The deployment recipes, the catalog's front page: every model's variants,
 // one entry each, so they compare across models: by
 // GPU, engine, image or improvement.
-import { memo, useEffect, useMemo } from "react";
+import { memo, useMemo } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { Catalog, Model, Variant } from "@/types";
 import { modelPath, orderedVariants, UPLIFT_HELP } from "@/lib/catalog";
 import { variantFacetsOf } from "@/lib/facets";
+import { useHost, useTitle } from "@/lib/host";
 import { Card } from "@/components/ui/card";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import {
@@ -25,10 +26,11 @@ import {
   variantLine,
 } from "@/components/catalog";
 import { ListPage } from "@/components/list-page";
+import { NewModel, SetupCatalog, useEditable, useSetupable } from "@/components/edit";
 
 // A variant's own perf reports and link.
-function variantLinks(m: Model, v: Variant, kind: "button" | "link", reportLabel: string) {
-  return linkItems(m, kind, reportLabel)
+function variantLinks(base: string, m: Model, v: Variant, kind: "button" | "link", reportLabel: string) {
+  return linkItems(base, m, kind, reportLabel)
     .filter((x) => x.id === v.id)
     .map((x) => x.el);
 }
@@ -48,7 +50,7 @@ const VariantCard = memo(function VariantCard({ m, v, scale, hidden }: { m: Mode
   ) : null;
   const line = <VariantLine m={m} v={v} className={variantLine} idClass="text-[0.92rem] font-semibold" />;
   const bar = improvementBar(m, v, scale, "h-[1.35rem] shrink-0 grid-cols-[56px_minmax(4.4em,auto)]");
-  const links = variantLinks(m, v, "button", "Perf report");
+  const links = variantLinks(useHost().base, m, v, "button", "Perf report");
   return (
     <Card hidden={hidden} className="gap-[0.45rem] max-[560px]:p-4">
       <div className="flex flex-wrap items-center gap-x-[0.6rem] gap-y-[0.3rem] text-[0.84rem] text-muted-foreground">
@@ -115,7 +117,7 @@ function HardwareCell({ v }: { v: Variant }) {
 // (sglang-tp8-h100-baseline); the engine and image under the id.
 const VariantRow = memo(function VariantRow({ m, v, scale, hidden }: { m: Model; v: Variant; scale: number; hidden: boolean }) {
   const image = imageCode(v);
-  const links = variantLinks(m, v, "link", "Report");
+  const links = variantLinks(useHost().base, m, v, "link", "Report");
   return (
     <TableRow hidden={hidden}>
       <TableCell className="min-w-[200px]">
@@ -155,9 +157,9 @@ const VariantRow = memo(function VariantRow({ m, v, scale, hidden }: { m: Model;
 
 export function VariantsRoute() {
   const catalog = useRouteLoaderData("root") as Catalog;
-  useEffect(() => {
-    document.title = "Model Catalog";
-  }, []);
+  useTitle("Model Catalog");
+  const editable = useEditable();
+  const setupable = useSetupable();
   const { entries, facets, scale } = useMemo(() => {
     const entries = catalog.models.flatMap((m) => orderedVariants(m).map((v, rank) => ({ m, v, rank })));
     const facets = entries.map(({ m, v, rank }) => variantFacetsOf(m, v, rank));
@@ -192,6 +194,7 @@ export function VariantsRoute() {
               </span>
             </>
           ),
+          children: setupable ? <SetupCatalog /> : editable && <NewModel />,
         },
         heading: (
           <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-[0.1rem] pb-2">

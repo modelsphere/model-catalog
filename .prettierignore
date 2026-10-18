@@ -1,2 +1,4 @@
 # Beside .gitignore, which prettier also reads.
 package-lock.json
+# catalog-server's templates: {{placeholders}} are not YAML.
+catalog-server/template/

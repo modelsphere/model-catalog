@@ -23,8 +23,13 @@
    colored texts (links, improvement, deprecated) are clean dark blue, green
    and red at 7:1.
 
-   --tint-* set how the tint preset mixes, per mode (see tint below). */
-:root {
+   --tint-* set how the tint preset mixes, per mode (see tint below).
+
+   [data-catalog-root] is <html> inside a <model-catalog> element: its shadow
+   root has no :root, so the tokens, the theme and the body's look are set on
+   that wrapper too (element.tsx). */
+:root,
+[data-catalog-root] {
   color-scheme: light;
   --background: #f0f0f2;
   --foreground: #181819;
@@ -108,11 +113,13 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]),
+  [data-catalog-root]:not([data-theme="light"]) {
     @apply dark-tokens;
   }
 }
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+[data-catalog-root][data-theme="dark"] {
   @apply dark-tokens;
 }
 
@@ -122,7 +129,12 @@
     @slot;
   }
   @media (prefers-color-scheme: dark) {
-    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+    &:where(
+      :root:not([data-theme="light"]),
+      :root:not([data-theme="light"]) *,
+      [data-catalog-root]:not([data-theme="light"]),
+      [data-catalog-root]:not([data-theme="light"]) *
+    ) {
       @slot;
     }
   }
@@ -171,7 +183,8 @@
   html {
     -webkit-text-size-adjust: 100%;
   }
-  body {
+  body,
+  [data-catalog-root] {
     background: var(--background);
     color: var(--foreground);
     font: 15px/1.5 var(--font-sans);

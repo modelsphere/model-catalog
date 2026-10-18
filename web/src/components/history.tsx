@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import type { History, Model, Revision, Variant } from "@/types";
 import { encodePath, measuredAs } from "@/lib/catalog";
 import { loadHistory } from "@/lib/data";
+import { useHost } from "@/lib/host";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { icons } from "./icons";
-import { NEW_TAB, ROOT } from "./catalog";
+import { NEW_TAB } from "./catalog";
 
 function RevisionItem({ m, v, r, current, repo, path }: { m: Model; v: Variant; r: Revision; current: boolean; repo: string | null; path: string }) {
   const measured = measuredAs(m, v.id, r.version);
@@ -46,6 +47,7 @@ function RevisionItem({ m, v, r, current, repo, path }: { m: Model; v: Variant; 
 }
 
 export function VariantHistory({ m, v, repo }: { m: Model; v: Variant; repo: string | null }) {
+  const { base } = useHost();
   const [open, setOpen] = useState(false);
   const [history, setHistory] = useState<History | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,14 +55,14 @@ export function VariantHistory({ m, v, repo }: { m: Model; v: Variant; repo: str
     if (!open || history) return;
     let live = true;
     setError(null);
-    loadHistory(v).then(
+    loadHistory(base, v).then(
       (h) => live && setHistory(h),
       (err: Error) => live && setError(err.message),
     );
     return () => {
       live = false;
     };
-  }, [open, history, v]);
+  }, [open, history, base, v]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -88,7 +90,7 @@ export function VariantHistory({ m, v, repo }: { m: Model; v: Variant; repo: str
           )}
         </div>
         <div className="border-t border-border px-5 py-[0.6rem] text-[0.8rem] text-faint">
-          <a href={ROOT + encodePath(v.history)} {...NEW_TAB}>
+          <a href={base + encodePath(v.history)} {...NEW_TAB}>
             {v.history.split("/").pop()}
           </a>
         </div>

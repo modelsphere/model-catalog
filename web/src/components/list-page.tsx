@@ -8,6 +8,7 @@ import { ArrowDownIcon, ArrowDownWideNarrowIcon, ArrowUpDownIcon, ArrowUpIcon, A
 import { countBy, sortDir, sorter, type Dir, type Facet } from "@/lib/facets";
 import { topologyLabel } from "@/lib/catalog";
 import { gpuGroup, gpuHue, topologyHue } from "@/lib/hues";
+import { useHost } from "@/lib/host";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,7 +56,7 @@ export type SortHead = (
 
 export interface ListConfig {
   // The page's title, with what it is; heading sits above the summary.
-  header: { eyebrow?: ReactNode; title: ReactNode; description?: ReactNode };
+  header: { eyebrow?: ReactNode; title: ReactNode; description?: ReactNode; children?: ReactNode };
   heading?: ReactNode;
   noun: string;
   facets: Facet[];
@@ -105,7 +106,7 @@ const field = "max-[560px]:w-full max-[560px]:flex-[1_1_calc(50%-0.25rem)]";
 
 export function ListPage({ cfg }: { cfg: ListConfig }) {
   const { facets, noun } = cfg;
-  const html = document.documentElement;
+  const { base, embedded, root } = useHost();
   const [params] = useSearchParams();
   const options = useMemo(
     () => ({
@@ -141,7 +142,7 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
       hidedep: hasDeprecated && params.get("hidedep") === "1",
       sort,
       dir: dir ?? sortDir[sort],
-      view: pick("view", ["cards", "table"], html.dataset.view === "cards" ? "cards" : "table") as View,
+      view: pick("view", ["cards", "table"], root.dataset.view === "cards" ? "cards" : "table") as View,
       model: params.getAll("model").filter((n) => n in options.model),
       hardware: params.getAll("hardware").filter((h) => h in options.hardware),
       topology: params.getAll("topology").filter((t) => t in options.topology),
@@ -152,20 +153,25 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
   // The filters are kept in the URL by replacing it in place, not by a router
   // navigation: one would re-render the whole route on every keystroke. The
   // history entry keeps the router's state, so Back and Forward still find
-  // the filters in the URL.
+  // the filters in the URL. In another page, the URL is that page's.
   const qs = queryOf(st);
   useEffect(() => {
-    html.dataset.view = st.view;
+    root.dataset.view = st.view;
+    if (embedded) return;
     const url = location.pathname + (qs ? `?${qs}` : "") + location.hash;
     if (url !== location.pathname + location.search + location.hash) history.replaceState(history.state, "", url);
-  }, [qs, st.view, html]);
+  }, [qs, st.view, root, embedded]);
 
-  // "/" focuses the search; Escape clears it.
+  // "/" focuses the search; Escape clears it. Keys are heard where the
+  // catalog is: the document, or an element's shadow root -- there, only
+  // while focus is inside it, so the page keeps its own "/".
   const search = useRef<HTMLInputElement>(null);
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = document.activeElement;
+    const scope = root.getRootNode() as Document | ShadowRoot;
+    const onKey = (e: Event) => {
+      if (!(e instanceof KeyboardEvent)) return;
+      const t = scope.activeElement;
       if (e.key === "/" && !/^(INPUT|SELECT|TEXTAREA)$/.test(t?.tagName ?? "")) {
         e.preventDefault();
         search.current?.focus();
@@ -173,9 +179,9 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
         set({ q: "" });
       }
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+    scope.addEventListener("keydown", onKey);
+    return () => scope.removeEventListener("keydown", onKey);
+  }, [root]);
 
   const byOrder = useMemo(() => sorter(st.sort, st.dir), [st.sort, st.dir]);
   const order = useMemo(() => facets.map((_, i) => i).sort((a, b) => byOrder(facets[a], facets[b])), [facets, byOrder]);
@@ -448,7 +454,7 @@ export function ListPage({ cfg }: { cfg: ListConfig }) {
       </main>
       <SiteFooter>
         Generated from <code>models/</code> by <code>npm run build:site</code>. This site is also the catalog swiss reads:{" "}
-        <a href={`${import.meta.env.BASE_URL}index.json`}>index.json</a>.
+        <a href={`${base}index.json`}>index.json</a>.
       </SiteFooter>
     </>
   );

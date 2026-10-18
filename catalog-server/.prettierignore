@@ -1,0 +1,2 @@
+# Templates: {{placeholders}} are not YAML, and prettier would rewrite them.
+template/

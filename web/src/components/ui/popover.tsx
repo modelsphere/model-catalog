@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { useHost } from "@/lib/host";
 import { Popover as PopoverPrimitive } from "radix-ui";
 
 function Popover({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
@@ -15,7 +16,7 @@ function PopoverTrigger({ ...props }: React.ComponentProps<typeof PopoverPrimiti
 // A card of its own below its trigger, as a select's menu is.
 function PopoverContent({ className, align = "start", sideOffset = 4, ...props }: React.ComponentProps<typeof PopoverPrimitive.Content>) {
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal container={useHost().portal}>
       <PopoverPrimitive.Content
         data-slot="popover-content"
         align={align}

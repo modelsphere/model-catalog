@@ -133,6 +133,8 @@ export interface Variant {
   releaseDate: string | null;
   // The variant file, from the site's root.
   path: string;
+  // sha256 of its bytes: what a write to it names it by (lib/edit.ts).
+  digest: string;
   // The variant file on GitHub, pinned to its commit.
   source: string | null;
   // Its history.json, from the site's root.

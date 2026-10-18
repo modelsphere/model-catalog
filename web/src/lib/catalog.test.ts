@@ -9,6 +9,7 @@ const variant = (id: string, over: Partial<Variant> = {}): Variant => ({
   version: "1.0.1",
   releaseDate: null,
   path: `models/m/${id}.yaml`,
+  digest: `sha256:${id}`,
   source: null,
   history: `models/m/${id}.history.json`,
   servedName: null,

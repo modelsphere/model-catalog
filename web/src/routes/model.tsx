@@ -1,7 +1,7 @@
 // A model's page: every variant, in full.
 // Tuning binds to the optimized variant: a model may have several, each
 // against its own baseline, so each optimized variant carries its own results.
-import { Fragment, useEffect, type ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import {
   Link,
   useLoaderData,
@@ -13,7 +13,8 @@ import {
 } from "react-router";
 import type { Model, Tuning, Variant } from "@/types";
 import { anchorOf, encodePath, orderedVariants, reportLinks, REPORT_LANG, tuningFor, UPLIFT_HELP, WORKLOAD_NAMES } from "@/lib/catalog";
-import { loadCatalog, loadVariantText } from "@/lib/data";
+import { catalogLoaded, loadCatalog, loadVariantText } from "@/lib/data";
+import { useHost, useTitle } from "@/lib/host";
 import { countBy } from "@/lib/facets";
 import { tagHue } from "@/lib/hues";
 import { cn } from "@/lib/utils";
@@ -30,26 +31,32 @@ import {
   Hardware,
   imageCode,
   NEW_TAB,
-  ROOT,
   Topology,
   TopologyToggles,
   VariantBadges,
 } from "@/components/catalog";
 import { VariantHistory } from "@/components/history";
+import { DeleteVariant, EditMetadata, EditVariant, NewVariant, useEditable } from "@/components/edit";
 import { icons } from "@/components/icons";
 import { SiteFooter, SiteHeader } from "@/components/site";
 
-export async function modelLoader({ params }: LoaderFunctionArgs) {
-  const catalog = await loadCatalog();
-  const m = catalog.models.find((x) => x.name === params.dir);
-  if (!m) throw new Response(`No model ${params.dir} in this catalog.`, { status: 404 });
-  // Each variant's configuration is its own file.
-  const texts = await Promise.all(m.variants.map(loadVariantText));
-  return { m, repo: catalog.repo, yaml: Object.fromEntries(m.variants.map((v, i) => [v.id, texts[i]])) as Record<string, string | null> };
-}
+export const modelLoader =
+  (base: string) =>
+  async ({ params }: LoaderFunctionArgs) => {
+    const catalog = await loadCatalog(base);
+    const m = catalog.models.find((x) => x.name === params.dir);
+    if (!m) throw new Response(`No model ${params.dir} in this catalog.`, { status: 404 });
+    // Each variant's configuration is its own file.
+    const texts = await Promise.all(m.variants.map((v) => loadVariantText(base, v)));
+    return { m, repo: catalog.repo, yaml: Object.fromEntries(m.variants.map((v, i) => [v.id, texts[i]])) as Record<string, string | null> };
+  };
 
-// The GPU filter only changes the query: the model and its files stay.
-export const keepModel = ({ currentParams, nextParams }: ShouldRevalidateFunctionArgs) => currentParams.dir !== nextParams.dir;
+// The GPU filter only changes the query: the model and its files stay, until
+// a write changes them.
+export const keepModel =
+  (base: string) =>
+  ({ currentParams, nextParams }: ShouldRevalidateFunctionArgs) =>
+    currentParams.dir !== nextParams.dir || !catalogLoaded(base);
 
 // A pair's baseline: linked when the model still has it -- an old pair may
 // name one since deleted.
@@ -89,6 +96,7 @@ function TuningBars({ t, scale }: { t: Tuning; scale: number }) {
 }
 
 function TuningBlock({ m, v, t, scale }: { m: Model; v: Variant; t: Tuning; scale: number }) {
+  const { base } = useHost();
   const older = t.optimizedVersion !== v.version ? t.optimizedVersion : null;
   return (
     <div className="mt-[0.85rem] rounded-lg border border-border px-[0.85rem] py-3 max-[719px]:px-[0.7rem] max-[719px]:py-[0.65rem]">
@@ -99,7 +107,7 @@ function TuningBlock({ m, v, t, scale }: { m: Model; v: Variant; t: Tuning; scal
         </span>
         {t.reportFile && (
           <Button variant="link" size="none" className="text-[0.84rem]" asChild>
-            <a href={ROOT + encodePath(t.report!) + REPORT_LANG} title={older ? `Measured on v${older}` : undefined} {...NEW_TAB}>
+            <a href={base + encodePath(t.report!) + REPORT_LANG} title={older ? `Measured on v${older}` : undefined} {...NEW_TAB}>
               {icons.report}Perf report
             </a>
           </Button>
@@ -123,6 +131,7 @@ function VariantDetail({
   scale,
   yaml,
   targeted,
+  editable,
 }: {
   m: Model;
   v: Variant;
@@ -130,6 +139,7 @@ function VariantDetail({
   scale: number;
   yaml: string | null;
   targeted: boolean;
+  editable: boolean;
 }) {
   const anchor = anchorOf(v.id);
   const pairs = tuningFor(m, v.id);
@@ -162,13 +172,20 @@ function VariantDetail({
               </a>
             </Button>
           )}
-          <VariantHistory m={m} v={v} repo={repo} />
+          {/* A write changes the history: it is read again. */}
+          <VariantHistory key={v.digest} m={m} v={v} repo={repo} />
           {v.source && (
             <Button size="sm" asChild>
               <a href={v.source} {...NEW_TAB} title={`Pinned to commit ${v.source.split("/blob/")[1].slice(0, 7)}`}>
                 {icons.external}Source
               </a>
             </Button>
+          )}
+          {editable && (
+            <>
+              <EditVariant m={m} v={v} />
+              <DeleteVariant m={m} v={v} />
+            </>
           )}
         </span>
       </div>
@@ -238,6 +255,12 @@ function VariantDetail({
   );
 }
 
+// What a new recipe starts as: a copy of the model's default, or its first.
+function newFrom(m: Model, yaml: Record<string, string | null>) {
+  const v = [...m.variants].sort((a, b) => Number(b.default) - Number(a.default)).find((x) => yaml[x.id]);
+  return v ? { id: v.id, yaml: yaml[v.id]! } : null;
+}
+
 // The model's facts on a centered line, a dot between each.
 function Facts({ items }: { items: ReactNode[] }) {
   return (
@@ -257,14 +280,14 @@ function Facts({ items }: { items: ReactNode[] }) {
 }
 
 export function ModelRoute() {
-  const { m, repo, yaml } = useLoaderData() as Awaited<ReturnType<typeof modelLoader>>;
+  const { m, repo, yaml } = useLoaderData() as Awaited<ReturnType<ReturnType<typeof modelLoader>>>;
   const variants = orderedVariants(m);
   const { hash } = useLocation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  useEffect(() => {
-    document.title = `${m.displayName} · Model Catalog`;
-  }, [m]);
+  const { base } = useHost();
+  const editable = useEditable();
+  useTitle(`${m.displayName} · Model Catalog`);
 
   // Checked GPU and topology toggles show only the variants on one of them,
   // each filter's own; the choice lives in the query, beside the fragment. A
@@ -343,11 +366,17 @@ export function ModelRoute() {
         {m.tags.length > 0 && (
           <div className="flex flex-wrap justify-center gap-[0.3rem]">{m.tags.map((t) => filterLink("tag", t, `hue-${tagHue(t)}`))}</div>
         )}
+        {editable && (
+          <div className="flex flex-wrap justify-center gap-2">
+            <NewVariant m={m} from={newFrom(m, yaml)} />
+            <EditMetadata m={m} />
+          </div>
+        )}
         {reports.length > 0 && (
           <div className="flex flex-wrap justify-center gap-2">
             {reports.map(({ r, title, text }) => (
               <Button key={r.file} asChild>
-                <a href={ROOT + encodePath(r.path) + REPORT_LANG} title={title} {...NEW_TAB}>
+                <a href={base + encodePath(r.path) + REPORT_LANG} title={title} {...NEW_TAB}>
                   {icons.report}
                   {text}
                 </a>
@@ -384,6 +413,7 @@ export function ModelRoute() {
                 scale={scale}
                 yaml={yaml[v.id]?.replace(/\s+$/, "") || null}
                 targeted={hash === `#${anchorOf(v.id)}`}
+                editable={editable}
               />
             ))}
           </div>

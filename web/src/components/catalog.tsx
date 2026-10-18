@@ -21,10 +21,6 @@ export const none = <span className="text-faint">—</span>;
 // Links open in a new tab, so the catalog stays where it was.
 export const NEW_TAB = { target: "_blank", rel: "noopener" } as const;
 
-// The site's root, where the published files are: index-v2.json and its
-// variant files, index.json and its version files, and the perf reports.
-export const ROOT = import.meta.env.BASE_URL;
-
 // A filter chip: clicking one sets the list's filter (see ListPage). Family
 // chips stay neutral, so a family never reads as a tag; GPU names wear the
 // same highlight as in hardware lines.
@@ -171,15 +167,16 @@ export interface LinkItem {
   el: ReactElement;
 }
 
-// Perf reports, then any variants[].link, as buttons or as inline links.
-export function linkItems(m: Model, kind: "button" | "link", reportLabel: string): LinkItem[] {
+// Perf reports, then any variants[].link, as buttons or as inline links;
+// reports from the catalog at base.
+export function linkItems(base: string, m: Model, kind: "button" | "link", reportLabel: string): LinkItem[] {
   const variant = kind === "button" ? "outline" : "link";
   const size = kind === "button" ? "default" : "none";
   const items: LinkItem[] = reportLinks(m, reportLabel).map(({ r, id, title, text }) => ({
     id,
     el: (
       <Button key={r.path} variant={variant} size={size} asChild>
-        <a href={ROOT + encodePath(r.path) + REPORT_LANG} title={title} {...NEW_TAB}>
+        <a href={base + encodePath(r.path) + REPORT_LANG} title={title} {...NEW_TAB}>
           {icons.report}
           {text}
         </a>
