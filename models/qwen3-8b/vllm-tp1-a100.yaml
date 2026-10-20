@@ -1,0 +1,75 @@
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: qwen3-8b
+id: vllm-tp1-a100
+version: 1.0.0
+servedName: Qwen3-8B
+description: "Baseline: bf16, TP1 on one NVIDIA A100 SXM4 80GB GPU, single node. Not yet tuned on this hardware."
+engine: vllm
+chart:
+  name: vllm
+  version: ">=0.7.6"
+image:
+  repository: vllm/vllm-openai
+  tag: v0.30.0
+requires:
+  gpus: 1
+  topology: single-node
+  vendor: nvidia
+  gpuProduct:
+    - NVIDIA-A100-SXM4-80GB
+values:
+  model:
+    hostPathType: Directory
+    # Use the context length declared by the model config.
+    contextLength: ""
+  modelCheck:
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  extraArgs:
+    - --tensor-parallel-size=1
+    - --dtype=bfloat16
+    - --enable-prompt-tokens-details
+    - --gpu-memory-utilization=0.9
+  env:
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+  volumes:
+    - name: dot-cache
+      emptyDir:
+        sizeLimit: 10Gi
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Gi
+  volumeMounts:
+    - name: dot-cache
+      mountPath: /root/.cache
+    - name: dshm
+      mountPath: /dev/shm
+  resources:
+    requests:
+      ephemeral-storage: 16Gi
+    limits:
+      ephemeral-storage: 16Gi
+  progressDeadlineSeconds: 7200
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 180
+  terminationGracePeriodSeconds: 1200
+  lifecycle:
+    preStop:
+      enabled: true
+      drainSeconds: 600
+      endpointSyncSeconds: 10
+      pollIntervalSeconds: 5
+    shutdownTimeout: 120
+    preStopKill: true
+  hangWatcher:
+    enabled: true
