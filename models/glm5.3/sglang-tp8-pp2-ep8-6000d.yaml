@@ -1,0 +1,117 @@
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: glm5.3
+id: sglang-tp8-pp2-ep8-6000d
+version: 1.0.4
+servedName: glm-5.3
+engine: sglang
+# Measured against the vllm-tp8-pp2-6000d variant, same 16 GPUs, same client
+# profile (50k input / 1.5k output, concurrency 10, /v1/completions, 600 s):
+#
+#                      sglang here   vllm variant   sglang, one node (8 GPUs)
+#   INPUT tok/s              4,341          4,132                        980
+#   OUTPUT tok/s             126.0          105.2                       29.4
+#   per request tok/s         12.9           11.5                        7.3
+#   TTFT                     34.3 s         11.9 s                    286.7 s
+#   max_total_num_tokens 1,180,288      1,396,288                     57,728
+#
+# Throughput is slightly ahead of vLLM and per-request output speed is higher,
+# but TTFT is about 3x worse: prefill is chunked at 8,192 tokens, so ten 50k
+# prompts queue behind one another and first-token latency is dominated by that
+# queue rather than by the forward pass. Raising chunked-prefill-size has not
+# been tried.
+#
+# The single-node column is why this variant exists. There the weights take
+# 54 GiB of an 83 GiB card and leave ~5.8 GiB for KV, so barely one 50k request
+# fits and everything else waits -- the 287 s TTFT is queueing, not compute.
+description: >-
+  TP8 per node with expert parallel, PP2 across two nodes over RoCE. EP is
+  required, not a tuning choice: plain TP8 cannot load this NVFP4 build.
+  Measured max_total_num_tokens 1,180,288 and max_req_input_len 1,048,570, so a
+  full 1M-token request fits, against 57,728 for the same engine on one node.
+  At 50k/1.5k and concurrency 10: 4,341 input and 126 output tok/s, 12.9 per
+  request, TTFT 34.3 s -- throughput just ahead of the vLLM variant on the same
+  16 GPUs, TTFT about 3x worse.
+chart:
+  name: sglang
+  # 0.9.9 is what this was measured on. 0.9.18 (the newest in the mirror at the
+  # time of writing) renders byte-identical engine args and the same three
+  # objects, so the range is left open rather than pinned.
+  version: ">=0.9.9"
+image:
+  repository: lmsysorg/sglang
+  tag: v0.5.20
+requires:
+  gpus: 8 # per pod; 16 across the group
+  nodes: 2
+  topology: lws
+  rdma: true
+  gpuProduct:
+    - NVIDIA-RTX-6000D
+values:
+  model:
+    localPath: /data/models/GLM-5.3-NVFP4
+    mountPath: /models
+    contextLength: ""
+  modelCheck:
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  lws:
+    enabled: true
+    size: 2
+  hostNetwork: true
+  rdma:
+    enabled: true
+  extraArgs:
+    - --tp-size=8
+    - --pp-size=2
+    # Whole experts to ranks instead of slicing each expert across them.
+    # Without this the MoE weight loader dies before serving, with an exact
+    # factor-of-2 shape mismatch (w13 3072 vs 6144, w2 128 vs 256) -- 6144 =
+    # 2 x 3072 is the fp4 two-values-per-byte packing factor, i.e. TP is
+    # slicing along a dimension this build has already packed. Changing the MoE
+    # runner backend does not help, because the failure is in the loader and
+    # never reaches apply(); --moe-runner-backend=marlin fails the same way.
+    # The B300 variants avoid it by running TP4, which does not fit on 83 GiB
+    # cards.
+    - --ep-size=8
+    - --quantization=modelopt_fp4
+    # Mandatory with pp>1 on non-NPU platforms: SGLang asserts
+    # disable_overlap_schedule when pp_size > 1 ("Pipeline parallelism is not
+    # compatible with overlap schedule, speculative decoding"). It costs
+    # throughput, and it is the reason two nodes are not simply twice one.
+    - --disable-overlap-schedule
+    # 0.85, which the B300 variants use, OOMs during load here. Two nodes bring
+    # the per-card weight share down from 54 GiB to 27 GiB of an 83 GiB card,
+    # so 0.72 now leaves ~33 GiB per card for KV; it was deliberately NOT
+    # raised at the same time, to keep one change per measurement.
+    - --mem-fraction-static=0.72
+    # These GPUs are PCIe-only with no NVLink, so SGLang disables its custom
+    # all-reduce on its own and warns on every rank. Saying it explicitly keeps
+    # the startup log readable.
+    - --disable-custom-all-reduce
+    - --reasoning-parser=glm45
+    - --tool-call-parser=glm47
+    - --trust-remote-code
+    - --enable-metrics
+    - --enable-cache-report
+  env:
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+    - name: NCCL_DEBUG
+      value: INFO
+    - name: NCCL_SOCKET_IFNAME
+      value: bond0
+    - name: GLOO_SOCKET_IFNAME
+      value: bond0
+    - name: NCCL_NET_GDR_LEVEL
+      value: "1"
+  shm:
+    enabled: true
+    sizeLimit: 64Gi
+  service:
+    port: 8050
+  hangWatcher:
+    enabled: true
