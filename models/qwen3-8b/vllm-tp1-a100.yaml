@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3-8b
 id: vllm-tp1-a100
-version: 1.0.0
+version: 1.0.1
 servedName: Qwen3-8B
 description: "Baseline: bf16, TP1 on one NVIDIA A100 SXM4 80GB GPU, single node. Not yet tuned on this hardware."
 engine: vllm
@@ -11,7 +11,7 @@ chart:
   version: ">=0.7.6"
 image:
   repository: vllm/vllm-openai
-  tag: v0.30.0
+  tag: v0.31.0
 requires:
   gpus: 1
   topology: single-node
