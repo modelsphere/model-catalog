@@ -1,0 +1,74 @@
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: deepseek-v4-flash-0731-nvfp4
+id: vllm-tp8-6000d
+version: 1.0.2
+servedName: deepseek-v4-flash-0731-nvfp4
+description: >-
+  NVIDIA's NVFP4 build with TP8 on one RTX 6000D node. Measured in docker: ready in ~10 min on a cold cache, KV 5,222,157 tokens, answers correct; thinking on by default. FlashInfer autotune is off: with it on, vLLM v0.30.0 hangs on these cards at the whole-model autotune pass. /root/.cache is a hostPath so compiled kernels survive a restart.
+engine: vllm
+chart:
+  name: vllm
+  version: ">=0.7.6"
+image:
+  repository: vllm/vllm-openai
+  tag: v0.30.0
+requires:
+  gpus: 8
+  topology: single-node
+  gpuProduct:
+    - NVIDIA-RTX-6000D
+values:
+  model:
+    localPath: /data/models/DeepSeek-V4-Flash-0731-NVFP4
+    mountPath: /models
+    hostPathType: Directory
+    contextLength: ""
+  modelCheck:
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  extraArgs:
+    - --tensor-parallel-size=8
+    - --gpu-memory-utilization=0.90
+    - --no-enable-flashinfer-autotune
+    - --block-size=256
+    - --max-num-batched-tokens=8192
+    - --max-num-seqs=256
+    - --enable-prefix-caching
+    - --trust-remote-code
+    - --enable-prompt-tokens-details
+    - --allowed-media-domains=none.invalid
+    - --enable-auto-tool-choice
+    - --tool-call-parser=deepseek_v4
+    - --reasoning-parser=deepseek_v4
+  env:
+    - name: NVIDIA_DISABLE_REQUIRE
+      value: "1"
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+    - name: VLLM_MEDIA_URL_ALLOW_REDIRECTS
+      value: "0"
+    - name: NCCL_DEBUG
+      value: WARN
+  service:
+    port: 8050
+  progressDeadlineSeconds: 7200
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 180
+  hangWatcher:
+    enabled: true
+  volumes:
+    - name: engine-cache
+      hostPath:
+        path: /data/cache/deepseek-v4-flash-0731-nvfp4/vllm
+        type: DirectoryOrCreate
+  volumeMounts:
+    - name: engine-cache
+      mountPath: /root/.cache
