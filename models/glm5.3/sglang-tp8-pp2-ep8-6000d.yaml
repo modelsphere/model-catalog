@@ -2,36 +2,56 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp8-pp2-ep8-6000d
-version: 1.0.4
+version: 1.0.5
 servedName: glm-5.3
 engine: sglang
-# Measured against the vllm-tp8-pp2-6000d variant, same 16 GPUs, same client
-# profile (50k input / 1.5k output, concurrency 10, /v1/completions, 600 s):
+# Measured against the vllm-tp8-pp2-6000d variant on the same 16 GPUs, same
+# client (llm_pattern_test via the in-cluster bench pod), /v1/completions:
 #
-#                      sglang here   vllm variant   sglang, one node (8 GPUs)
-#   INPUT tok/s              4,341          4,132                        980
-#   OUTPUT tok/s             126.0          105.2                       29.4
-#   per request tok/s         12.9           11.5                        7.3
-#   TTFT                     34.3 s         11.9 s                    286.7 s
-#   max_total_num_tokens 1,180,288      1,396,288                     57,728
+#   50k in / 1.5k out, concurrency 10
+#                        sglang here   vllm variant   sglang, one node (8 GPU)
+#     INPUT tok/s             4,341          4,132                        980
+#     OUTPUT tok/s            126.0          105.2                       29.4
+#     TTFT                   34.3 s         11.9 s                    286.7 s
 #
-# Throughput is slightly ahead of vLLM and per-request output speed is higher,
-# but TTFT is about 3x worse: prefill is chunked at 8,192 tokens, so ten 50k
-# prompts queue behind one another and first-token latency is dominated by that
-# queue rather than by the forward pass. Raising chunked-prefill-size has not
-# been tried.
+#   80k in / 600 out, concurrency 10 (sglang) vs 17 (vllm, its KV ceiling)
+#     INPUT tok/s           6,722.3          6,560
+#     OUTPUT tok/s             47.6           40.7
+#     TTFT                   50.6 s         29.7 s
+#     per-request total     114.7 s          223 s
+#
+#   max_total_num_tokens  1,180,288      1,396,288                     57,728
+#   max_req_input_len     1,048,570
+#
+# Throughput is ahead of vLLM on both profiles -- at 80k it is ahead while
+# running 10 concurrent requests against vLLM's 17 -- and per-request latency
+# is roughly half. TTFT is consistently worse, by about 3x at 50k and 70% at
+# 80k, and the cause is visible in the engine log rather than inferred: prefill
+# is chunked at 8,192 tokens and runs at ~8,200 tok/s, so ten 50k prompts queue
+# (observed queue-req 9, pending-token 459,040). Raising chunked-prefill-size
+# has not been tried.
+#
+# A real 1,048,000-token request completes in 428 s (prompt_tokens comes back
+# as 1,048,000, so nothing is truncated). Prefill throughput decays with
+# position -- 6,000 tok/s early, 2,197 by the 500k mark, 2,449 aggregate -- so
+# long-context TTFT grows faster than linearly in prompt length.
 #
 # The single-node column is why this variant exists. There the weights take
 # 54 GiB of an 83 GiB card and leave ~5.8 GiB for KV, so barely one 50k request
 # fits and everything else waits -- the 287 s TTFT is queueing, not compute.
+#
+# Generation was checked before any of the above was trusted, because the
+# flashinfer MoE runners have silently computed wrong answers on these cards:
+# 8 products x 3 repeats at temperature 0, all correct and identical, and 48
+# concurrent reasoning requests at max_tokens 8192 with none running away.
 description: >-
   TP8 per node with expert parallel, PP2 across two nodes over RoCE. EP is
-  required, not a tuning choice: plain TP8 cannot load this NVFP4 build.
-  Measured max_total_num_tokens 1,180,288 and max_req_input_len 1,048,570, so a
-  full 1M-token request fits, against 57,728 for the same engine on one node.
-  At 50k/1.5k and concurrency 10: 4,341 input and 126 output tok/s, 12.9 per
-  request, TTFT 34.3 s -- throughput just ahead of the vLLM variant on the same
-  16 GPUs, TTFT about 3x worse.
+  required, not a tuning choice: plain TP8 cannot load this NVFP4 build. KV
+  pool 1,180,288 tokens, max_req_input_len 1,048,570, and a real 1M-token
+  request completes in 428 s. At 50k/1.5k and concurrency 10: 4,341 input and
+  126 output tok/s; at 80k/600: 6,722 and 47.6, ahead of the vLLM variant
+  while running 10 concurrent requests against its 17. TTFT is 1.7-3x worse
+  throughout, because prefill queues in 8,192-token chunks.
 chart:
   name: sglang
   # 0.9.9 is what this was measured on. 0.9.18 (the newest in the mirror at the
@@ -83,10 +103,33 @@ values:
     # compatible with overlap schedule, speculative decoding"). It costs
     # throughput, and it is the reason two nodes are not simply twice one.
     - --disable-overlap-schedule
-    # 0.85, which the B300 variants use, OOMs during load here. Two nodes bring
-    # the per-card weight share down from 54 GiB to 27 GiB of an 83 GiB card,
-    # so 0.72 now leaves ~33 GiB per card for KV; it was deliberately NOT
-    # raised at the same time, to keep one change per measurement.
+    # 0.72, with CUDA-graph capture left at its defaults.
+    #
+    # This is NOT matched to the vllm-tp8-pp2-6000d variant's
+    # gpu-memory-utilization=0.90, and it cannot be: the two flags budget
+    # different things. vLLM's covers weights, KV and activations; sglang's
+    # covers only the static allocation and leaves activations and CUDA-graph
+    # capture to whatever remains. Three higher values were measured and all
+    # three died at graph capture, on the WORKER (the leader only prints
+    # "sigquit from a child process", so its log looks clean):
+    #
+    #   f     static       non-static used   headroom it had
+    #   0.90  74.75 GiB         7.91 GiB        8.30 GiB
+    #   0.85  70.59 GiB        10.89 GiB       12.46 GiB
+    #   0.80  66.44 GiB        15.02 GiB       16.61 GiB
+    #
+    # The middle column is the finding: capture consumes whatever is free,
+    # getting further through the batch-size list each time, then asks for
+    # ~2 GiB more. Lowering this flag never catches up, because each reduction
+    # is absorbed. 0.72 works because the 23.25 GiB it leaves is more than full
+    # capture needs. So on 83 GiB cards this flag's ceiling is ~0.72, and the
+    # resulting KV pool is about 15% smaller than the vLLM variant's -- a
+    # property of the hardware and engine, not a configuration left untuned.
+    #
+    # Capping the capture set (--cuda-graph-max-bs-decode) would buy a larger
+    # pool, and is deliberately not done: the B300 variants run the defaults,
+    # this configuration works, and a knob that exists only here is a liability
+    # for no measured gain.
     - --mem-fraction-static=0.72
     # These GPUs are PCIe-only with no NVLink, so SGLang disables its custom
     # all-reduce on its own and warns on every rank. Saying it explicitly keeps
