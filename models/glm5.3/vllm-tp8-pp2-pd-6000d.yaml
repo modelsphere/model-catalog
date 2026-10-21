@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: vllm-tp8-pp2-pd-6000d
-version: 1.0.0
+version: 1.0.1
 servedName: glm-5.3
 description: Prefill/decode-disaggregated DisaggregatedSet, TP8 PP2 per role on RTX 6000D, mooncake transfer backend. Default 2 prefill + 1 decode; prefill.replicas is configurable at deploy time (xPyD).
 engine: vllm
@@ -34,6 +34,9 @@ values:
       - config.json
       - "*.safetensors"
   extraArgs:
+    # Same server-side media fetch as the non-PD variants of this model, which
+    # already pin this; the PD pair was missed.
+    - --allowed-media-domains=none.invalid
     - --pipeline-parallel-size=2
     - --tensor-parallel-size=8
     - --gpu-memory-utilization=0.80
@@ -48,6 +51,8 @@ values:
     - --reasoning-parser=glm45
     - --max-num-batched-tokens=16384
   env:
+    - name: VLLM_MEDIA_URL_ALLOW_REDIRECTS
+      value: "0"
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:False
     # See vllm-tp8-pp2-6000d: sm120 skips these trtllm fused-MoE shapes.

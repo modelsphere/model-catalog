@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp8-pp2-ep8-6000d
-version: 1.0.5
+version: 1.0.6
 servedName: glm-5.3
 engine: sglang
 description: >-
@@ -43,6 +43,12 @@ values:
   rdma:
     enabled: true
   extraArgs:
+    # This engine fetches client-supplied http(s) media URLs server-side, and
+    # with no allowlist any domain is allowed. On a hostNetwork pod that turns
+    # an image_url into a request originating from the node, against node-local
+    # and cluster-internal addresses. An allowlist matching no real host
+    # refuses them all. Redirect targets are checked against the same list.
+    - --allowed-media-domains=none.invalid
     - --tp-size=8
     - --pp-size=2
     # Required, not tuning: under plain TP8 the MoE weight loader dies with a

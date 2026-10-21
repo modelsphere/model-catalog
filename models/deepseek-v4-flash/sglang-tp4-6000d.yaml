@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash
 id: sglang-tp4-6000d
-version: 1.0.2
+version: 1.0.3
 servedName: deepseek-v4-flash
 engine: sglang
 description: >-
@@ -30,6 +30,12 @@ values:
       - config.json
       - "*.safetensors"
   extraArgs:
+    # This engine fetches client-supplied http(s) media URLs server-side, and
+    # with no allowlist any domain is allowed. On a hostNetwork pod that turns
+    # an image_url into a request originating from the node, against node-local
+    # and cluster-internal addresses. An allowlist matching no real host
+    # refuses them all. Redirect targets are checked against the same list.
+    - --allowed-media-domains=none.invalid
     - --tp-size=4
     - --mem-fraction-static=0.85
     - --trust-remote-code
