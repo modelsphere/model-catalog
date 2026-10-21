@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.2
 id: sglang-tp8-pp2-ep8-6000d
-version: 1.0.0
+version: 1.0.1
 servedName: glm-5.2
 engine: sglang
 description: >-
@@ -55,15 +55,26 @@ values:
     - --quantization=modelopt_fp4
     # Asserted by the engine whenever pp_size > 1 on non-NPU platforms.
     - --disable-overlap-schedule
-    # Carried over from glm5.3, whose weights are the same size, and NOT tuned
-    # for this model. It loads and serves, but under concurrency 30 the KV pool
-    # hit 98% with only 9 requests running and about 29 queued -- the queueing
-    # is what makes TTFT 129 s. Lower values are worth measuring before this
-    # variant is used for latency-sensitive traffic.
+    # Carried over from glm5.3, whose weights are the same size, and not tuned
+    # for this model. Under concurrency 30 the KV pool hit 98% with only 9
+    # requests running and about 29 queued, and that queueing is what makes
+    # TTFT 129 s. Note the direction: this fraction covers weights AND the KV
+    # pool, so a LOWER value shrinks the pool and makes the queueing worse.
+    # Relief would come from raising it, and on glm5.3 every value from 0.80 up
+    # died at CUDA-graph capture, which takes whatever is free and then asks
+    # for ~2 GiB more. Whether 0.72-0.80 has headroom for this checkpoint is
+    # unmeasured.
     - --mem-fraction-static=0.72
     - --disable-custom-all-reduce
     - --reasoning-parser=glm45
     - --tool-call-parser=glm47
+    # This model is tagged `vision`, and sglang downloads client-supplied
+    # http(s) media URLs server-side; left unset, any domain is allowed. On a
+    # hostNetwork pod that turns an image_url into a request originating from
+    # the node, against node-local and cluster-internal addresses. An allowlist
+    # that matches no real host refuses them all, which is what the sibling
+    # vLLM variant achieves with --allowed-media-domains=none.invalid.
+    - --allowed-media-domains=none.invalid
     - --trust-remote-code
     - --enable-metrics
     - --enable-cache-report
