@@ -1,0 +1,94 @@
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: glm5.3
+id: sglang-tp8-pp2-ep8-pd-6000d
+version: 1.0.0
+servedName: glm-5.3
+engine: sglang
+description: >-
+  Prefill/decode-disaggregated DisaggregatedSet, TP8 PP2 EP8 per role on RTX
+  6000D over RoCE. EP is required, not a tuning choice: plain TP8 cannot load
+  this NVFP4 build. Default 2 prefill + 1 decode; prefill.replicas is
+  configurable at deploy time (xPyD).
+chart:
+  name: sglang
+  version: ">=0.9.21"
+image:
+  repository: lmsysorg/sglang
+  tag: v0.5.20
+requires:
+  gpus: 1
+  topology: pd
+  rdma: true
+  gpuProduct:
+    - NVIDIA-RTX-6000D
+values:
+  model:
+    localPath: /data/models/GLM-5.3-NVFP4
+    mountPath: /models
+    contextLength: ""
+  modelCheck:
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  extraArgs:
+    - --tp-size=8
+    - --pp-size=2
+    # Required, not tuning: under plain TP8 the MoE weight loader dies with a
+    # factor-of-2 shape mismatch (w13 3072 vs 6144), because TP slices a
+    # dimension the fp4 packing has already folded. Changing the MoE runner
+    # backend does not help -- the failure is in the loader, before apply().
+    - --ep-size=8
+    - --quantization=modelopt_fp4
+    # Asserted by the engine whenever pp_size > 1 on non-NPU platforms.
+    - --disable-overlap-schedule
+    # A ceiling, not a choice. 0.90 / 0.85 / 0.80 were each measured and each
+    # died at CUDA-graph capture: capture takes whatever is free and then asks
+    # for ~2 GiB more, so lowering this never catches up. The KV pool is
+    # therefore ~15% smaller than the vLLM variant's; matching its
+    # gpu-memory-utilization=0.90 is not possible, the two flags budget
+    # different things.
+    - --mem-fraction-static=0.72
+    - --disable-custom-all-reduce
+    - --reasoning-parser=glm45
+    - --tool-call-parser=glm47
+    - --trust-remote-code
+    - --enable-metrics
+    # Without this the engine reports no cached_tokens at all, and a
+    # prefix-cache check reads zero however well the cache is working.
+    - --enable-cache-report
+  env:
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:False
+    - name: NCCL_DEBUG
+      value: INFO
+    - name: NCCL_SOCKET_IFNAME
+      value: bond0
+    - name: GLOO_SOCKET_IFNAME
+      value: bond0
+    - name: NCCL_NET_GDR_LEVEL
+      value: "1"
+  shm:
+    enabled: true
+    sizeLimit: 64Gi
+  service:
+    port: 8050
+  hangWatcher:
+    enabled: true
+  hostNetwork: true
+  rdma:
+    enabled: true
+  scaler:
+    enabled: false
+  pd:
+    enabled: true
+    colocate: false
+    prefill:
+      gpus: "8"
+      replicas: 2
+      size: 2
+    decode:
+      gpus: "8"
+      replicas: 1
+      size: 2
