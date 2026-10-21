@@ -1,0 +1,85 @@
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: glm5.2
+id: sglang-tp8-pp2-ep8-6000d
+version: 1.0.0
+servedName: glm-5.2
+engine: sglang
+description: >-
+  TP8 per node with expert parallel, PP2 across two nodes over RoCE. EP is
+  required rather than a tuning choice, the same way it is for glm5.3: plain
+  TP8 cannot load this NVFP4 build. Measured at 50k/1.5k and concurrency 30:
+  5,515 input and 164 output tok/s, within 2% of the vLLM variant's total
+  throughput and 28% ahead on output. TTFT is 129 s against the vLLM variant's
+  67 s, but that gap is untuned rather than inherent -- see the note on
+  mem-fraction-static below.
+chart:
+  name: sglang
+  version: ">=0.9.9"
+image:
+  repository: lmsysorg/sglang
+  tag: v0.5.20
+requires:
+  gpus: 8 # per pod; 16 across the group
+  nodes: 2
+  topology: lws
+  rdma: true
+  gpuProduct:
+    - NVIDIA-RTX-6000D
+values:
+  model:
+    localPath: /data/models/GLM-5.2-NVFP4
+    mountPath: /models
+    contextLength: ""
+  modelCheck:
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  lws:
+    enabled: true
+    size: 2
+  hostNetwork: true
+  rdma:
+    enabled: true
+  extraArgs:
+    - --tp-size=8
+    - --pp-size=2
+    # Required, not tuning. Under plain TP8 the MoE weight loader dies with a
+    # factor-of-2 shape mismatch, because TP slices a dimension the fp4 packing
+    # has already folded. This model was written off as unsupported under
+    # sglang for exactly that error; EP was only verified on glm5.3 at the
+    # time, and the two checkpoints differ -- glm5.3 is MIXED_PRECISION, this
+    # one is uniform NVFP4 -- so it needed its own run.
+    - --ep-size=8
+    - --quantization=modelopt_fp4
+    # Asserted by the engine whenever pp_size > 1 on non-NPU platforms.
+    - --disable-overlap-schedule
+    # Carried over from glm5.3, whose weights are the same size, and NOT tuned
+    # for this model. It loads and serves, but under concurrency 30 the KV pool
+    # hit 98% with only 9 requests running and about 29 queued -- the queueing
+    # is what makes TTFT 129 s. Lower values are worth measuring before this
+    # variant is used for latency-sensitive traffic.
+    - --mem-fraction-static=0.72
+    - --disable-custom-all-reduce
+    - --reasoning-parser=glm45
+    - --tool-call-parser=glm47
+    - --trust-remote-code
+    - --enable-metrics
+    - --enable-cache-report
+  env:
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+    - name: NCCL_SOCKET_IFNAME
+      value: bond0
+    - name: GLOO_SOCKET_IFNAME
+      value: bond0
+    - name: NCCL_NET_GDR_LEVEL
+      value: "1"
+  shm:
+    enabled: true
+    sizeLimit: 64Gi
+  service:
+    port: 8050
+  hangWatcher:
+    enabled: true
