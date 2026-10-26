@@ -10,7 +10,7 @@ description: "Optimized: TP2/DP4, flashcomm1 and NPU graph/static/super kernels
   on eight Ascend 950DT NPUs, single node, using
   Eco-Tech/GLM-5.3-Flash-w8a8-mxfp8 weights. At the sweep-reported maximum
   concurrency within TTFT p50 <= 10s and request output >= 10 tok/s, total
-  throughput vs baseline: +1.4% (50k + 1.5k), +13.0% (8k + 1k). No quality
+  throughput vs baseline: +1.4% (50k + 1.5k), +4.0% (8k + 1k). No quality
   evaluation or confirmation rerun."
 engine: vllm
 chart:
@@ -26,28 +26,32 @@ requires:
   gpuProduct:
     - Ascend-950DT
 values:
-  hostNetwork: true
+  # Keep API and hang-watcher ports on the pod network, as with the H100 variants.
+  hostNetwork: false
   model:
-    # Load the quantized HF repository directly; the shared model source is for the NVIDIA variants.
-    # No local model volume or model-check init container is needed.
-    localPath: ""
+    # Pre-stage Eco-Tech/GLM-5.3-Flash-w8a8-mxfp8 here (the path used by 950test).
+    # Override this path in the site profile when weights live elsewhere.
+    # source.hf identifies the upstream NVIDIA model; Ascend requires this third-party quantization.
+    # Mount local weights rather than downloading from Hugging Face at startup.
+    localPath: /data/share/models/GLM-5.3-Flash-w8a8-mxfp8
+    mountPath: /model
+    hostPathType: Directory
+    contextLength: ""
   modelCheck:
-    enabled: false
-  commandOverride:
-    # Preserve the quantized model ID and all launch arguments without shell quoting.
-    - vllm
-    - serve
-    - Eco-Tech/GLM-5.3-Flash-w8a8-mxfp8
-    - --host=0.0.0.0
-    - --port=8000
-    - --served-model-name=GLM-5.3-Flash
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  extraArgs:
     - --trust-remote-code
     - --quantization=ascend
+    - --tool-call-parser=glm47
+    - --reasoning-parser=glm47
+    - --enable-auto-tool-choice
     - --data-parallel-size=4
     - --tensor-parallel-size=2
     - --enable-expert-parallel
     - --max-model-len=1048576
-    - --max-num-seqs=32
     - --max-num-batched-tokens=8192
     - --gpu-memory-utilization=0.9
     - --limit-mm-per-prompt={"image":1,"video":0}
@@ -84,9 +88,8 @@ values:
         path: /etc/hixlep
         type: Directory
     - name: dot-cache
-      hostPath:
-        path: /root/.cache
-        type: DirectoryOrCreate
+      emptyDir:
+        sizeLimit: 10Gi
     - name: usr-local-sbin
       hostPath:
         path: /usr/local/sbin
@@ -152,6 +155,11 @@ values:
       mountPath: /dev/ummu
     - name: uburma
       mountPath: /dev/uburma
+  resources:
+    requests:
+      ephemeral-storage: 16Gi
+    limits:
+      ephemeral-storage: 16Gi
   progressDeadlineSeconds: 7200
   startupProbe:
     httpGet:
@@ -160,3 +168,5 @@ values:
     periodSeconds: 30
     timeoutSeconds: 10
     failureThreshold: 180
+  hangWatcher:
+    enabled: true

@@ -39,5 +39,5 @@ tuning:
       - name: 50k + 1.5k
         uplift: 1.4
       - name: 8k + 1k
-        uplift: 13
+        uplift: 4.0
     report: glm-5.3-flash-950dt-report.html
