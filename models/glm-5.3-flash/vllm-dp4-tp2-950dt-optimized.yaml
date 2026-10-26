@@ -1,0 +1,162 @@
+# Ascend 950DT serving configuration; see glm-5.3-flash-950dt-report.html.
+
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: glm-5.3-flash
+id: vllm-dp4-tp2-950dt-optimized
+version: 1.0.0
+servedName: GLM-5.3-Flash
+description: "Optimized: TP2/DP4, flashcomm1 and NPU graph/static/super kernels
+  on eight Ascend 950DT NPUs, single node, using
+  Eco-Tech/GLM-5.3-Flash-w8a8-mxfp8 weights. At the sweep-reported maximum
+  concurrency within TTFT p50 <= 10s and request output >= 10 tok/s, total
+  throughput vs baseline: +1.4% (50k + 1.5k), +13.0% (8k + 1k). No quality
+  evaluation or confirmation rerun."
+engine: vllm
+chart:
+  name: vllm
+  version: ">=0.7.6"
+image:
+  repository: quay.io/ascend/vllm-ascend
+  tag: v0.30.0rc2-a5-openeuler
+requires:
+  gpus: 8
+  topology: single-node
+  vendor: ascend
+  gpuProduct:
+    - Ascend-950DT
+values:
+  hostNetwork: true
+  model:
+    # Load the quantized HF repository directly; the shared model source is for the NVIDIA variants.
+    # No local model volume or model-check init container is needed.
+    localPath: ""
+  modelCheck:
+    enabled: false
+  commandOverride:
+    # Preserve the quantized model ID and all launch arguments without shell quoting.
+    - vllm
+    - serve
+    - Eco-Tech/GLM-5.3-Flash-w8a8-mxfp8
+    - --host=0.0.0.0
+    - --port=8000
+    - --served-model-name=GLM-5.3-Flash
+    - --trust-remote-code
+    - --quantization=ascend
+    - --data-parallel-size=4
+    - --tensor-parallel-size=2
+    - --enable-expert-parallel
+    - --max-model-len=1048576
+    - --max-num-seqs=32
+    - --max-num-batched-tokens=8192
+    - --gpu-memory-utilization=0.9
+    - --limit-mm-per-prompt={"image":1,"video":0}
+    - --compilation-config={"cudagraph_mode":"FULL_DECODE_ONLY"}
+    - --additional-config={"enable_flashcomm1":true,"ascend_compilation_config":{"enable_npugraph_ex":true,"enable_static_kernel":true,"enable_super_kernel":true}}
+    - --speculative-config={"method":"deepseek_mtp","num_speculative_tokens":3,"enforce_eager":true}
+  env:
+    - name: VLLM_USE_V2_MODEL_RUNNER
+      value: "0"
+    - name: PYTORCH_NPU_ALLOC_CONF
+      value: expandable_segments:True
+    - name: HCCL_BUFFSIZE
+      value: "1024"
+  shm:
+    enabled: true
+    sizeLimit: 1Gi
+  volumes:
+    # The Ascend device plugin/runtime supplies the eight allocated /dev/davinci* devices
+    # and device cgroup permissions. Mount the A5 control devices and host runtime files below.
+    - name: ascend-driver
+      hostPath:
+        path: /usr/local/Ascend/driver
+        type: Directory
+    - name: ascend-install-info
+      hostPath:
+        path: /etc/ascend_install.info
+        type: File
+    - name: hccl-rootinfo
+      hostPath:
+        path: /etc/hccl_rootinfo.json
+        type: File
+    - name: hixlep
+      hostPath:
+        path: /etc/hixlep
+        type: Directory
+    - name: dot-cache
+      hostPath:
+        path: /root/.cache
+        type: DirectoryOrCreate
+    - name: usr-local-sbin
+      hostPath:
+        path: /usr/local/sbin
+        type: Directory
+    - name: dcmi
+      hostPath:
+        path: /usr/local/dcmi
+        type: Directory
+    - name: npu-smi
+      hostPath:
+        path: /usr/local/bin/npu-smi
+        type: File
+    - name: urma-admin
+      hostPath:
+        path: /usr/bin/urma_admin
+        type: File
+    - name: route-conf
+      hostPath:
+        path: /lib/route.conf
+        type: File
+    - name: davinci-manager
+      hostPath:
+        path: /dev/davinci_manager
+        type: CharDevice
+    - name: hisi-hdc
+      hostPath:
+        path: /dev/hisi_hdc
+        type: CharDevice
+    - name: ummu
+      hostPath:
+        path: /dev/ummu
+        type: CharDevice
+    - name: uburma
+      hostPath:
+        path: /dev/uburma
+        type: CharDevice
+  volumeMounts:
+    - name: ascend-driver
+      mountPath: /usr/local/Ascend/driver
+    - name: ascend-install-info
+      mountPath: /etc/ascend_install.info
+    - name: hccl-rootinfo
+      mountPath: /etc/hccl_rootinfo.json
+    - name: hixlep
+      mountPath: /etc/hixlep
+    - name: dot-cache
+      mountPath: /root/.cache
+    - name: usr-local-sbin
+      mountPath: /usr/local/sbin
+    - name: dcmi
+      mountPath: /usr/local/dcmi
+    - name: npu-smi
+      mountPath: /usr/local/bin/npu-smi
+    - name: urma-admin
+      mountPath: /usr/bin/urma_admin
+    - name: route-conf
+      mountPath: /lib/route.conf
+    - name: davinci-manager
+      mountPath: /dev/davinci_manager
+    - name: hisi-hdc
+      mountPath: /dev/hisi_hdc
+    - name: ummu
+      mountPath: /dev/ummu
+    - name: uburma
+      mountPath: /dev/uburma
+  progressDeadlineSeconds: 7200
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 180
