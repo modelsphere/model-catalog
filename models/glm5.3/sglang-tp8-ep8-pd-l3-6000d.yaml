@@ -180,6 +180,14 @@ values:
     timeoutSeconds: 10
     failureThreshold: 180
   progressDeadlineSeconds: 7200
+  # Cluster-specific, and unavoidable here: the nodes prepared for EBOF carry
+  # taints so that ordinary workloads stay off them. A variant that omits
+  # these schedules nowhere, and the only symptom is Pending with
+  # "1 node(s) had untolerated taint(s)" among a pile of other reasons.
+  tolerations:
+    - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+    - {key: ebof-test, operator: Exists, effect: NoSchedule}
+    - {key: dedicated, operator: Exists, effect: NoSchedule}
   pd:
     enabled: true
     colocate: false
