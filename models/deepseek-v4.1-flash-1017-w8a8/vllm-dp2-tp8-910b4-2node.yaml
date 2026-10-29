@@ -1,0 +1,223 @@
+# DeepSeek-V4.1-Flash-1017 (w8a8) on two Ascend 910B4 nodes (Atlas 800T A2), vLLM-Ascend.
+#
+# SITE VARIANT -- dev branch only. It encodes one site's scheduling: a volcano pool label
+# (compute.rise.io/pool), that platform's taints, the resource name its device plugin publishes
+# (volcano.sh/Ascend910B4-1), host networking on bond1 and a host path for CANN logs. On any other
+# cluster it schedules nowhere. requires.gpus is 0 for the reason given at requires
+# (https://github.com/modelsphere/swiss/issues/41).
+#
+# Translated from the site's own serving runtime for these weights; the command line keeps the
+# runtime's order so the two can be diffed. Rendered against vllm chart 0.8.23 and planned by
+# swissd (2026-10-29). Never deployed: it needs two nodes in one pool with 8 free cards each.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: deepseek-v4.1-flash-1017-w8a8
+id: vllm-dp2-tp8-910b4-2node
+version: 1.0.0
+servedName: deepseek-v41
+description: >-
+  Two Ascend 910B4 nodes, 8 cards each. vLLM's Ascend backend (CANN) with data-parallel size 2
+  (one engine local per node), TP8 within a node, expert parallel across the 16, and DSpark
+  speculative decoding. Not tuned -- no AutoTune run on this hardware.
+engine: vllm
+chart:
+  name: vllm
+  # LeaderWorkerSet support (templates/lws.yaml) and the hostNetwork/dnsPolicy values this
+  # variant needs arrived well before 0.8.23; pinned at the version it was written against
+  # because the command below depends on LWS injecting LWS_WORKER_INDEX/LWS_LEADER_ADDRESS.
+  version: ">=0.8.23"
+image:
+  # From the ClusterServingRuntime, by digest as the runtime pins it. quay.io and this
+  # Huawei SWR registry are both reachable from the site's nodes; docker.io is not.
+  # The vllm chart has no digest key and renders "<repository>:<tag>", so the digest rides in
+  # the tag; the runtime pulls by digest and ignores "pinned". No live upstream tag points at
+  # this digest any more (checked quay, 2026-10-29).
+  # Same manifest as the site runtime's SWR copy, which needs a login; quay serves it
+  # anonymously.
+  repository: quay.io/ascend/vllm-ascend
+  tag: "pinned@sha256:7859b75177884252d2b703eff727831ccab4e33a8bde0a9b4ac7563facc98b33"
+requires:
+  # 0, and no vendor: swiss projects model.gpus from requires.gpus AFTER merging the values
+  # below, so values cannot override it, and the vllm chart turns a non-zero model.gpus into
+  # nvidia.com/gpu -- a resource the site's nodes have 0 of. "0" leaves the key off the pod and the
+  # accelerator is requested under resources instead. vendor has to go with it (the catalog
+  # rejects gpus: 0 while a vendor is set) and would map to huawei.com/Ascend910, also 0 here.
+  # See https://github.com/modelsphere/swiss/issues/41 -- the real fix belongs upstream.
+  gpus: 0
+  # A leader and one worker; must equal values.lws.size.
+  nodes: 2
+  topology: lws
+values:
+  model:
+    mountPath: /models
+    hostPathType: Directory
+    # 1048576, as the runtime sets it. The weights declare the same context length.
+    contextLength: "1048576"
+  # --- The group: leader + one worker, created leader-first, recreated as a group.
+  lws:
+    enabled: true
+    size: 2
+    replicas: 1
+    startupPolicy: LeaderCreated
+    # = the ISVC's lifecycle.updateStrategy: RecreatePod. A cross-node vLLM instance cannot
+    # survive one of its pods being replaced underneath it.
+    restartPolicy: RecreateGroupOnPodRestart
+    # Closest thing to the ISVC's readyPolicy: AllPodReady.
+    waitForLeader: true
+    workerTerminationGracePeriodSeconds: 60
+  # --- Host network, as the runtime's engineConfig sets it. HCCL_IF_IP below is the host IP,
+  # which only means anything here.
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  securityContext:
+    privileged: true
+  # --- Scheduling. The pool value is NOT a constant: it was changed twice on 2026-10-29.
+  # Re-check `kubectl get nodes -L compute.rise.io/pool` before deploying, and note both nodes
+  # must be in the SAME pool or one group cannot span them.
+  # The pod label is what rise's webhook reads to inject scheduling.volcano.sh/queue-name, so
+  # it decides the queue and whose quota this spends; the nodeSelector decides the landing.
+  schedulerName: volcano
+  podLabels:
+    compute.rise.io/pool: volcano-4pd-rvg2x
+  nodeSelector:
+    compute.rise.io/pool: volcano-4pd-rvg2x
+  tolerations:
+    - key: compute.rise.io/pooled
+      operator: Exists
+      effect: NoSchedule
+    - key: huawei.com/npu
+      operator: Exists
+      effect: NoSchedule
+  # A whole node per pod. The resource NAME follows the node's pool: volcano.sh/* under a
+  # volcano pool, huawei.com/Ascend910B4-1 under a hami one. Both exist on these machines for
+  # the same physical cards.
+  resources:
+    requests:
+      volcano.sh/Ascend910B4-1: "8"
+      cpu: "32"
+      memory: 768Gi
+    limits:
+      volcano.sh/Ascend910B4-1: "8"
+      cpu: "32"
+      memory: 768Gi
+  env:
+    - name: SERVED_MODEL_NAME
+      value: deepseek-v41
+    - name: POD_IP
+      valueFrom:
+        fieldRef:
+          # hostIP, not podIP: hostNetwork.
+          fieldPath: status.hostIP
+    - name: NIC_NAME
+      value: bond1
+    - name: VLLM_USE_V2_MODEL_RUNNER
+      value: "0"
+    - name: VLLM_ENGINE_READY_TIMEOUT_S
+      value: "3600"
+    - name: PYTORCH_NPU_ALLOC_CONF
+      value: expandable_segments:True
+    - name: ASCEND_RT_VISIBLE_DEVICES
+      value: "0,1,2,3,4,5,6,7"
+    - name: ASCEND_GLOBAL_LOG_LEVEL
+      value: "1"
+    - name: ASCEND_PROCESS_LOG_PATH
+      value: /root/ascend/log
+  volumes:
+    - name: cann-diagnostics
+      hostPath:
+        path: /data/share/deployments/deepseek-v41-1017-cann
+        type: DirectoryOrCreate
+  volumeMounts:
+    - name: cann-diagnostics
+      mountPath: /root/ascend/log
+  # --- Why the whole command line is written out here.
+  #
+  # The chart's own multi-node support derives --nnodes, --node-rank (${LWS_WORKER_INDEX}),
+  # --master-addr (${LWS_LEADER_ADDRESS}), --master-port and --headless, and sets
+  # --distributed-executor-backend=mp; lws.yaml refuses any of those in extraArgs, because
+  # vLLM takes the last occurrence of a repeated flag and a restated --node-rank would give
+  # every pod rank 0. This engine spans the nodes a different way: vLLM's data-parallel
+  # engine (--data-parallel-size/-size-local/-address/-rpc-port, --data-parallel-start-rank on
+  # the worker). The chart has no --data-parallel-* concept, so the two cannot be mixed
+  # through extraArgs -- commandOverride skips the chart's command line entirely and the rank
+  # branch is written by hand. extraArgs is refused under commandOverride, so every engine
+  # flag lives here.
+  #
+  # Kept in the runtime's own order so the two can be diffed: rank guard, HCCL/GLOO/TP
+  # interface exports, jemalloc, resolve the leader, the rank branch, exec. OME's
+  # OME_INSTANCE_POD_RANK and OME_LEADER_ADDRESS are LWS_WORKER_INDEX and LWS_LEADER_ADDRESS
+  # here; OME_INSTANCE_POD_COUNT is lws.size, known at render time, so its guard is dropped.
+  commandOverride:
+    - bash
+    - -c
+    - |
+      set -euo pipefail
+      RANK="${LWS_WORKER_INDEX:-0}"
+      case "$RANK" in 0|1) ;; *) echo "Invalid node rank: $RANK" >&2; exit 1 ;; esac
+      export HCCL_IF_IP="${POD_IP:?}"
+      export GLOO_SOCKET_IFNAME="${NIC_NAME:?}" TP_SOCKET_IFNAME="$NIC_NAME" HCCL_SOCKET_IFNAME="$NIC_NAME"
+      if [ -f /usr/lib/aarch64-linux-gnu/libjemalloc.so.2 ]; then
+        export LD_PRELOAD="/usr/lib/aarch64-linux-gnu/libjemalloc.so.2${LD_PRELOAD:+:$LD_PRELOAD}"
+      fi
+      LEADER_IP=''
+      for _ in $(seq 1 60); do
+        if LEADER_IP=$(python3 -c 'import socket,sys; print(socket.gethostbyname(sys.argv[1]))' \
+                         "${LWS_LEADER_ADDRESS:?}"); then break; fi
+        sleep 5
+      done
+      [ -n "$LEADER_IP" ] || { echo "Timed out resolving leader address" >&2; exit 1; }
+      set -- /models \
+        --host 0.0.0.0 --port 8000 \
+        --served-model-name "${SERVED_MODEL_NAME}" \
+        --data-parallel-rpc-port 13399 \
+        --data-parallel-size 2 \
+        --data-parallel-size-local 1 \
+        --tensor-parallel-size 8 \
+        --enable-expert-parallel \
+        --max-model-len 1048576 \
+        --max-num-batched-tokens 4096 \
+        --max-num-seqs 32 \
+        --gpu-memory-utilization 0.90 \
+        --block-size 128 \
+        --tokenizer-mode deepseek_v41 \
+        --reasoning-parser deepseek_v41 \
+        --tool-call-parser deepseek_v41 \
+        --enable-auto-tool-choice \
+        --trust-remote-code \
+        --enable-prompt-tokens-details \
+        --model-loader-extra-config '{"enable_multithread_load":true,"num_threads":128}' \
+        --safetensors-load-strategy lazy \
+        --quantization ascend \
+        --engram-config '{"cpu_offload":true,"dp_shared_memory":true}' \
+        --additional-config '{"enable_cpu_binding":true,"ascend_compilation_config":{"enable_npugraph_ex":false,"enable_static_kernel":false}}' \
+        --speculative-config '{"method":"dspark","num_speculative_tokens":5,"enforce_eager":true}' \
+        --compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+      # Rank 1 owns DP ranks 1.. and runs headless: no HTTP server, so nothing probes it.
+      if [ "$RANK" = 1 ]; then
+        set -- "$@" --headless --data-parallel-start-rank 1
+      fi
+      exec vllm serve "$@" --data-parallel-address "$LEADER_IP"
+  # The runtime gives the load an hour; 2.8TiB of weights over a lazy safetensors load needs it.
+  startupProbe:
+    httpGet: { path: /health, port: http }
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    failureThreshold: 360
+  readinessProbe:
+    httpGet: { path: /health, port: http }
+    periodSeconds: 10
+    failureThreshold: 3
+  progressDeadlineSeconds: 7200
+  terminationGracePeriodSeconds: 1200
+  # Both read nvidia-smi, so neither can judge an Ascend pod.
+  modelCheck:
+    enabled: false
+  hangWatcher:
+    enabled: false
+  # CART's image is not pullable from the site (docker.io times out there).
+  cart:
+    enabled: false
+  # A fixed two-node instance is not something to autoscale, and under lws the scaler would
+  # own the group count.
+  scaler:
+    enabled: false
