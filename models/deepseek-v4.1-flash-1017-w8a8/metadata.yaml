@@ -1,0 +1,16 @@
+apiVersion: catalog.swiss/v2
+name: deepseek-v4.1-flash-1017-w8a8
+displayName: DeepSeek-V4.1-Flash-1017-w8a8
+description: DeepSeek-V4.1-Flash-1017 quantized to w8a8 for Ascend, across two Atlas 800T A2 (910B4) nodes.
+family: deepseek
+quantization: w8a8
+tags:
+  - chat
+  - reasoning
+  - tool-use
+defaultVariant: vllm-dp2-tp8-910b4-2node
+source:
+  # A ModelScope repo id (modelscope.cn/models/Eco-Tech/DeepSeek-V4.1-Flash-1017-w8a8); the build
+  # is not on Hugging Face. The field is still `hf` because that is the only identity the schema
+  # has, and what matters to a site is the org/name it expands into model.localPath.
+  hf: Eco-Tech/DeepSeek-V4.1-Flash-1017-w8a8

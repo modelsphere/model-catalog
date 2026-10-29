@@ -1,0 +1,157 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+#
+# SITE VARIANT -- dev branch only. Qwen3-8B on one Ascend 910B4 card through volcano. It differs
+# from vllm-tp1-910b (the general Ascend variant) only where that one cannot schedule on a
+# volcano-managed 910B4 site: requires.gpus is 0 with no vendor (swiss#41), the card is requested
+# as volcano.sh/Ascend910B4-1, and the pod carries the site's pool label, selector and taints.
+# Deployed through swissd on such a site on 2026-10-29: answered correctly, 60220/65536 MiB HBM.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: qwen3-8b
+id: vllm-tp1-910b4
+version: 1.0.0
+servedName: Qwen3-8B
+description: "Site variant: one Ascend 910B4 card on a volcano-managed pool, requested as volcano.sh/Ascend910B4-1. vLLM's Ascend backend (CANN). Not tuned."
+engine: vllm
+chart:
+  name: vllm
+  version: ">=0.7.6"
+image:
+  # Upstream vllm-ascend. Multi-arch, and arm64 is the one that matters:
+  # Atlas 800T A2 is aarch64. The digest is the index, not a platform
+  # manifest, so a pull still picks the right architecture.
+  repository: quay.io/ascend/vllm-ascend
+  tag: v0.23.0.post1
+  digest: sha256:ffe9306186781ddb80812eda574134e601ee8499693ea36e4a97173111ddf7e7
+requires:
+  # 0, and no vendor, on purpose -- this is a site variant (see the header).
+  #
+  # swiss projects model.gpus from requires.gpus AFTER merging this file's
+  # values, so values cannot override it, and the vllm chart turns a
+  # non-zero model.gpus into nvidia.com/gpu. The site's nodes have 0 allocatable
+  # of that, so any non-zero value here schedules nowhere. "0" leaves the
+  # key off the pod and the accelerator is requested under resources below,
+  # as volcano.sh/Ascend910B4-1.
+  #
+  # vendor: ascend goes with it: the catalog rejects gpus: 0 while a vendor
+  # is set, and swiss maps that vendor to huawei.com/Ascend910 -- also 0
+  # here. vendor only feeds node affinity and the inventory view, both
+  # already blind on that site (swiss reads accelerator/huawei-ascend910
+  # labels; its nodes publish gpustack's
+  # acceleratable.feature.gpustack.ai/ascend-910b4-1.*, so /api/nodes
+  # reports GPUs: 0 either way).
+  #
+  # The real fix belongs in swiss: requires.vendor never chooses the
+  # requested resource, only affinity and inventory, so every non-nvidia
+  # vendor ends up asking for nvidia.com/gpu. Until then a site variant
+  # states the resource itself.
+  gpus: 0
+  topology: single-node
+values:
+  model:
+    hostPathType: Directory
+    contextLength: ""
+  modelCheck:
+    # Off on Ascend: it shells out to an NVIDIA/CUDA layout (nvidia-smi).
+    enabled: false
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  extraArgs:
+    # Deliberately minimal. Everything here is either measured elsewhere or
+    # the convention in this catalog; nothing is guessed.
+    #
+    # No --reasoning-parser / --tool-call-parser: the parser names cannot be
+    # confirmed for the vLLM this image carries (v0.23's vllm/parser holds
+    # only abstract_parser and parser_manager -- the per-model parsers and
+    # their registered names arrived in a later refactor), and a wrong name
+    # fails at startup. They belong here once someone has run the image.
+    #
+    # No --max-model-len either: no other variant sets it, and Qwen3-8B's
+    # config.json already declares 32768.
+    - --enable-prompt-tokens-details
+    - --gpu-memory-utilization=0.9
+  env:
+    # No NVIDIA_DISABLE_REQUIRE and no PYTORCH_ALLOC_CONF here: the first is
+    # a CUDA-image concern, the second configures the CUDA caching allocator,
+    # which torch_npu does not use.
+    - name: VLLM_USE_V1
+      value: "1"
+  volumes:
+    - name: dot-cache
+      emptyDir:
+        sizeLimit: 10Gi
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Gi
+  volumeMounts:
+    - name: dot-cache
+      mountPath: /root/.cache
+    - name: dshm
+      mountPath: /dev/shm
+  resources:
+    requests:
+      ephemeral-storage: 16Gi
+      volcano.sh/Ascend910B4-1: "1"
+      cpu: "8"
+      memory: 32Gi
+    limits:
+      ephemeral-storage: 16Gi
+      volcano.sh/Ascend910B4-1: "1"
+      cpu: "16"
+      memory: 64Gi
+  progressDeadlineSeconds: 7200
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 180
+  terminationGracePeriodSeconds: 1200
+  lifecycle:
+    # vllm's lifecycle keys, not sglang's: there is no forceShutdown here,
+    # and draining in-flight requests on SIGTERM is what shutdownTimeout
+    # does -- vLLM aborts them outright when it is 0.
+    preStop:
+      enabled: true
+      drainSeconds: 600
+      endpointSyncSeconds: 10
+      pollIntervalSeconds: 5
+    shutdownTimeout: 120
+    preStopKill: true
+  hangWatcher:
+    # Same reason as modelCheck: it reads nvidia-smi.
+    enabled: false
+  cart:
+    # Off: the chart brings CART up by default, and its image is not one
+    # the site can pull -- quay.io works there, docker.io times out, so
+    # the two replicas sit in ImagePullBackOff beside a healthy engine and
+    # make every pod listing look broken. Turn it back on once the image is
+    # reachable from the site.
+    enabled: false
+  # --- Site scheduling. Verified by hand before being written here: these
+  # same values deployed Qwen2.5-0.5B through this chart on that site,
+  # answered correctly and put 61414 of 65536 MiB on the card. Kept
+  # identical so the variant cannot drift from what was measured.
+  schedulerName: volcano
+  # The pod label is what rise's webhook reads to inject
+  # scheduling.volcano.sh/queue-name: it decides which queue admits the pod
+  # and whose quota it is charged to. Measured: a pod without it still runs
+  # and still takes a card, but with no queue injected -- an NPU spent
+  # outside the platform's accounting.
+  podLabels:
+    compute.rise.io/pool: volcano-4pd-rvg2x
+  # Redundant only while every schedulable node carries the same pool
+  # label, which was not true earlier the same day. The label decides the
+  # accounting; this decides the landing.
+  nodeSelector:
+    compute.rise.io/pool: volcano-4pd-rvg2x
+  tolerations:
+    - key: compute.rise.io/pooled
+      operator: Exists
+      effect: NoSchedule
+    - key: huawei.com/npu
+      operator: Exists
+      effect: NoSchedule
