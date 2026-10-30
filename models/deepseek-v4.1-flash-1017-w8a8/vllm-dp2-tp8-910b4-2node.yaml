@@ -1,10 +1,11 @@
 # DeepSeek-V4.1-Flash-1017 (w8a8) on two Ascend 910B4 nodes (Atlas 800T A2), vLLM-Ascend.
 #
-# SITE VARIANT -- dev branch only. It encodes one site's scheduling: a volcano pool label
-# (compute.rise.io/pool), that platform's taints, the resource name its device plugin publishes
-# (volcano.sh/Ascend910B4-1), host networking on bond1 and a host path for CANN logs. On any other
-# cluster it schedules nowhere. requires.gpus is 0 for the reason given at requires
-# (https://github.com/modelsphere/swiss/issues/41).
+# For a volcano-managed Ascend 910B4 site: the card is requested as volcano.sh/Ascend910B4-1 (the
+# name HAMi's volcano device plugin publishes) through the volcano scheduler, with host networking
+# on bond1 and a host path for CANN logs. requires.gpus is 0 for the reason given at requires
+# (https://github.com/modelsphere/swiss/issues/41). Which pool to land in (pod labels, node
+# selector, tolerations) is not set here: that belongs to the cluster, and a deploy passes it as
+# overrides.
 #
 # Translated from the site's own serving runtime for these weights; the command line keeps the
 # runtime's order so the two can be diffed. Deployed through swissd with vllm chart 0.8.23 on such
@@ -15,7 +16,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4.1-flash-1017-w8a8
 id: vllm-dp2-tp8-910b4-2node
-version: 1.0.1
+version: 1.0.2
 servedName: deepseek-v41
 description: >-
   Two Ascend 910B4 nodes, 8 cards each. vLLM's Ascend backend (CANN) with data-parallel size 2
@@ -87,23 +88,11 @@ values:
   dnsPolicy: ClusterFirstWithHostNet
   securityContext:
     privileged: true
-  # --- Scheduling. The pool value is NOT a constant: it was changed twice on 2026-10-29.
-  # Re-check `kubectl get nodes -L compute.rise.io/pool` before deploying, and note both nodes
-  # must be in the SAME pool or one group cannot span them.
-  # The pod label is what rise's webhook reads to inject scheduling.volcano.sh/queue-name, so
-  # it decides the queue and whose quota this spends; the nodeSelector decides the landing.
+  # --- Scheduling. The scheduler goes with the resource name below (volcano.sh/* is only
+  # allocated through volcano). Which pool to land in -- podLabels, nodeSelector and
+  # tolerations -- is a fact about the cluster, not the model, so the variant sets none of it
+  # and the deploy passes it as overrides. Both pods of the group must land in one pool.
   schedulerName: volcano
-  podLabels:
-    compute.rise.io/pool: volcano-4pd-rvg2x
-  nodeSelector:
-    compute.rise.io/pool: volcano-4pd-rvg2x
-  tolerations:
-    - key: compute.rise.io/pooled
-      operator: Exists
-      effect: NoSchedule
-    - key: huawei.com/npu
-      operator: Exists
-      effect: NoSchedule
   # A whole node per pod. The resource NAME follows the node's pool: volcano.sh/* under a
   # volcano pool, huawei.com/Ascend910B4-1 under a hami one. Both exist on these machines for
   # the same physical cards.
