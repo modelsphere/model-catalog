@@ -2,28 +2,22 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp8-pp2-ep8-pd-l3-6000d
-version: 1.0.0
+version: 1.1.0
 servedName: glm-5.3
 engine: sglang
 description: >-
   Prefill/decode-disaggregated DisaggregatedSet, TP8 PP2 EP8 per role on RTX
-  6000D over RoCE, with Mooncake NVMe-oF as L3 (HiCache storage backend)
-  against a shared EBOF array. EP is required, not a tuning choice: plain TP8
-  cannot load this NVFP4 build. Default 2 prefill + 1 decode;
-  prefill.replicas is configurable at deploy time (xPyD). The L2-only sibling
-  is sglang-tp8-pp2-ep8-pd-l2-6000d.
+  6000D over RoCE, with tiered KV offload: hicache (size 4) in front of a
+  mooncake storage backend (1 GB global segment, 2 MB hugepages, 96 Gi
+  limit). EP is required, not a tuning choice: plain TP8 cannot load this
+  NVFP4 build. Default 2 prefill + 1 decode; prefill.replicas is
+  configurable at deploy time (xPyD).
 chart:
   name: sglang
-  version: ">=0.9.26"
-# NOT the stock image. L3 writes to NVMe-oF through SPDK, which needs a client
-# built with USE_NOF=ON plus the EBOF patch set. Measured with stock
-# lmsysorg/sglang on this hardware: the Mooncake client connects and warms up,
-# then every rank dies registering its host pool --
-#   rdma_context.cpp: Failed to register memory 0x...: Invalid argument [22]
-#   RuntimeError: Failed to register buffer to Mooncake Store, error code: -600
+  version: ">=0.9.27"
 image:
-  repository: harbor.maas.21vcloud.com/4paradigm/sglang-hicache-nof
-  tag: v0.5.21-ebof-20261026
+  repository: harbor.maas.21vcloud.com/4paradigm/sglang-hicache-nof-ha-etcd
+  tag: v0.5.21-20261027-fixaffinity
 requires:
   gpus: 1
   topology: pd
@@ -41,6 +35,12 @@ values:
       - config.json
       - "*.safetensors"
   extraArgs:
+    # This engine fetches client-supplied http(s) media URLs server-side, and
+    # with no allowlist any domain is allowed. On a hostNetwork pod that turns
+    # an image_url into a request originating from the node, against node-local
+    # and cluster-internal addresses. An allowlist matching no real host
+    # refuses them all. Redirect targets are checked against the same list.
+    - --allowed-media-domains=none.invalid
     - --tp-size=8
     - --pp-size=2
     # Required, not tuning: under plain TP8 the MoE weight loader dies with a
@@ -51,6 +51,7 @@ values:
     - --quantization=modelopt_fp4
     # Asserted by the engine whenever pp_size > 1 on non-NPU platforms.
     - --disable-overlap-schedule
+    - --disable-flashinfer-autotune
     # A ceiling, not a choice. 0.90 / 0.85 / 0.80 were each measured and each
     # died at CUDA-graph capture: capture takes whatever is free and then asks
     # for ~2 GiB more, so lowering this never catches up. The KV pool is
@@ -77,27 +78,8 @@ values:
       value: bond0
     - name: NCCL_NET_GDR_LEVEL
       value: "1"
-    # Required. Unset, Mooncake allocates the L2 host pool from ordinary memory
-    # and every NoF transfer fails with
-    # "RDMA memory translation failed, rc -22".
-    - name: MC_STORE_USE_HUGEPAGE
-      value: "1"
-    - name: MC_STORE_HUGEPAGE_SIZE
-      value: 2MB
-    # --- Mooncake client: control plane to the master, data plane via SPDK.
-    # The master is shared and lives outside Kubernetes; point these at
-    # whichever host runs it.
-    - name: MOONCAKE_MASTER
-      value: 10.97.11.37:50053
-    - name: MOONCAKE_TE_META_DATA_SERVER
-      value: http://10.97.11.37:8082/metadata
-    - name: MOONCAKE_PROTOCOL
-      value: rdma
-    - name: MOONCAKE_DEVICE
-      value: mlx5_3,mlx5_4
-    # Must NOT be 0: the startup warmup put still needs a DRAM segment.
-    - name: MOONCAKE_GLOBAL_SEGMENT_SIZE
-      value: 1gb
+    - name: SGLANG_PP_LAYER_PARTITION
+      value: 38,40
   shm:
     enabled: true
     sizeLimit: 64Gi
@@ -110,6 +92,12 @@ values:
     enabled: true
   scaler:
     enabled: false
+  securityContext:
+    capabilities:
+      add:
+        - SYS_ADMIN
+        - IPC_LOCK
+        - SYS_RESOURCE
   pd:
     enabled: true
     colocate: false
@@ -117,21 +105,13 @@ values:
       gpus: "8"
       replicas: 2
       size: 2
-      # Pin the role to nodes that actually have the storage fabric. Without
-      # this the scheduler is free to place a rank anywhere, and it does:
-      # measured on the first install, a prefill rank landed on p6kd-47, where
-      # mlx5_3/mlx5_4 are DOWN and there is no 10.66.x address, so the route to
-      # the array falls through to the management default gateway and the
-      # Mooncake client cannot reach it at all.
-      #
-      # The label is the cluster's own, already present on exactly the nodes
-      # whose mlx5_3/mlx5_4 are ACTIVE with 10.66.1/2 addresses. Note it is
-      # necessary but not sufficient: a node also needs nvidia_peermem, which
-      # a node on the inbox RDMA stack cannot load, and PD KV transfer there
-      # fails with ibv_reg_mr EFAULT.
-      #
-      # affinityReplace, not the top-level nodeSelector: that key is global and
-      # would push the CART and router pods onto GPU nodes too.
+      env:
+        - name: MOONCAKE_LOCAL_HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: MC_NOF_INFLIGHT_BYTES_LIMIT
+          value: "4194304"
       affinityReplace:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -140,132 +120,43 @@ values:
                   - key: ebof.modelsphere.io/storage-net
                     operator: In
                     values: ["true"]
-      extraArgs:
-        - --enable-hierarchical-cache
-        # An absolute size per rank, not --hicache-ratio. The ratio multiplies
-        # the DEVICE KV pool, which is whatever the 433 GiB of weights left
-        # over and has nothing to do with how much L2 is wanted. Measured at
-        # ratio 0.25 on one node per role: 1.45 GB a rank, and a 9200-token
-        # read then hung for over 600 s.
-        - --hicache-size=4
-        - --hicache-storage-backend=mooncake
-        # `timeout`, not `wait_complete`. wait_complete waits for a prefetch
-        # with NO upper bound, and sglang's PD warmup request goes through the
-        # same path; on a model whose prefetches cannot finish that hangs the
-        # warmup until the 300 s scheduler watchdog fires and /health answers
-        # 503 forever.
-        #
-        # The DEFAULT budget is far too small either way -- 1 s + 0.25 s per
-        # 1Ki tokens, i.e. 1.6 s for a 2.7k-token prefix, which a cold read off
-        # the array does not meet. Worse, an abandoned prefetch logs NOTHING,
-        # so L3 then looks like it was never consulted. Both knobs live inside
-        # the extra-config below, not in flags of their own.
-        - --hicache-storage-prefetch-policy=timeout
-        # replica_num 0 / nof_replica_num 1 = pure NoF: no DRAM replica, one
-        # replica on the EBOF volumes.
-        - '--hicache-storage-backend-extra-config={"replica_num": 0, "nof_replica_num": 1, "prefetch_timeout_base": 10, "prefetch_timeout_per_ki_token": 2.0}'
     decode:
       gpus: "8"
       replicas: 1
       size: 2
-      # Pin the role to nodes that actually have the storage fabric. Without
-      # this the scheduler is free to place a rank anywhere, and it does:
-      # measured on the first install, a prefill rank landed on p6kd-47, where
-      # mlx5_3/mlx5_4 are DOWN and there is no 10.66.x address, so the route to
-      # the array falls through to the management default gateway and the
-      # Mooncake client cannot reach it at all.
-      #
-      # The label is the cluster's own, already present on exactly the nodes
-      # whose mlx5_3/mlx5_4 are ACTIVE with 10.66.1/2 addresses. Note it is
-      # necessary but not sufficient: a node also needs nvidia_peermem, which
-      # a node on the inbox RDMA stack cannot load, and PD KV transfer there
-      # fails with ibv_reg_mr EFAULT.
-      #
-      # affinityReplace, not the top-level nodeSelector: that key is global and
-      # would push the CART and router pods onto GPU nodes too.
-      affinityReplace:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: ebof.modelsphere.io/storage-net
-                    operator: In
-                    values: ["true"]
-  # Left off deliberately: this block is global and would render the hicache
-  # flags onto the DECODE role too. A PD decode engine runs with
-  # disaggregation_decode_enable_radix_cache=false and
-  # disaggregation_decode_enable_offload_kvcache=false (its own server_args
-  # dump says so): it receives KV over the transfer engine instead of matching
-  # prefixes, so a hierarchical cache there caches nothing while costing a
-  # second host pool and a second Mooncake client. The flags are on
-  # pd.prefill.extraArgs instead.
-  localKVOffload:
-    enabled: false
-
-  # SPDK needs these three, and NOT privileged: a privileged container on this
-  # cluster receives every device on the host, which silently defeats the GPU
-  # device plugin -- a pod requesting 4 GPUs was measured seeing all 8, so two
-  # engines bound the same cards and the second died out of memory while four
-  # cards sat idle.
-  #   SYS_ADMIN     DPDK's vtophys reads physical page numbers from
-  #                 /proc/self/pagemap
-  #   IPC_LOCK      pinning RDMA buffers
-  #   SYS_RESOURCE  raising the hugepage / memlock limits
-  securityContext:
-    capabilities:
-      add: ["SYS_ADMIN", "IPC_LOCK", "SYS_RESOURCE"]
-  # hostPath, NOT emptyDir medium: HugePages. This key is global -- the chart
-  # applies it to every pod it makes, the ROUTER included -- and a HugePages
-  # emptyDir requires the mounting pod to request hugepages. The router has no
-  # such request, so it dies at "MountVolume.SetUp failed ... hugePages storage
-  # requested, but there is no resource request for huge pages", never runs its
-  # wait-upstreams init container, and the PD set never completes -- with no
-  # error on any engine.
+  storageKVOffload:
+    enabled: true
+    backend: hicache
+    storage_backend: mooncake
+    hicache:
+      size: 4
+      storage-prefetch-policy: timeout
+      storage-backend-extra-config: '{"replica_num": 0, "nof_replica_num": 1, "prefetch_timeout_base": 10, "prefetch_timeout_per_ki_token": 2.0}'
+    mooncake:
+      master: "etcd://10.97.14.52:32379;10.97.14.70:32379;10.97.14.71:32379"
+      te_meta_data_server: "P2PHANDSHAKE"
+      protocol: "rdma"
+      device: "mlx5_3,mlx5_4"
+      global_segment_size: "1gb"
+      use_hugepage: true
+      hugepage:
+        page_size: "2MB"
+        resource_limit: "96Gi"
   volumes:
-    - name: hugepages
-      hostPath:
-        path: /dev/hugepages
     - name: engine-cache
       hostPath:
         path: /data/cache/glm-5.3-nvfp4/sglang
         type: DirectoryOrCreate
   volumeMounts:
-    - name: hugepages
-      mountPath: /dev/hugepages
     - name: engine-cache
       mountPath: /root/.cache
-  resources:
-    # cpu/memory are mandatory alongside hugepages: the API server refuses the
-    # workload with "HugePages require cpu or memory", and that refusal reaches
-    # neither the pod nor the release -- it appears only in the LWS controller
-    # log, so the symptom is "deploy succeeded, no pod ever appears".
-    requests:
-      cpu: "16"
-      memory: 128Gi
-    limits:
-      #   --hicache-size=4          4.00 GB/rank   KV host pool
-      #   DSA indexer               1.61 GB/rank   separate, NOT covered above
-      #   MOONCAKE_GLOBAL_SEGMENT   1.00 GiB/rank  allocated LAST
-      #                           ~6.6 GB x 8 ranks ~= 53 GiB
-      # Sizing this short is deceptive: both pools fit, the SEGMENT does not,
-      # and it surfaces as "Failed to allocate segment memory" -> error code
-      # -600, which reads like the master is unreachable.
-      hugepages-2Mi: 56Gi
-  # The chart's default startupProbe kills a PD engine after ~4 minutes, while
-  # it is still inside sglang's PD warmup. Being killed there looks exactly
-  # like a hang.
-  startupProbe:
-    httpGet:
-      path: /health
-      port: http
-    periodSeconds: 30
-    timeoutSeconds: 10
-    failureThreshold: 180
-  progressDeadlineSeconds: 7200
-  # Cluster-specific: the nodes prepared for the array are tainted so ordinary
-  # workloads stay off them. Without these the pods schedule nowhere, and the
-  # taint is one line among several other scheduling reasons.
   tolerations:
-    - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
-    - {key: ebof-test, operator: Exists, effect: NoSchedule}
-    - {key: dedicated, operator: Exists, effect: NoSchedule}
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+    - key: ebof-test
+      operator: Exists
+      effect: NoSchedule
+    - key: dedicated
+      operator: Exists
+      effect: NoSchedule
