@@ -7,13 +7,15 @@
 # (https://github.com/modelsphere/swiss/issues/41).
 #
 # Translated from the site's own serving runtime for these weights; the command line keeps the
-# runtime's order so the two can be diffed. Rendered against vllm chart 0.8.23 and planned by
-# swissd (2026-10-29). Never deployed: it needs two nodes in one pool with 8 free cards each.
+# runtime's order so the two can be diffed. Deployed through swissd with vllm chart 0.8.23 on such
+# a site (2026-10-30): health, models, chat, streaming and tool calls pass, directly and through
+# the ModelRoute, and an unserved model name returns 404. It needs two nodes in one pool with 8
+# free cards each, and LeaderWorkerSet installed.
 apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4.1-flash-1017-w8a8
 id: vllm-dp2-tp8-910b4-2node
-version: 1.0.0
+version: 1.0.1
 servedName: deepseek-v41
 description: >-
   Two Ascend 910B4 nodes, 8 cards each. vLLM's Ascend backend (CANN) with data-parallel size 2
@@ -64,6 +66,20 @@ values:
     restartPolicy: RecreateGroupOnPodRestart
     # Closest thing to the ISVC's readyPolicy: AllPodReady.
     waitForLeader: true
+    # The port waitForLeader's init container blocks on. The chart's default (29500) is its own
+    # --master-port, which commandOverride never starts, so the worker would wait forever
+    # while the leader waits for the worker's DP rank: a deadlock, hit on the first install
+    # (2026-10-30). 13399 is --data-parallel-rpc-port below, the one port the leader does bind.
+    distPort: 13399
+    # The chart's default rollout is maxSurge 1 / maxUnavailable 0: bring a second group up
+    # before tearing the first down. This group takes every card in the cluster, so the surge
+    # group can never schedule and the old one is never removed -- the first upgrade
+    # (2026-10-30) sat there with a Pending surge group. Replace in place instead.
+    rolloutStrategy:
+      type: RollingUpdate
+      rollingUpdateConfiguration:
+        maxSurge: 0
+        maxUnavailable: 1
     workerTerminationGracePeriodSeconds: 60
   # --- Host network, as the runtime's engineConfig sets it. HCCL_IF_IP below is the host IP,
   # which only means anything here.
