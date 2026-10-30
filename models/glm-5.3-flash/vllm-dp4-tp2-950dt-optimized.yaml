@@ -4,13 +4,13 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm-5.3-flash
 id: vllm-dp4-tp2-950dt-optimized
-version: 1.0.0
+version: 1.0.1
 servedName: GLM-5.3-Flash
 description: "Optimized: TP2/DP4, flashcomm1 and NPU graph/static/super kernels
   on eight Ascend 950DT NPUs, single node, using
   Eco-Tech/GLM-5.3-Flash-w8a8-mxfp8 weights. At the sweep-reported maximum
-  concurrency within TTFT p50 <= 10s and request output >= 10 tok/s, total
-  throughput vs baseline: +1.4% (50k + 1.5k), +4.0% (8k + 1k). No quality
+  concurrency within TTFT p50 <= 20s and request output >= 5 tok/s, total
+  throughput vs baseline: +5.8% (50k + 1.5k), +11.7% (8k + 1k). No quality
   evaluation or confirmation rerun."
 engine: vllm
 chart:
