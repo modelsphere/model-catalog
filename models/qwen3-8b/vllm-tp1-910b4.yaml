@@ -1,15 +1,15 @@
 # Serving configs measured, and where marked tuned, by LLM AutoTune.
 #
-# SITE VARIANT -- dev branch only. Qwen3-8B on one Ascend 910B4 card through volcano. It differs
-# from vllm-tp1-910b (the general Ascend variant) only where that one cannot schedule on a
-# volcano-managed 910B4 site: requires.gpus is 0 with no vendor (swiss#41), the card is requested
-# as volcano.sh/Ascend910B4-1, and the pod carries the site's pool label, selector and taints.
+# Qwen3-8B on one Ascend 910B4 card through volcano. It differs from vllm-tp1-910b (the general
+# Ascend variant) only where that one cannot schedule on a volcano-managed 910B4 site:
+# requires.gpus is 0 with no vendor (swiss#41) and the card is requested as
+# volcano.sh/Ascend910B4-1. Which pool to land in is not set here; a deploy passes it as overrides.
 # Deployed through swissd on such a site on 2026-10-29: answered correctly, 60220/65536 MiB HBM.
 apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3-8b
 id: vllm-tp1-910b4
-version: 1.0.0
+version: 1.0.1
 servedName: Qwen3-8B
 description: "Site variant: one Ascend 910B4 card on a volcano-managed pool, requested as volcano.sh/Ascend910B4-1. vLLM's Ascend backend (CANN). Not tuned."
 engine: vllm
@@ -131,27 +131,9 @@ values:
     # make every pod listing look broken. Turn it back on once the image is
     # reachable from the site.
     enabled: false
-  # --- Site scheduling. Verified by hand before being written here: these
-  # same values deployed Qwen2.5-0.5B through this chart on that site,
-  # answered correctly and put 61414 of 65536 MiB on the card. Kept
-  # identical so the variant cannot drift from what was measured.
+  # --- Scheduling. The scheduler goes with the resource name above
+  # (volcano.sh/* is only allocated through volcano). Which pool to land in
+  # -- podLabels, nodeSelector and tolerations -- is a fact about the
+  # cluster, not the model, so the variant sets none of it and the deploy
+  # passes it as overrides.
   schedulerName: volcano
-  # The pod label is what rise's webhook reads to inject
-  # scheduling.volcano.sh/queue-name: it decides which queue admits the pod
-  # and whose quota it is charged to. Measured: a pod without it still runs
-  # and still takes a card, but with no queue injected -- an NPU spent
-  # outside the platform's accounting.
-  podLabels:
-    compute.rise.io/pool: volcano-4pd-rvg2x
-  # Redundant only while every schedulable node carries the same pool
-  # label, which was not true earlier the same day. The label decides the
-  # accounting; this decides the landing.
-  nodeSelector:
-    compute.rise.io/pool: volcano-4pd-rvg2x
-  tolerations:
-    - key: compute.rise.io/pooled
-      operator: Exists
-      effect: NoSchedule
-    - key: huawei.com/npu
-      operator: Exists
-      effect: NoSchedule
