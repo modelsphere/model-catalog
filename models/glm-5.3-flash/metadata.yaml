@@ -33,11 +33,11 @@ tuning:
         uplift: 8.2
     report: glm-5.3-flash-b300-report.html
   - baseline: vllm-tp8-950dt-baseline@1.0.0
-    optimized: vllm-dp4-tp2-950dt-optimized@1.0.0
-    uplift: 1.4
+    optimized: vllm-dp4-tp2-950dt-optimized@1.0.1
+    uplift: 5.8
     workloads:
       - name: 50k + 1.5k
-        uplift: 1.4
+        uplift: 5.8
       - name: 8k + 1k
-        uplift: 4.0
+        uplift: 11.7
     report: glm-5.3-flash-950dt-report.html
