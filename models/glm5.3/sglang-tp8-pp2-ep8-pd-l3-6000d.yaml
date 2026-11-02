@@ -2,12 +2,12 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp8-pp2-ep8-pd-l3-6000d
-version: 1.0.1
+version: 1.0.2
 servedName: glm-5.3
 engine: sglang
 description: >-
   Prefill/decode-disaggregated DisaggregatedSet, TP8 PP2 EP8 per role on RTX
-  6000D over RoCE, with tiered KV offload: hicache (size 4) in front of a
+  6000D over RoCE, with tiered KV offload: hicache (size 100) in front of a
   mooncake storage backend (1 GB global segment, 2 MB hugepages, 96 Gi
   limit). EP is required, not a tuning choice: plain TP8 cannot load this
   NVFP4 build. Default 2 prefill + 1 decode; prefill.replicas is
@@ -125,7 +125,7 @@ values:
     backend: hicache
     storage_backend: mooncake
     hicache:
-      size: 4
+      size: 100
       storage-prefetch-policy: timeout
       storage-backend-extra-config: '{"replica_num": 0, "nof_replica_num": 1, "prefetch_timeout_base": 10, "prefetch_timeout_per_ki_token": 2.0}'
     mooncake:
