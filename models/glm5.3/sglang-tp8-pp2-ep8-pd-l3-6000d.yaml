@@ -2,13 +2,13 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp8-pp2-ep8-pd-l3-6000d
-version: 1.0.2
+version: 1.0.3
 servedName: glm-5.3
 engine: sglang
 description: >-
   Prefill/decode-disaggregated DisaggregatedSet, TP8 PP2 EP8 per role on RTX
-  6000D over RoCE, with tiered KV offload: hicache (size 100) in front of a
-  mooncake storage backend (1 GB global segment, 2 MB hugepages, 96 Gi
+  6000D over RoCE, with tiered KV offload: hicache (size 70) in front of a
+  mooncake storage backend (1 GB global segment, 2 MB hugepages, 650 Gi
   limit). EP is required, not a tuning choice: plain TP8 cannot load this
   NVFP4 build. Default 2 prefill + 1 decode; prefill.replicas is
   configurable at deploy time (xPyD).
@@ -125,7 +125,14 @@ values:
     backend: hicache
     storage_backend: mooncake
     hicache:
-      size: 100
+      # GB per rank, NOT per pod: 8 ranks per prefill pod. 70 is close to the
+      # ceiling on a 1.5 TB node. sglang refuses a host pool larger than
+      # (MemAvailable - 10 GiB) / ranks-per-node, and it measures NORMAL RAM
+      # even though this pool is carved from hugepages, so the memory has to
+      # fit twice: once reserved as hugepages, once still "available".
+      # 100 fails at startup with "Not enough host memory available.
+      # Requesting 95.00 GB but only have 64.58 GB free".
+      size: 70
       storage-prefetch-policy: timeout
       storage-backend-extra-config: '{"replica_num": 0, "nof_replica_num": 1, "prefetch_timeout_base": 10, "prefetch_timeout_per_ki_token": 2.0}'
     mooncake:
@@ -137,7 +144,11 @@ values:
       use_hugepage: true
       hugepage:
         page_size: "2MB"
-        resource_limit: "96Gi"
+        # Per prefill pod at size 70: 8 x (70 GB KV + ~14.1 GB DSA indexer
+        # pool + 1 GiB global segment) ~= 635 GiB; measured 596-627 GiB in
+        # use. Each prefill node therefore needs >= 650 GiB of 2 MiB pages
+        # reserved (vm.nr_hugepages=337920 gives 660 GiB).
+        resource_limit: "650Gi"
   securityContext:
     capabilities:
       add:
