@@ -3,9 +3,9 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: google-gemma-4-31b-it
 id: sglang-tp4-h100-optimized
-version: 1.0.0
-servedName: google/gemma-4-31B-it
-description: 'Tuned by LLM AutoTune: TP4 on four H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +32.4% (50k + 1.5k), +1.6% (8k + 1k).'
+version: 2.0.0
+servedName: gemma-4-31B-it
+description: "Tuned by LLM AutoTune: TP4 on four H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +32.4% (50k + 1.5k), +1.6% (8k + 1k)."
 engine: sglang
 chart:
   name: sglang
@@ -22,12 +22,12 @@ requires:
 values:
   model:
     hostPathType: Directory
-    contextLength: ''
+    contextLength: ""
   modelCheck:
     enabled: true
     requiredGlobs:
       - config.json
-      - '*.safetensors'
+      - "*.safetensors"
   extraArgs:
     - --chunked-prefill-size=16384
     - --enable-cache-report
@@ -40,7 +40,7 @@ values:
     - --triton-attention-num-kv-splits=16
   env:
     - name: NVIDIA_DISABLE_REQUIRE
-      value: '1'
+      value: "1"
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:True
   volumes:
