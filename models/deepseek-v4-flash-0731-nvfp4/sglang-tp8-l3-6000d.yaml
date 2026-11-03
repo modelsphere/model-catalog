@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: sglang-tp8-l3-6000d
-version: 1.0.1
+version: 1.0.2
 servedName: deepseek-v4-flash-0731-nvfp4
 engine: sglang
 description: >-
@@ -62,7 +62,7 @@ values:
     - --chunked-prefill-size=4096
     - --max-prefill-tokens=4096
     - --trust-remote-code
-    - --enable-metrics
+    - --max-running-requests=256
     - --enable-cache-report
     - '--default-chat-template-kwargs={"thinking": true}'
     - --reasoning-parser=deepseek-v4
