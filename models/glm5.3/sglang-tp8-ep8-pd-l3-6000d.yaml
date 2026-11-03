@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp8-ep8-pd-l3-6000d
-version: 1.0.0
+version: 1.0.1
 servedName: glm-5.3
 engine: sglang
 description: >-
@@ -84,6 +84,16 @@ values:
       value: "1"
     - name: MC_STORE_HUGEPAGE_SIZE
       value: 2MB
+    # Required whenever an L2 pool >= 4 GiB is hugepage-backed. Mooncake's
+    # TransferEngine pre-touches such a buffer in 16 slices of length/16, each
+    # ibv_reg_mr'd; unless the length is a multiple of 32 MiB the slices start
+    # or end inside a 2 MiB hugepage, libibverbs' madvise(MADV_DONTFORK) on
+    # the hugetlb mapping fails, and registration dies with "Failed to
+    # register memory ...: Invalid argument [22]" -> register_buffer -600.
+    # sglang's pool sizes (GB, plus the DSA indexer pool) are never such a
+    # multiple. This makes rdma-core align to the mapping's real page size.
+    - name: RDMAV_HUGEPAGES_SAFE
+      value: "1"
     # --- Mooncake client: control plane to the master, data plane via SPDK.
     # The master is shared and lives outside Kubernetes; point these at
     # whichever host runs it.
@@ -185,9 +195,9 @@ values:
   # these schedules nowhere, and the only symptom is Pending with
   # "1 node(s) had untolerated taint(s)" among a pile of other reasons.
   tolerations:
-    - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
-    - {key: ebof-test, operator: Exists, effect: NoSchedule}
-    - {key: dedicated, operator: Exists, effect: NoSchedule}
+    - { key: nvidia.com/gpu, operator: Exists, effect: NoSchedule }
+    - { key: ebof-test, operator: Exists, effect: NoSchedule }
+    - { key: dedicated, operator: Exists, effect: NoSchedule }
   pd:
     enabled: true
     colocate: false
