@@ -1056,6 +1056,11 @@ components:
           type: array
           items:
             type: string
+        origins:
+          description: Where variants came from, as in metadata.yaml. Absent when none is recorded.
+          type: array
+          items:
+            $ref: "#/components/schemas/Origin"
         tuning:
           type: array
           items:
@@ -1075,7 +1080,11 @@ components:
         optimized:
           type: string
         uplift:
+          description: Percent better than the baseline; for a latency, the percent it fell.
           type: number
+        metric:
+          description: What uplift measures, an AutoTune measure such as `output_tpm_per_gpu` or `ttft_ms@p90`.
+          type: string
         workloads:
           type: array
           items:
@@ -1088,6 +1097,29 @@ components:
                 type: number
         report:
           description: Absent when the report is not linkable.
+          type: string
+    Origin:
+      description: Where a variant version came from.
+      type: object
+      required: [variant, tool]
+      properties:
+        variant:
+          description: "`<id>@<version>`."
+          type: string
+        tool:
+          type: string
+          enum: [manual, baseline-hub, autotune]
+        by:
+          description: Who submitted it, or created the campaign.
+          type: string
+        url:
+          description: The campaign or the Hub submission.
+          type: string
+        policy:
+          description: "`autotune` only: the search policy that found it, `<name>@<version>`."
+          type: string
+        from:
+          description: "The variant version it was made from, `<id>@<version>`."
           type: string
     VariantSummary:
       description: A variant without its values.

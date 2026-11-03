@@ -50,16 +50,23 @@
       "description": "The variant a UI preselects; the first by id when unset.",
       "$ref": "version.schema.json#/$defs/variant/properties/id"
     },
+    "origins": {
+      "description": "Where variants came from: written by hand, submitted through Baseline Hub, or produced by a tuner such as AutoTune. Display only, like tuning, and edited in place. A variant without an entry is not recorded.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/origin"
+      }
+    },
     "tuning": {
       "description": "Measured tuning results. Display only.",
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["baseline", "optimized", "report"],
+        "required": ["baseline", "optimized"],
         "properties": {
           "version": {
-            "description": "Legacy: the v1 version measured, for index.json.",
+            "description": "Legacy: the v1 version measured, so the v1 index.json lists the result. An entry for variants that exist only in v2 has no v1 version and omits it.",
             "$ref": "metadata.schema.json#/properties/tuning/items/properties/version"
           },
           "baseline": {
@@ -73,10 +80,14 @@
           "uplift": {
             "$ref": "metadata.schema.json#/properties/tuning/items/properties/uplift"
           },
+          "metric": {
+            "$ref": "#/$defs/metric"
+          },
           "workloads": {
             "$ref": "metadata.schema.json#/properties/tuning/items/properties/workloads"
           },
           "report": {
+            "description": "File name of the measurement beside this metadata.yaml, such as the AutoTune HTML report, served at <site>models/<name>/<report> with the site from catalog.yaml. Optional: without one the result has no report link, and the tuned variant's origin, when recorded, links to where it was made.",
             "$ref": "metadata.schema.json#/properties/tuning/items/properties/report"
           }
         }
@@ -92,6 +103,60 @@
       "description": "<id>@<version>: the variant version measured.",
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]*@\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+    },
+    "metric": {
+      "description": "What uplift measures, as an AutoTune measure: a throughput (tokens/min, total or per GPU, or completed requests/s), or a per-request speed or latency with an optional statistic, such as ttft_ms@p90. Uplift is always the percent better, positive meaning an improvement: for a latency, the percent it fell.",
+      "type": "string",
+      "pattern": "^(?:(?:output|input|uncached_input|cached_input|total)_tpm(?:_per_gpu)?|request_rate|(?:request_output_tps|request_prefill_tps|ttft_ms|itl_ms|tpot_ms)(?:@(?:mean|p50|p90|p99))?)$"
+    },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variant", "tool"],
+      "properties": {
+        "variant": {
+          "description": "The variant version this is the origin of.",
+          "$ref": "#/$defs/measured"
+        },
+        "tool": {
+          "description": "How it was made: manual (written by hand), baseline-hub (submitted through Baseline Hub and measured there), or autotune (found by an AutoTune campaign).",
+          "enum": ["manual", "baseline-hub", "autotune"]
+        },
+        "by": {
+          "description": "Who made it: the user who submitted it, or who created the campaign. A name tag only.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "url": {
+          "description": "Where it was made: the campaign or the Hub submission.",
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "policy": {
+          "description": "autotune only: the search policy that found it, <name>@<version>, such as llm-agent@1.7.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*@[0-9A-Za-z][0-9A-Za-z._+-]*$",
+          "maxLength": 64
+        },
+        "from": {
+          "description": "The variant version it was made from, such as the baseline a campaign tuned.",
+          "$ref": "#/$defs/measured"
+        }
+      },
+      "if": {
+        "properties": {
+          "tool": {
+            "const": "autotune"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "policy": false
+        }
+      }
     }
   }
 }

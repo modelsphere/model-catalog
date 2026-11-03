@@ -183,7 +183,8 @@ function buildIndex({ root: base = root } = {}) {
 function legacyTuning(tuning) {
   const out = (Array.isArray(tuning) ? tuning : [])
     .filter((t) => t?.version != null)
-    .map((t) => ({ ...t, baseline: String(t.baseline).split("@")[0], optimized: String(t.optimized).split("@")[0] }));
+    // index.json predates metric: its readers know the v1 fields only.
+    .map(({ metric, ...t }) => ({ ...t, baseline: String(t.baseline).split("@")[0], optimized: String(t.optimized).split("@")[0] }));
   return out.length ? out : undefined;
 }
 
@@ -351,6 +352,7 @@ function buildIndexV2({ root: base = root, warn = console.warn } = {}) {
         quantization: meta.quantization,
         defaultVariant: meta.defaultVariant,
         reports,
+        origins: Array.isArray(meta.origins) && meta.origins.length ? meta.origins : undefined,
         tuning,
         variants,
       }),

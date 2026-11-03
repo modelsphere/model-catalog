@@ -207,6 +207,11 @@ function deleteVariant(snap, { model, id, ifMatch, message }) {
       if (String(t?.[key] ?? "").split("@")[0] === id) problems.push(`models/${model}/metadata.yaml: tuning[${i}].${key} names ${id}`);
     }
   });
+  (Array.isArray(dir.meta.origins) ? dir.meta.origins : []).forEach((o, i) => {
+    for (const key of ["variant", "from"]) {
+      if (String(o?.[key] ?? "").split("@")[0] === id) problems.push(`models/${model}/metadata.yaml: origins[${i}].${key} names ${id}`);
+    }
+  });
   if (dir.variants.length === 1) problems.push(`${rel}: the model's last variant -- a model has at least one`);
   if (problems.length) throw invalid(problems);
   return { rel, changes: new Map([[rel, null]]), message: message || `${model}/${id}: delete` };

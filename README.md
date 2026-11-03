@@ -114,8 +114,32 @@ tuning:
         uplift: 58.0
       - name: 8k + 1k                           # shown as "Document QA"
         uplift: 23.4
-    report: my-model-h100-report.html
+    report: my-model-h100-report.html          # optional: linked from the result
+    metric: output_tpm_per_gpu                  # optional: what uplift measures
 ```
+
+`metric` is an AutoTune measure: a throughput (`output_tpm_per_gpu`, `total_tpm`, `request_rate`, ...), or a per-request
+speed or latency with an optional statistic (`ttft_ms@p90`). `uplift` is always the percent better: for a latency, the
+percent it fell.
+
+**Where a variant came from** goes in `origins`, one entry per variant version: written by hand (`manual`), submitted
+through Baseline Hub (`baseline-hub`), or found by an AutoTune campaign (`autotune`). Only `variant` and `tool` are
+required; `policy` is for `autotune` only. A variant without an entry is not recorded.
+
+```yaml
+origins:
+  - variant: sglang-tp8-h100-optimized@1.0.0
+    tool: autotune
+    by: alice                                   # who created the campaign or submission
+    url: https://autotune.example.com/campaigns/90
+    policy: llm-agent@1.7                       # the search policy that found it
+    from: sglang-tp8-h100-baseline@1.0.0        # the variant it was made from
+  - variant: sglang-tp8-h100-baseline@1.0.0
+    tool: manual
+```
+
+A tuning entry from before v2 has a `version`, the v1 version measured, so the v1 `index.json` still lists it; an entry
+for variants that exist only in v2 has none.
 
 A measured version may be older than the variant's current one: the site shows the newest result for each tuned variant.
 A report must be a complete HTML document whose embedded JSON parses. `validate:schema` fails on a missing, empty or invalid one; the site skips

@@ -368,14 +368,39 @@ function v1Tuning(dir, tuning) {
 }
 
 // v2: <id> is the current variant, <id>@<date version> a revision in its history.
-function v2Tuning(dir, tuning) {
-  const name = path.basename(dir);
-  const current = new Map(
+// Why <id>@<version> does not name a published version of this model's
+// variant, or null when it does. `current` maps each variant id to the version
+// its file has now; an older version is looked up in the file's history.
+function unpublished(name, current, ref) {
+  if (typeof ref !== "string") return null; // the schema reports it
+  const [id, version] = ref.split("@");
+  if (!version) return `name the version measured, ${id}@${current.get(id) ?? "<version>"}`;
+  if (current.get(id) === version) return null;
+  let h;
+  try {
+    h = history(`models/${name}/${id}.yaml`);
+  } catch (err) {
+    return `cannot check ${ref}: ${err.message}`;
+  }
+  if (!h) return `${JSON.stringify(id)} has never been a variant of this model`;
+  if (!h.revisions.some((r) => r.version === version)) {
+    return `${id} has no version ${version}; it has ${h.revisions.map((r) => r.version).join(", ")}`;
+  }
+  return null;
+}
+
+function currentVersions(name) {
+  return new Map(
     variantFiles(name)
       .map((rel) => doc(path.join(root, rel)))
       .filter(Boolean)
       .map((d) => [d.id, String(d.version)]),
   );
+}
+
+function v2Tuning(dir, tuning) {
+  const name = path.basename(dir);
+  const current = currentVersions(name);
   const lines = [];
   const recorded = new Set(tuning.map((t) => String(t?.optimized ?? "").split("@")[0]));
   for (const id of current.keys()) {
@@ -404,24 +429,8 @@ function v2Tuning(dir, tuning) {
         }
     }
     for (const key of ["baseline", "optimized"]) {
-      if (typeof t[key] !== "string") continue;
-      const [id, version] = t[key].split("@");
-      if (!version) {
-        lines.push(`${at}.${key}: name the version measured, ${id}@${current.get(id) ?? "<version>"}`);
-        continue;
-      }
-      if (current.get(id) === version) continue;
-      let h;
-      try {
-        h = history(`models/${name}/${id}.yaml`);
-      } catch (err) {
-        lines.push(`${at}.${key}: cannot check ${t[key]}: ${err.message}`);
-        continue;
-      }
-      if (!h) lines.push(`${at}.${key}: ${JSON.stringify(id)} has never been a variant of this model`);
-      else if (!h.revisions.some((r) => r.version === version)) {
-        lines.push(`${at}.${key}: ${id} has no version ${version}; it has ${h.revisions.map((r) => r.version).join(", ")}`);
-      }
+      const problem = unpublished(name, current, t[key]);
+      if (problem) lines.push(`${at}.${key}: ${problem}`);
     }
     if (t.baseline !== undefined && t.baseline === t.optimized) {
       lines.push(`${at}: baseline and optimized are the same variant`);
@@ -430,6 +439,30 @@ function v2Tuning(dir, tuning) {
       lines.push(`${at}.report: no file ${JSON.stringify(t.report)} beside metadata.yaml`);
     }
     lines.push(...workloadProblems(t, at));
+  });
+  return lines;
+}
+
+// What the schema cannot see of an origin: the variant and the one it was made
+// from are published versions of this model, the two differ, and a variant has
+// one origin.
+function v2Origins(dir, origins) {
+  const name = path.basename(dir);
+  const current = currentVersions(name);
+  const lines = [];
+  const seen = new Map();
+  origins.forEach((o, i) => {
+    if (!o || typeof o !== "object") return;
+    const at = `origins[${i}]`;
+    for (const key of ["variant", "from"]) {
+      const problem = unpublished(name, current, o[key]);
+      if (problem) lines.push(`${at}.${key}: ${problem}`);
+    }
+    if (o.from !== undefined && o.from === o.variant) lines.push(`${at}: made from itself`);
+    if (typeof o.variant === "string") {
+      if (seen.has(o.variant)) lines.push(`${at}.variant: ${o.variant} already has an origin, origins[${seen.get(o.variant)}]`);
+      else seen.set(o.variant, i);
+    }
   });
   return lines;
 }
@@ -443,6 +476,7 @@ for (const name of modelNames()) {
   // gets the recorded-result check.
   const tuning = Array.isArray(d.tuning) ? d.tuning : [];
   const lines = schemaOf(d) === "v2" ? v2Tuning(path.dirname(meta), tuning) : v1Tuning(path.dirname(meta), tuning);
+  if (schemaOf(d) === "v2" && Array.isArray(d.origins)) lines.push(...v2Origins(path.dirname(meta), d.origins));
   if (lines.length > 0) fail(path.relative(root, meta), lines);
 }
 

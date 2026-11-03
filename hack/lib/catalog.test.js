@@ -153,3 +153,67 @@ test("a shallow clone is refused: its versions would be wrong", () => {
   execFileSync("git", ["clone", "-q", "--depth=1", `file://${repo.dir}`, clone]);
   assert.throws(() => buildIndexV2({ root: clone, warn: () => {} }), /shallow clone/);
 });
+
+const origins = [
+  {
+    variant: "sglang-tp8@1.0.0",
+    tool: "autotune",
+    by: "alice",
+    url: "http://autotune.example/campaigns/90",
+    policy: "llm-agent@1.7",
+    from: "sglang-tp4@1.0.0",
+  },
+  { variant: "sglang-tp4@1.0.0", tool: "baseline-hub", url: "http://autotune.example/baseline-hub/53" },
+];
+const tuned = { baseline: "sglang-tp4@1.0.0", optimized: "sglang-tp8@1.0.0", uplift: 26.5, metric: "output_tpm_per_gpu" };
+
+test("a v2 metadata.yaml records where its variants came from, and what an uplift measures", () => {
+  const validate = require("./catalog").schemaValidator()("metadata.v2.schema.json");
+  const meta = (over) => ({ apiVersion: "catalog.swiss/v2", name: "m2", source: { hf: "o/m2" }, ...over });
+  const ok = (m) => validate(m) || assert.fail(JSON.stringify(validate.errors));
+  // No report: the result shows without a link.
+  ok(meta({ origins: [...origins, { variant: "sglang-tp8@1.0.1", tool: "manual" }], tuning: [tuned] }));
+  for (const metric of ["total_tpm", "request_rate", "ttft_ms@p90", "tpot_ms", "request_output_tps@mean"]) {
+    ok(meta({ tuning: [{ ...tuned, metric }] }));
+  }
+  const refused = [
+    { origins: [{ variant: "sglang-tp8@1.0.0", tool: "manual", policy: "llm-agent@1.7" }] }, // a policy is autotune's
+    { origins: [{ variant: "sglang-tp8@1.0.0", tool: "script" }] },
+    { origins: [{ variant: "sglang-tp8@1.0.0" }] },
+    { origins: [{ variant: "sglang-tp8", tool: "manual" }] }, // the version it is the origin of
+    { origins: [{ variant: "sglang-tp8@1.0.0", tool: "manual", url: "javascript:alert(1)" }] },
+    { origins: [{ variant: "sglang-tp8@1.0.0", tool: "manual", note: "x" }] },
+    { tuning: [{ ...tuned, metric: "throughput" }] },
+    { tuning: [{ ...tuned, metric: "output_tpm@p90" }] }, // a rate has no statistic
+    { tuning: [{ ...tuned, metric: "ttft_ms@p95" }] },
+  ];
+  for (const over of refused) assert.equal(validate(meta(over)), false, JSON.stringify(over));
+});
+
+test("index-v2 carries origins and each result's metric; index.json, whose readers predate metric, does not", () => {
+  const repo = fixture([
+    [
+      "2026-10-01T10:00:00Z",
+      "init",
+      {
+        ...catalogFiles,
+        "models/m2/metadata.yaml": {
+          apiVersion: "catalog.swiss/v2",
+          name: "m2",
+          source: { hf: "o/m2" },
+          origins,
+          tuning: [tuned],
+        },
+      },
+    ],
+  ]);
+  const built = buildIndexV2({ root: repo.dir, warn: () => {} });
+  assert.deepEqual(checkIndexV2(built), []);
+  const [m2] = built.index.models;
+  assert.deepEqual(m2.origins, origins);
+  assert.deepEqual(m2.tuning, [tuned]);
+  const { legacyTuning } = require("./catalog");
+  assert.deepEqual(legacyTuning([{ ...tuned, version: "1.0.0" }, tuned]), [
+    { version: "1.0.0", baseline: "sglang-tp4", optimized: "sglang-tp8", uplift: 26.5 },
+  ]);
+});

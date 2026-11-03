@@ -241,6 +241,7 @@ function buildSnapshot(repo, commit) {
         quantization: meta.quantization,
         defaultVariant: meta.defaultVariant,
         reports,
+        origins: Array.isArray(meta.origins) && meta.origins.length ? meta.origins : undefined,
         tuning,
         variants: variants.map(({ rel, doc, body }) => {
           const top = histories.get(rel).revisions[0];

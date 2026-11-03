@@ -179,6 +179,20 @@ test("a variant is deleted unless something names it, and its history stays", as
   assert.equal((await put(tp4, YAML.stringify(variant("sglang-tp4", "1.0.1", 2)), { "If-None-Match": "*" })).status, 201);
 });
 
+test("a variant an origin names is not deleted, and the index carries the origins", async () => {
+  const rel = "api/v2/models/m2/metadata";
+  const res = await s.fetch(rel);
+  const meta = YAML.parse(await res.text());
+  meta.origins = [{ variant: "sglang-tp8@1.0.0", tool: "autotune", policy: "llm-agent@1.7", from: "sglang-tp4@1.0.0" }];
+  assert.equal((await put(rel, YAML.stringify(meta), { "If-Match": res.headers.get("etag") })).status, 200);
+  const index = await (await s.fetch("index-v2.json")).json();
+  assert.deepEqual(index.models[0].origins, meta.origins);
+
+  const named = await s.json(tp4, { method: "DELETE", headers: { "If-Match": (await s.fetch(tp4)).headers.get("etag") } });
+  assert.equal(named.status, 422);
+  assert.deepEqual(named.body.problems, ["models/m2/metadata.yaml: origins[0].from names sglang-tp4"]);
+});
+
 test("metadata is replaced at its digest, naming variants the model has", async () => {
   const rel = "api/v2/models/m2/metadata";
   const res = await s.fetch(rel);

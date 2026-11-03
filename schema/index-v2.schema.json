@@ -107,6 +107,35 @@
             "type": "string"
           }
         },
+        "origins": {
+          "description": "As in metadata.yaml: where variants came from. Absent when none is recorded.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["variant", "tool"],
+            "properties": {
+              "variant": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              },
+              "by": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "policy": {
+                "type": "string"
+              },
+              "from": {
+                "type": "string"
+              }
+            }
+          }
+        },
         "tuning": {
           "description": "As in metadata.yaml, without the legacy version; report absent when not linkable.",
           "type": "array",
@@ -123,6 +152,9 @@
               },
               "uplift": {
                 "type": "number"
+              },
+              "metric": {
+                "type": "string"
               },
               "workloads": {
                 "type": "array",
