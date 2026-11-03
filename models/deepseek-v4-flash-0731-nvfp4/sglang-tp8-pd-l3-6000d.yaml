@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: sglang-tp8-pd-l3-6000d
-version: 1.0.1
+version: 1.0.2
 servedName: deepseek-v4-flash-0731-nvfp4
 engine: sglang
 description: >-
@@ -20,19 +20,15 @@ description: >-
 chart:
   name: sglang
   version: ">=0.9.27"
-# The image is a private build for now and must be published to a public
-# registry before this variant can be deployed outside the site that built it.
-# NOT the stock sglang image: L3 here is NVMe-oF through SPDK, which needs a
-# Mooncake client built with USE_NOF=ON plus the EBOF patch set, and the
-# 512-byte page padding the hicache settings below rely on exists only in these
-# images. This tag is ebof-20261102 with one file changed: sglang's
-# mooncake_store.py restores the CPU affinity that Mooncake's SPDK init takes
-# away; without it setup() pins all eight scheduler threads to CPU 0. These ebof
-# clients cannot use an etcd HA master ("Invalid HA backend entry"), hence the
-# standalone master below.
+# The stock image, like the other 6000D L3 variants. What L3 on NVMe-oF needs
+# from it: a Mooncake client with NoF support, and HiCache host pools whose
+# page stride is a 512-byte multiple (see mem-layout below). Also check that
+# Mooncake's SPDK init leaves the scheduler threads their CPU affinity: clients
+# before Mooncake PR #3904 pin all eight to CPU 0 (measured: decode 39 vs 120
+# tok/s); look at Cpus_allowed_list of the sglang::scheduler processes.
 image:
-  repository: harbor.maas.21vcloud.com/4paradigm/sglang-hicache-nof
-  tag: v0.5.21-ebof-20261102-affinity
+  repository: lmsysorg/sglang
+  tag: v0.5.21
 requires:
   # Per-role per-pod GPUs are in values.pd.{prefill,decode}.gpus ("8"); total
   # GPUs are a deploy-time choice (xPyD), so there is no single number here.
