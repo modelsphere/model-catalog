@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: sglang-tp8-l3-6000d
-version: 1.0.0
+version: 1.0.1
 servedName: deepseek-v4-flash-0731-nvfp4
 engine: sglang
 description: >-
@@ -175,6 +175,11 @@ values:
     timeoutSeconds: 10
     failureThreshold: 180
   progressDeadlineSeconds: 7200
+  # Only nodes on the EBOF storage network can reach the NoF targets; the
+  # GPU nodes without it are otherwise just as schedulable, and a pod placed
+  # there starts, then fails every L3 transfer.
+  nodeSelector:
+    ebof.modelsphere.io/storage-net: "true"
   tolerations:
     - { key: nvidia.com/gpu, operator: Exists, effect: NoSchedule }
     - { key: ebof-test, operator: Exists, effect: NoSchedule }
