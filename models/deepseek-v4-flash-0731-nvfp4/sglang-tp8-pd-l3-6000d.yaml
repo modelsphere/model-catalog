@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: sglang-tp8-pd-l3-6000d
-version: 1.0.2
+version: 1.0.3
 servedName: deepseek-v4-flash-0731-nvfp4
 engine: sglang
 description: >-
@@ -158,6 +158,19 @@ values:
       gpus: "8"
       replicas: 1
       size: 1
+      # Soft, not required: keep decode OFF the storage-network nodes when any
+      # other GPU node has room, because only prefill can use them and there are
+      # few. Left floating, the first install put decode on one of the two free
+      # storage nodes and the second prefill sat Pending.
+      affinityReplace:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: ebof.modelsphere.io/storage-net
+                    operator: NotIn
+                    values: ["true"]
   # The chart puts this on the prefill role only: a PD decode engine receives
   # KV over the transfer engine instead of matching prefixes.
   storageKVOffload:
