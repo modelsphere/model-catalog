@@ -1,0 +1,81 @@
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: deepseek-v4-flash-0731
+id: sglang-tp8-dspark-6000d
+version: 1.0.0
+servedName: DeepSeek-V4-Flash-0731
+engine: sglang
+description: >-
+  TP8 on one RTX 6000D node with DSPARK, using the draft head bundled in the
+  checkpoint; this FP8 build needs no code change on sm120 (the NVFP4 build's
+  draft MoE is hard-wired to trtllm-gen, which has no sm120 kernels). vs no
+  DSPARK: 279 vs 119 tok/s at concurrency 1 (2.35x); at 8, 105.5 vs 88.0 per
+  request but 607 vs 640 aggregate. Repeated temperature-0 arithmetic: 0/160
+  wrong with DSPARK, 5/160 without -- the target path errs on this hardware.
+# Measured 2026-11-02/03, docker on one node, sglang v0.5.21. Accept length
+# 2.4-3.1, so at concurrency 8 the draft work costs more than it saves.
+# Wrong answers without DSPARK: 13*17 answered 65/85/325, 58*14 as 728; the
+# NVFP4 sglang variant (marlin) shows the same errors, so do not read the
+# 0/160 here as the model being numerically clean on sm120.
+chart:
+  name: sglang
+  version: ">=0.9.14"
+image:
+  repository: lmsysorg/sglang
+  tag: v0.5.21
+requires:
+  gpus: 8
+  topology: single-node
+  gpuProduct:
+    - NVIDIA-RTX-6000D
+values:
+  model:
+    localPath: /data/models/DeepSeek-V4-Flash-0731
+    mountPath: /models
+    hostPathType: Directory
+    contextLength: ""
+  modelCheck:
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  extraArgs:
+    # This engine fetches client-supplied http(s) media URLs server-side, and
+    # with no allowlist any domain is allowed. An allowlist matching no real
+    # host refuses them all. Redirect targets are checked against the same list.
+    - --allowed-media-domains=none.invalid
+    - --tp-size=8
+    - --mem-fraction-static=0.85
+    # Required on sm120: flashinfer MoE backends serve but can miscompute, and
+    # the draft's MXFP4 experts need Marlin to run at all.
+    - --moe-runner-backend=marlin
+    - --speculative-algorithm=DSPARK
+    - --trust-remote-code
+    - --enable-cache-report
+    - --reasoning-parser=deepseek-v4
+    - --tool-call-parser=deepseekv4
+  env:
+    - name: NVIDIA_DISABLE_REQUIRE
+      value: "1"
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+  volumes:
+    - name: engine-cache
+      hostPath:
+        path: /data/cache/deepseek-v4-flash-0731/sglang
+        type: DirectoryOrCreate
+  volumeMounts:
+    - name: engine-cache
+      mountPath: /root/.cache
+  service:
+    port: 8050
+  progressDeadlineSeconds: 7200
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 180
+  hangWatcher:
+    enabled: true

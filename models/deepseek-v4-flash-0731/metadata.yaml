@@ -1,7 +1,7 @@
 apiVersion: catalog.swiss/v2
 name: deepseek-v4-flash-0731
 displayName: DeepSeek-V4-Flash-0731
-description: DeepSeek-V4-Flash-0731 on 8 H100 GPUs. Configs use DSPARK speculative decoding.
+description: DeepSeek-V4-Flash-0731 on 8 H100 GPUs, or one 8-GPU RTX 6000D node. Configs use DSPARK speculative decoding.
 family: deepseek
 tags:
   - chat

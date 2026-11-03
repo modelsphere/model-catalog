@@ -1,0 +1,96 @@
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: glm5.3
+id: sglang-tp8-ep8-dspark-6000d
+version: 1.0.0
+servedName: glm-5.3
+engine: sglang
+description: >-
+  TP8 + EP8 on one RTX 6000D node with DSPARK from the external draft
+  AlayaNeW/GLM-5.3-DSpark, which must be at /data/models/GLM-5.3-DSpark-AlayaNeW
+  on the node. vs no DSPARK: 110.9 vs 56.8 tok/s at concurrency 1 (1.95x); at 8,
+  47.8 vs 32.2 per request and 330.7 vs 255.3 aggregate (+30%); accept length
+  3.1-4.4. Repeated temperature-0 arithmetic: 0/160 wrong with and without.
+# Measured 2026-11-02, docker on one node, sglang v0.5.21. The draft is 5 dense
+# layers, block size 8; the GLM-5.3 checkpoint carries no draft of its own.
+# RedHatAI/GLM-5.3-speculator.dspark is speculators format and does not load
+# in SGLang. The draft attention falls back from dsa to flashinfer.
+chart:
+  name: sglang
+  version: ">=0.9.9"
+image:
+  repository: lmsysorg/sglang
+  tag: v0.5.21
+requires:
+  gpus: 8
+  topology: single-node
+  gpuProduct:
+    - NVIDIA-RTX-6000D
+values:
+  model:
+    localPath: /data/models/GLM-5.3-NVFP4
+    mountPath: /models
+    contextLength: ""
+  modelCheck:
+    enabled: true
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  extraArgs:
+    # This engine fetches client-supplied http(s) media URLs server-side, and
+    # with no allowlist any domain is allowed. An allowlist matching no real
+    # host refuses them all. Redirect targets are checked against the same list.
+    - --allowed-media-domains=none.invalid
+    - --tp-size=8
+    # Required, not tuning: under plain TP8 the MoE weight loader dies with a
+    # factor-of-2 shape mismatch, because TP slices a dimension the fp4
+    # packing has already folded.
+    - --ep-size=8
+    - --quantization=modelopt_fp4
+    # 0.85 runs out of memory while loading.
+    - --mem-fraction-static=0.72
+    - --disable-custom-all-reduce
+    - --disable-flashinfer-autotune
+    # From the draft's model card. Measured on the target alone it changes
+    # neither speed nor answers.
+    - --disable-shared-experts-fusion
+    - --speculative-algorithm=DSPARK
+    - --speculative-draft-model-path=/draft
+    - --speculative-num-draft-tokens=9
+    - --speculative-dspark-block-size=8
+    - --reasoning-parser=glm45
+    - --tool-call-parser=glm47
+    - --trust-remote-code
+    - --enable-cache-report
+  env:
+    - name: SGLANG_ENABLE_SPEC_V2
+      value: "1"
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+  volumes:
+    - name: dspark-draft
+      hostPath:
+        path: /data/models/GLM-5.3-DSpark-AlayaNeW
+        type: Directory
+    - name: engine-cache
+      hostPath:
+        path: /data/cache/glm-5.3-nvfp4/sglang
+        type: DirectoryOrCreate
+  volumeMounts:
+    - name: dspark-draft
+      mountPath: /draft
+      readOnly: true
+    - name: engine-cache
+      mountPath: /root/.cache
+  service:
+    port: 8050
+  progressDeadlineSeconds: 7200
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 180
+  hangWatcher:
+    enabled: true
