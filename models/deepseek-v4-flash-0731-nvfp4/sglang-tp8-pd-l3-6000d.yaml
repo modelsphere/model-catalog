@@ -2,42 +2,47 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: sglang-tp8-pd-l3-6000d
-version: 1.0.1
+version: 1.0.2
 servedName: deepseek-v4-flash-0731-nvfp4
 engine: sglang
 description: >-
-  Prefill/decode-disaggregated, TP8 on one RTX 6000D node per role, with
+  Prefill/decode-disaggregated, TP8 on one RTX 6000D node per engine, with
   HiCache on the prefill role: L2 in hugepages (ratio 2) and Mooncake NVMe-oF
-  as L3 on a shared EBOF array via a standalone master. Unlike pd-l2, a prefix
-  survives a prefill restart. Verified on Kubernetes: twice, a 3.9k-token
-  prefix came back from L3 to a recreated prefill pod (matched=0 loaded=3840).
-# Verified 2026-11-03 with chart 0.9.28 on p6kd-43/44 (decode/prefill): prefill
-# affinity spread over all cores, 0/48 arithmetic errors through the router,
+  as L3 on a shared EBOF array via a standalone master. Default 2 prefill + 1
+  decode; prefill.replicas is configurable at deploy time (xPyD). Prefill pods
+  need the storage network, decode pods do not. A prefix survives a prefill
+  restart: it comes back from L3.
+# Verified 2026-11-03 with chart 0.9.28, 1P1D on p6kd-44/43 (layout before the
+# move to storageKVOffload; same engine flags): twice, a 3.9k-token prefix came
+# back from L3 to a recreated prefill pod (matched=0 loaded=3840); scheduler
+# affinity spread over all cores; 0/48 arithmetic errors through the router;
 # no NoF errors (alignment, TRANSFER_FAIL, CQ, SQ deletion).
 chart:
   name: sglang
-  version: ">=0.9.26"
+  version: ">=0.9.27"
 # NOT the stock sglang image: L3 here is NVMe-oF through SPDK, which needs a
 # Mooncake client built with USE_NOF=ON plus the EBOF patch set, and the
-# 512-byte page padding the prefill flags below rely on exists only in these
+# 512-byte page padding the hicache settings below rely on exists only in these
 # images. This tag is ebof-20261102 with one file changed: sglang's
 # mooncake_store.py restores the CPU affinity that Mooncake's SPDK init takes
 # away; without it setup() pins all eight scheduler threads to CPU 0. Built by
-# tools/h3c/mooncake/image-affinity/build.sh in the deploy repo. These ebof clients cannot use an etcd HA master
-# ("Invalid HA backend entry"), hence the standalone master below.
+# tools/h3c/mooncake/image-affinity/build.sh in the deploy repo. These ebof
+# clients cannot use an etcd HA master ("Invalid HA backend entry"), hence the
+# standalone master below.
 image:
   repository: harbor.maas.21vcloud.com/4paradigm/sglang-hicache-nof
   tag: v0.5.21-ebof-20261102-affinity
 requires:
-  # Per-role per-pod GPUs are in values.pd.{prefill,decode}.gpus ("8").
+  # Per-role per-pod GPUs are in values.pd.{prefill,decode}.gpus ("8"); total
+  # GPUs are a deploy-time choice (xPyD), so there is no single number here.
   gpus: 1
   topology: pd
   rdma: true
   gpuProduct:
     - NVIDIA-RTX-6000D
-  # Not expressible in this block, but required on every node this lands on:
-  #   * ~650 GiB of 2 MiB hugepages reserved AND advertised by kubelet (both
-  #     roles get the same resources block; see resources below)
+  # Not expressible in this block, but required on every PREFILL node (labelled
+  # ebof.modelsphere.io/storage-net=true; pd.prefill.affinityReplace pins them):
+  #   * ~650 GiB of 2 MiB hugepages reserved AND advertised by kubelet
   #   * routes to the EBOF targets (10.66.3/4 via 10.66.1/2) on the storage NICs
 values:
   model:
@@ -71,34 +76,6 @@ values:
     # Mooncake cannot register expandable-segment memory for RDMA.
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:False
-    # Required. Unset, the L2 host pool comes from ordinary memory and every
-    # NoF transfer fails with "RDMA memory translation failed, rc -22".
-    - name: MC_STORE_USE_HUGEPAGE
-      value: "1"
-    - name: MC_STORE_HUGEPAGE_SIZE
-      value: 2MB
-    # Required for hugepage-backed pools >= 4 GiB: without it registration dies
-    # with "Failed to register memory ...: Invalid argument [22]" -> -600.
-    - name: RDMAV_HUGEPAGES_SAFE
-      value: "1"
-    # Per process, per worker. At the 4 MiB default, eight ranks reading one
-    # long prefix back at once tore NoF qpairs down (CQ transport error -6 ->
-    # SQ DELETION) and most of the prefix missed; at 1 MiB it hit 100%.
-    - name: MC_NOF_INFLIGHT_BYTES_LIMIT
-      value: "1048576"
-    # --- Mooncake client. The master is standalone, outside Kubernetes, and
-    # must own NoF volumes that no other master holds; point these at it.
-    - name: MOONCAKE_MASTER
-      value: 10.97.11.43:50051
-    - name: MOONCAKE_TE_META_DATA_SERVER
-      value: http://10.97.11.43:8080/metadata
-    - name: MOONCAKE_PROTOCOL
-      value: rdma
-    - name: MOONCAKE_DEVICE
-      value: mlx5_3,mlx5_4
-    # Must NOT be 0: the startup warmup put still needs a DRAM segment.
-    - name: MOONCAKE_GLOBAL_SEGMENT_SIZE
-      value: 1gb
     - name: NCCL_SOCKET_IFNAME
       value: bond0
     - name: GLOO_SOCKET_IFNAME
@@ -122,31 +99,14 @@ values:
   securityContext:
     capabilities:
       add: ["SYS_ADMIN", "IPC_LOCK", "SYS_RESOURCE"]
-  # hostPath, NOT emptyDir medium: HugePages -- this key is global and the
-  # chart applies it to the router too, which requests no hugepages.
   volumes:
-    - name: hugepages
-      hostPath:
-        path: /dev/hugepages
     - name: engine-cache
       hostPath:
         path: /data/cache/deepseek-v4-flash-0731-nvfp4/sglang
         type: DirectoryOrCreate
   volumeMounts:
-    - name: hugepages
-      mountPath: /dev/hugepages
     - name: engine-cache
       mountPath: /root/.cache
-  resources:
-    requests:
-      cpu: "16"
-      memory: 128Gi
-    limits:
-      # Sized for the prefill role: 85 GB/rank of host pools at ratio 2 plus a
-      # 1 GiB segment per rank ~= 644 GiB. The decode role runs no hierarchical
-      # cache and uses only SPDK's few MB, but the chart has no per-role
-      # resources key and a hugetlb limit is a cap, not a reservation.
-      hugepages-2Mi: 650Gi
   # The chart's default startupProbe kills a PD engine inside sglang's PD
   # warmup, which looks exactly like a hang.
   startupProbe:
@@ -157,11 +117,6 @@ values:
     timeoutSeconds: 10
     failureThreshold: 180
   progressDeadlineSeconds: 7200
-  # Only nodes on the EBOF storage network can reach the NoF targets; the
-  # GPU nodes without it are otherwise just as schedulable, and a pod placed
-  # there starts, then fails every L3 transfer.
-  nodeSelector:
-    ebof.modelsphere.io/storage-net: "true"
   tolerations:
     - { key: nvidia.com/gpu, operator: Exists, effect: NoSchedule }
     - { key: ebof-test, operator: Exists, effect: NoSchedule }
@@ -171,33 +126,78 @@ values:
     colocate: false
     prefill:
       gpus: "8"
-      replicas: 1
+      replicas: 2
       size: 1
-      extraArgs:
-        # L2 + L3 live on the prefill role only: a PD decode engine receives KV
-        # over the transfer engine instead of matching prefixes, so a
-        # hierarchical cache there caches nothing while costing a second host
-        # pool and a second Mooncake client.
-        - --enable-hierarchical-cache
-        # A ratio, not --hicache-size: DeepSeek V4 HiCache refuses an absolute
-        # size ("use --hicache-ratio instead").
-        - --hicache-ratio=2
-        # Required for L3 on NVMe-oF: with the default page_first layout the
-        # per-page objects of four pools are not 512-byte multiples and the
-        # NoF client rejects them ("not aligned to block size 512"), so nothing
-        # but the two state pools reaches L3. page_first_direct pads each page
-        # to a 512-byte stride, and its transfer path needs the direct backend.
-        - --hicache-mem-layout=page_first_direct
-        - --hicache-io-backend=direct
-        - --hicache-storage-backend=mooncake
-        # timeout, not wait_complete: wait_complete waits with no upper bound
-        # and sglang's PD warmup goes through the same path.
-        - --hicache-storage-prefetch-policy=timeout
-        - '--hicache-storage-backend-extra-config={"replica_num": 0, "nof_replica_num": 1, "prefetch_timeout_base": 10, "prefetch_timeout_per_ki_token": 2.0}'
+      env:
+        # With P2PHANDSHAKE peers dial this; unset they dial "localhost".
+        - name: MOONCAKE_LOCAL_HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        # Per process, per worker. At the 4 MiB default, eight ranks reading
+        # one long prefix back at once tore NoF qpairs down (CQ transport error
+        # -6 -> SQ DELETION) and most of the prefix missed; at 1 MiB it hit
+        # 100%. Measured 2026-11-03.
+        - name: MC_NOF_INFLIGHT_BYTES_LIMIT
+          value: "1048576"
+        # Required for hugepage-backed pools >= 4 GiB: without it registration
+        # dies with "Failed to register memory ...: Invalid argument" -> -600.
+        - name: RDMAV_HUGEPAGES_SAFE
+          value: "1"
+      # Only prefill does L3, so only prefill needs a node on the EBOF storage
+      # network; decode is left to float to any GPU node.
+      affinityReplace:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: ebof.modelsphere.io/storage-net
+                    operator: In
+                    values: ["true"]
     decode:
       gpus: "8"
       replicas: 1
       size: 1
-      # No hicache flags on purpose -- see the prefill role above.
+  # The chart puts this on the prefill role only: a PD decode engine receives
+  # KV over the transfer engine instead of matching prefixes.
+  storageKVOffload:
+    enabled: true
+    backend: hicache
+    storage_backend: mooncake
+    hicache:
+      # A ratio, not size: DeepSeek V4 HiCache refuses an absolute size ("use
+      # --hicache-ratio instead"). At 2 the host pools come to 85 GB per rank.
+      ratio: 2
+      # Required for L3 on NVMe-oF, not tuning. NoF moves whole 512-byte
+      # blocks; with the default page_first layout the per-page objects of four
+      # pools are 786240 / 177408 / 34560 / 6439680 bytes, the client rejects
+      # every one ("not aligned to block size 512"), and nothing but the two
+      # state pools reaches L3. page_first_direct pads each page to a 512-byte
+      # stride, and its transfer path exists only with the direct IO backend.
+      mem-layout: page_first_direct
+      io-backend: direct
+      # timeout, not wait_complete: wait_complete waits with no upper bound and
+      # sglang's PD warmup goes through the same path. The default budget is
+      # far too small for a cold read off the array.
+      storage-prefetch-policy: timeout
+      # replica_num 0 / nof_replica_num 1 = pure NoF: no DRAM replica.
+      storage-backend-extra-config: '{"replica_num": 0, "nof_replica_num": 1, "prefetch_timeout_base": 10, "prefetch_timeout_per_ki_token": 2.0}'
+    mooncake:
+      # Standalone, outside Kubernetes, owning NoF volumes no other master
+      # holds; point these at it.
+      master: "10.97.11.43:50051"
+      te_meta_data_server: "http://10.97.11.43:8080/metadata"
+      protocol: "rdma"
+      # The storage NICs; left to auto-detect Mooncake has picked the
+      # management NIC on this cluster.
+      device: "mlx5_3,mlx5_4"
+      # Must NOT be 0: the startup warmup put still needs a DRAM segment.
+      global_segment_size: "1gb"
+      use_hugepage: true
+      hugepage:
+        page_size: "2MB"
+        # Per prefill pod: 8 x (85 GB of host pools + 1 GiB segment) ~= 644 GiB
+        # (measured 636 GiB in use); the nodes advertise 660 GiB.
+        resource_limit: "650Gi"
   localKVOffload:
     enabled: false
