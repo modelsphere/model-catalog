@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp8-pp2-ep8-pd-l3-6000d
-version: 1.1.4
+version: 1.1.5
 servedName: glm-5.3
 engine: sglang
 description: >-
@@ -58,10 +58,10 @@ values:
     # therefore ~15% smaller than the vLLM variant's; matching its
     # gpu-memory-utilization=0.90 is not possible, the two flags budget
     # different things.
-    # 0.75, not 0.72, so the KV pool holds a full 1M-token context: 0.72 gave
-    # 1,012,032 tokens, short of the 1,048,576 context length; each 0.01 adds
-    # ~30k tokens. 0.75 leaves ~9.8 GiB free on a decode card after capture.
-    - --mem-fraction-static=0.75
+    # 0.75 was tried for a full 1M-token KV pool (0.72 gives 1,012,032 tokens,
+    # short of the 1,048,576 context length) and the decode side died the
+    # same way: capture wanted 1.94 GiB with 1.73 GiB free.
+    - --mem-fraction-static=0.72
     - --disable-custom-all-reduce
     - --reasoning-parser=glm45
     - --tool-call-parser=glm47
