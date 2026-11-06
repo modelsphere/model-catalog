@@ -1,0 +1,16 @@
+apiVersion: catalog.swiss/v2
+name: glm-5.3-flash-w8a8
+displayName: glm-5.3-flash
+description: 'glm-5.3-flash on 2 nodes of 8 ASCEND-910B4-1 GPUs. Configs use ascend weights. Does not fit on one node: a LeaderWorkerSet group, which needs the LWS controller and RDMA (rdma-shared-dev-plugin).'
+family: glm
+tags:
+  - chat
+  - tool-use
+  - multi-node
+origins:
+  - variant: vllm-tp8-dp2-ascend-910b4-1-lws-baseline@1.0.0
+    tool: baseline-hub
+    by: link
+    url: http://172.28.4.5:30522/baseline-hub/74
+source:
+  hf: Eco-Tech/GLM-5.3-Flash-w8a8
