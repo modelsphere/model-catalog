@@ -3,9 +3,9 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: ling-3.0-flash
 id: sglang-tp8-h100-optimized
-version: 1.0.0
+version: 1.0.1
 servedName: Ling-3.0-flash
-description: 'Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +15.5% (50k + 1.5k), +21.3% (8k + 1k).'
+description: "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +15.5% (50k + 1.5k), +21.3% (8k + 1k)."
 engine: sglang
 chart:
   name: sglang
@@ -22,12 +22,11 @@ values:
   model:
     mountPath: /model
     hostPathType: Directory
-    contextLength: ''
+    contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
-      - '*.safetensors'
+      - "*.safetensors"
   extraArgs:
     - --chat-template=/model/chat_template.jinja
     - --chunked-prefill-size=16384
@@ -41,7 +40,7 @@ values:
     - --trust-remote-code
   env:
     - name: NVIDIA_DISABLE_REQUIRE
-      value: '1'
+      value: "1"
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:True
   volumes:

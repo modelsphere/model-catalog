@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: sglang-tp8-pd-l3-6000d
-version: 1.0.2
+version: 1.0.3
 servedName: deepseek-v4-flash-0731-nvfp4
 engine: sglang
 description: >-
@@ -48,7 +48,6 @@ values:
     hostPathType: Directory
     contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"

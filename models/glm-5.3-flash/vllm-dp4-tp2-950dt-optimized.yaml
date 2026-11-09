@@ -4,7 +4,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm-5.3-flash
 id: vllm-dp4-tp2-950dt-optimized
-version: 1.0.1
+version: 1.0.2
 servedName: GLM-5.3-Flash
 description: "Optimized: TP2/DP4, flashcomm1 and NPU graph/static/super kernels
   on eight Ascend 950DT NPUs, single node, using
@@ -38,7 +38,6 @@ values:
     hostPathType: Directory
     contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"

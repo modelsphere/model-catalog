@@ -4,7 +4,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm-5.3-flash
 id: vllm-tp8-950dt-baseline
-version: 1.0.0
+version: 1.0.1
 servedName: GLM-5.3-Flash
 description: "Baseline: TP8/DP1 on eight Ascend 950DT NPUs, single node, using
   Eco-Tech/GLM-5.3-Flash-w8a8-mxfp8 weights."
@@ -34,7 +34,6 @@ values:
     hostPathType: Directory
     contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"

@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3-8b
 id: vllm-tp1-a100
-version: 1.0.1
+version: 1.0.2
 servedName: Qwen3-8B
 description: "Baseline: bf16, TP1 on one NVIDIA A100 SXM4 80GB GPU, single node. Not yet tuned on this hardware."
 engine: vllm
@@ -24,7 +24,6 @@ values:
     # Use the context length declared by the model config.
     contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"

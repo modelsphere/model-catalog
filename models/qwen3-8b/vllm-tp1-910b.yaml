@@ -3,9 +3,9 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3-8b
 id: vllm-tp1-910b
-version: 1.0.0
+version: 1.0.1
 servedName: Qwen3-8B
-description: 'Baseline: one Ascend 910B card, single node. vLLM''s Ascend backend (CANN), not a CUDA build. Not yet tuned -- no AutoTune run on this hardware.'
+description: "Baseline: one Ascend 910B card, single node. vLLM's Ascend backend (CANN), not a CUDA build. Not yet tuned -- no AutoTune run on this hardware."
 engine: vllm
 chart:
   name: vllm
@@ -30,12 +30,11 @@ requires:
 values:
   model:
     hostPathType: Directory
-    contextLength: ''
+    contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
-      - '*.safetensors'
+      - "*.safetensors"
   extraArgs:
     # Deliberately minimal. Everything here is either measured elsewhere or
     # the convention in this catalog; nothing is guessed.
@@ -55,7 +54,7 @@ values:
     # a CUDA-image concern, the second configures the CUDA caching allocator,
     # which torch_npu does not use.
     - name: VLLM_USE_V1
-      value: '1'
+      value: "1"
   volumes:
     - name: dot-cache
       emptyDir:

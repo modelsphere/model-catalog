@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-pro
 id: vllm-tp8-pp2-6000d
-version: 1.0.1
+version: 1.0.2
 servedName: deepseek-v4-pro
 engine: vllm
 description: TP8 per node, PP2 across two nodes over RoCE.
@@ -25,7 +25,6 @@ values:
     mountPath: /models
     contextLength: "1048576"
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"

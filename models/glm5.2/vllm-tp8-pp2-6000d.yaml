@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.2
 id: vllm-tp8-pp2-6000d
-version: 1.0.0
+version: 1.0.1
 servedName: glm-5.2
 engine: vllm
 description: TP8 per node, PP2 across two nodes over RoCE.
@@ -25,7 +25,6 @@ values:
     mountPath: /models
     contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"

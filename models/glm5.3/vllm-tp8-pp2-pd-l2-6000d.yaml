@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: vllm-tp8-pp2-pd-l2-6000d
-version: 1.0.1
+version: 1.0.2
 servedName: glm-5.3
 description: Prefill/decode-disaggregated DisaggregatedSet, TP8 PP2 per role on RTX 6000D, mooncake transfer backend + local KV offload via mooncakeStore (8 GPUs x 100 GB global segment + 8 x 4 GB local buffer per engine). Default 2 prefill + 1 decode; prefill.replicas is configurable at deploy time (xPyD).
 engine: vllm
@@ -29,7 +29,6 @@ values:
     hostPathType: Directory
     contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"

@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3.6-35b-a3b-w8a8
 id: vllm-tp2-ascend-910b4-1-baseline
-version: 1.1.1
+version: 1.1.2
 servedName: qwen3.6-35b-a3b
 description: "Baseline: TP2 on two ASCEND-910B4-1 cards, single node, ascend weights."
 engine: vllm
@@ -55,8 +55,6 @@ values:
     requests:
       cpu: "16"
       memory: 128Gi
-  modelCheck:
-    enabled: false
   hangWatcher:
     enabled: false
   hostNetwork: true

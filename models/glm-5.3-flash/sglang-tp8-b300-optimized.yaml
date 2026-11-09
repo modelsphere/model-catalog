@@ -3,9 +3,9 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm-5.3-flash
 id: sglang-tp8-b300-optimized
-version: 1.0.1
+version: 1.0.2
 servedName: GLM-5.3-Flash
-description: 'Tuned by LLM AutoTune: TP8 on eight B300 GPUs, single node, fp8 KV cache. Normalized throughput within the SLO vs the baseline variant: +12.5% (50k + 1.5k), +8.2% (8k + 1k).'
+description: "Tuned by LLM AutoTune: TP8 on eight B300 GPUs, single node, fp8 KV cache. Normalized throughput within the SLO vs the baseline variant: +12.5% (50k + 1.5k), +8.2% (8k + 1k)."
 engine: sglang
 chart:
   name: sglang
@@ -23,12 +23,11 @@ values:
   model:
     mountPath: /model
     hostPathType: Directory
-    contextLength: ''
+    contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
-      - '*.safetensors'
+      - "*.safetensors"
   extraArgs:
     - --chat-template=/model/chat_template.jinja
     - --dsa-decode-backend=trtllm
@@ -44,7 +43,7 @@ values:
     - --trust-remote-code
   env:
     - name: NVIDIA_DISABLE_REQUIRE
-      value: '1'
+      value: "1"
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:True
   volumes:

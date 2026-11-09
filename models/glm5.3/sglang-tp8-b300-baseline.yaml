@@ -3,9 +3,9 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp8-b300-baseline
-version: 1.0.4
+version: 1.0.5
 servedName: glm-5.3
-description: 'Baseline: TP8 on eight B300 GPUs, single node, modelopt_fp4 weights.'
+description: "Baseline: TP8 on eight B300 GPUs, single node, modelopt_fp4 weights."
 engine: sglang
 chart:
   name: sglang
@@ -22,12 +22,11 @@ values:
   model:
     mountPath: /model
     hostPathType: Directory
-    contextLength: ''
+    contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
-      - '*.safetensors'
+      - "*.safetensors"
   extraArgs:
     - --chat-template=/model/chat_template.jinja
     - --enable-cache-report
@@ -39,7 +38,7 @@ values:
     - --trust-remote-code
   env:
     - name: NVIDIA_DISABLE_REQUIRE
-      value: '1'
+      value: "1"
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:True
   volumes:

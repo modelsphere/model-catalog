@@ -3,9 +3,9 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: hy3
 id: sglang-tp8-h100-optimized
-version: 1.0.0
+version: 1.0.1
 servedName: Hy3
-description: 'Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node, NEXTN speculative decoding. Normalized throughput within the SLO vs the baseline variant: +64.2% (50k + 1.5k), +7.6% (8k + 1k).'
+description: "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node, NEXTN speculative decoding. Normalized throughput within the SLO vs the baseline variant: +64.2% (50k + 1.5k), +7.6% (8k + 1k)."
 engine: sglang
 chart:
   name: sglang
@@ -21,12 +21,11 @@ requires:
 values:
   model:
     hostPathType: Directory
-    contextLength: ''
+    contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
-      - '*.safetensors'
+      - "*.safetensors"
   extraArgs:
     - --enable-cache-report
     - --reasoning-parser=auto
@@ -40,7 +39,7 @@ values:
     - --trust-remote-code
   env:
     - name: NVIDIA_DISABLE_REQUIRE
-      value: '1'
+      value: "1"
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:True
   volumes:

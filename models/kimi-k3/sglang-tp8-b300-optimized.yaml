@@ -3,9 +3,9 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: kimi-k3
 id: sglang-tp8-b300-optimized
-version: 1.0.5
+version: 1.0.6
 servedName: kimi-k3
-description: 'Tuned by LLM AutoTune: TP8 on eight B300 GPUs, single node, fp8 KV cache, DSPARK speculative decoding, hierarchical KV cache. Normalized throughput within the SLO vs the baseline variant: +57.6% (50k + 1.5k), +21.4% (8k + 1k).'
+description: "Tuned by LLM AutoTune: TP8 on eight B300 GPUs, single node, fp8 KV cache, DSPARK speculative decoding, hierarchical KV cache. Normalized throughput within the SLO vs the baseline variant: +57.6% (50k + 1.5k), +21.4% (8k + 1k)."
 engine: sglang
 chart:
   name: sglang
@@ -23,12 +23,11 @@ values:
   model:
     mountPath: /model
     hostPathType: Directory
-    contextLength: ''
+    contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
-      - '*.safetensors'
+      - "*.safetensors"
   extraArgs:
     - --chunked-prefill-size=16384
     - --dcp-size=8
@@ -51,11 +50,11 @@ values:
     - --trust-remote-code
   env:
     - name: NVIDIA_DISABLE_REQUIRE
-      value: '1'
+      value: "1"
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:True
     - name: TORCHINDUCTOR_COMPILE_THREADS
-      value: '8'
+      value: "8"
   volumes:
     - name: draft-model
       hostPath:

@@ -2,9 +2,9 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3.6-35b-a3b
 id: sglang-tp8-h100-optimized
-version: 1.1.0
+version: 1.1.1
 servedName: qwen
-description: 'Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +4.3% (50k + 1.5k), +10.0% (8k + 1k).'
+description: "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +4.3% (50k + 1.5k), +10.0% (8k + 1k)."
 engine: sglang
 chart:
   name: sglang
@@ -20,12 +20,11 @@ requires:
 values:
   model:
     hostPathType: Directory
-    contextLength: '262144'
+    contextLength: "262144"
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
-      - '*.safetensors'
+      - "*.safetensors"
   extraArgs:
     - --chunked-prefill-size=16384
     - --enable-cache-report
@@ -37,7 +36,7 @@ values:
     - --trust-remote-code
   env:
     - name: NVIDIA_DISABLE_REQUIRE
-      value: '1'
+      value: "1"
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:True
   volumes:

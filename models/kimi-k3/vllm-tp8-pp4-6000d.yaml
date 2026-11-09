@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: kimi-k3
 id: vllm-tp8-pp4-6000d
-version: 1.0.5
+version: 1.0.6
 servedName: kimi-k3
 engine: vllm
 description: TP8 per node, PP4 across four nodes over RoCE. A Marlin MoE path is required on sm120, to keep the 4-bit weights 4-bit; the default runner upcasts them to bf16 and does not fit. sglang reaches the same shape with --moe-runner-backend marlin.
@@ -26,7 +26,6 @@ values:
     mountPath: /models
     contextLength: "1048576"
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"

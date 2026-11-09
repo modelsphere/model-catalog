@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash
 id: vllm-tp8-6000d
-version: 1.0.2
+version: 1.0.3
 servedName: deepseek-v4-flash
 engine: vllm
 description: TP8 on one eight-GPU RTX 6000D node. Single-node, so no RDMA and no host networking.
@@ -24,7 +24,6 @@ values:
     mountPath: /models
     contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"

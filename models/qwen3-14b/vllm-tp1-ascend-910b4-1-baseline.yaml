@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3-14b
 id: vllm-tp1-ascend-910b4-1-baseline
-version: 1.1.1
+version: 1.1.2
 description: "Baseline: TP1 on one ASCEND-910B4-1 card, single node."
 engine: vllm
 chart:
@@ -43,7 +43,6 @@ values:
       memory: 32Gi
       ephemeral-storage: 16Gi
   modelCheck:
-    enabled: false
     requiredGlobs:
       - config.json
       - "*.safetensors"

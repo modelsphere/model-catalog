@@ -3,9 +3,9 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: nemotron-3.5-lightning-30b-a3b
 id: sglang-tp1-dp8-h100-optimized
-version: 1.0.0
+version: 1.0.1
 servedName: Nemotron-3.5-Lightning-30B-A3B
-description: 'Tuned by LLM AutoTune: TP1 DP8 on eight H100 GPUs, single node. +27% on the tuning benchmark vs the baseline variant.'
+description: "Tuned by LLM AutoTune: TP1 DP8 on eight H100 GPUs, single node. +27% on the tuning benchmark vs the baseline variant."
 engine: sglang
 chart:
   name: sglang
@@ -22,12 +22,11 @@ values:
   model:
     mountPath: /model
     hostPathType: Directory
-    contextLength: ''
+    contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
-      - '*.safetensors'
+      - "*.safetensors"
   extraArgs:
     - --chat-template=/model/chat_template.jinja
     - --chunked-prefill-size=16384
@@ -45,7 +44,7 @@ values:
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:True
     - name: NVIDIA_DISABLE_REQUIRE
-      value: '1'
+      value: "1"
   volumes:
     - name: dot-cache
       emptyDir:

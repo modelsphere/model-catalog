@@ -3,8 +3,8 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: gpt-oss-120b
 id: sglang-tp2-h100-baseline
-version: 1.0.0
-description: 'Baseline: TP2 on two H100 GPUs, single node.'
+version: 1.0.1
+description: "Baseline: TP2 on two H100 GPUs, single node."
 engine: sglang
 chart:
   name: sglang
@@ -20,12 +20,11 @@ requires:
 values:
   model:
     hostPathType: Directory
-    contextLength: ''
+    contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
-      - '*.safetensors'
+      - "*.safetensors"
   extraArgs:
     - --enable-cache-report
     - --mem-fraction-static=0.9
@@ -38,7 +37,7 @@ values:
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:True
     - name: NVIDIA_DISABLE_REQUIRE
-      value: '1'
+      value: "1"
   volumes:
     - name: dot-cache
       emptyDir:

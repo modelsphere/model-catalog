@@ -7,7 +7,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3-8b
 id: vllm-tp1-910b4
-version: 1.1.1
+version: 1.1.2
 servedName: Qwen3-8B
 description: "One Ascend 910B4 card on a volcano-managed pool. vLLM's Ascend backend (CANN). Not tuned."
 engine: vllm
@@ -32,8 +32,6 @@ values:
     hostPathType: Directory
     contextLength: ""
   modelCheck:
-    # Off on Ascend: it shells out to an NVIDIA/CUDA layout (nvidia-smi).
-    enabled: false
     requiredGlobs:
       - config.json
       - "*.safetensors"
@@ -100,7 +98,7 @@ values:
     shutdownTimeout: 120
     preStopKill: true
   hangWatcher:
-    # Same reason as modelCheck: it reads nvidia-smi.
+    # Off until hang-watcher is tested on Ascend.
     enabled: false
   cart:
     # Off: the chart brings CART up by default, and its image is not one

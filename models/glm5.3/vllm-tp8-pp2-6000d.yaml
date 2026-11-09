@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: vllm-tp8-pp2-6000d
-version: 1.0.4
+version: 1.0.5
 servedName: glm-5.3
 engine: vllm
 description: TP8 per node, PP2 across two nodes over RoCE, on the same NVFP4 weights as the B300 variant.
@@ -26,7 +26,6 @@ values:
     mountPath: /models
     contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"

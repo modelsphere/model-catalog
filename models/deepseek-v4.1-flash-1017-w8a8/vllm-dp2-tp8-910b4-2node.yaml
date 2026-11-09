@@ -14,7 +14,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4.1-flash-1017-w8a8
 id: vllm-dp2-tp8-910b4-2node
-version: 1.1.1
+version: 1.1.2
 servedName: deepseek-v41
 description: >-
   Two Ascend 910B4 nodes, 8 cards each. vLLM's Ascend backend (CANN) with data-parallel size 2
@@ -198,9 +198,7 @@ values:
     failureThreshold: 3
   progressDeadlineSeconds: 7200
   terminationGracePeriodSeconds: 1200
-  # Both read nvidia-smi, so neither can judge an Ascend pod.
-  modelCheck:
-    enabled: false
+  # Off until hang-watcher is tested on Ascend.
   hangWatcher:
     enabled: false
   # CART's image is not pullable from the site (docker.io times out there).

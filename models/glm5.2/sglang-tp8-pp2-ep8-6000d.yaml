@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.2
 id: sglang-tp8-pp2-ep8-6000d
-version: 1.0.1
+version: 1.0.2
 servedName: glm-5.2
 engine: sglang
 description: >-
@@ -32,7 +32,6 @@ values:
     mountPath: /models
     contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"

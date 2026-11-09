@@ -3,9 +3,9 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp4-b300-optimized
-version: 1.0.4
+version: 1.0.5
 servedName: glm-5.3
-description: 'Tuned by LLM AutoTune: TP4 on four B300 GPUs, single node, modelopt_fp4 weights, EAGLE speculative decoding, hierarchical KV cache. Normalized throughput (8 GPUs) within the SLO vs the baseline variant: +195.3% (50k + 1.5k), +30.6% (8k + 1k).'
+description: "Tuned by LLM AutoTune: TP4 on four B300 GPUs, single node, modelopt_fp4 weights, EAGLE speculative decoding, hierarchical KV cache. Normalized throughput (8 GPUs) within the SLO vs the baseline variant: +195.3% (50k + 1.5k), +30.6% (8k + 1k)."
 engine: sglang
 chart:
   name: sglang
@@ -23,12 +23,11 @@ values:
   model:
     mountPath: /model
     hostPathType: Directory
-    contextLength: ''
+    contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
-      - '*.safetensors'
+      - "*.safetensors"
   extraArgs:
     - --chunked-prefill-size=16384
     - --cuda-graph-max-bs-decode=32
@@ -51,11 +50,11 @@ values:
     - --trust-remote-code
   env:
     - name: NVIDIA_DISABLE_REQUIRE
-      value: '1'
+      value: "1"
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:True
     - name: TORCHINDUCTOR_COMPILE_THREADS
-      value: '8'
+      value: "8"
   volumes:
     - name: dot-cache
       emptyDir:

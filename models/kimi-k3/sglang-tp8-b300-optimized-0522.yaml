@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: kimi-k3
 id: sglang-tp8-b300-optimized-0522
-version: 1.1.0
+version: 1.1.1
 servedName: kimi-k3
 description: "Tuned by LLM AutoTune: TP8 on eight B300 GPUs, single node, fp8 KV cache,
   DSPARK speculative decoding, hierarchical KV cache. Normalized throughput within
@@ -25,7 +25,6 @@ values:
     hostPathType: Directory
     contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"

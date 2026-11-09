@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: kimi-k3
 id: sglang-tp8-pp4-6000d
-version: 1.0.5
+version: 1.0.6
 servedName: kimi-k3
 engine: sglang
 description: >-
@@ -27,7 +27,6 @@ values:
     mountPath: /model
     contextLength: ""
   modelCheck:
-    enabled: true
     requiredGlobs:
       - config.json
       - "*.safetensors"
