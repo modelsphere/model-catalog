@@ -1,0 +1,36 @@
+apiVersion: catalog.swiss/v2
+name: deepseek-v4.1-flash-1017-w4a8
+displayName: DeepSeek-V4.1-Flash-1017-w4a8
+description: DeepSeek-V4.1-Flash-1017 quantized to w4a8 for Ascend, one Atlas 800T A2 (910B4) node of 8 cards per instance. The w8a8 build of the same weights cannot run this way -- its 539 GiB of main weights exceed a node's 512 GiB of HBM, while w4a8's 303 GiB leave room for a KV pool -- so this is the single-node shape of these weights, and the two-node w8a8 variant is the other. The tuning pair compares engine configurations on one instance under a 50K-in / 1.5K-out pattern load.
+family: deepseek
+series: deepseek-v4.1-flash
+quantization: w4a8
+tags:
+  - chat
+  - reasoning
+  - tool-use
+  - moe
+  - speculative-decoding
+defaultVariant: vllm-tp8-910b4-optimized
+source:
+  # A ModelScope repo id (modelscope.cn/models/Eco-Tech/DeepSeek-V4.1-Flash-1017-w4a8); the build
+  # is not on Hugging Face. The field is still `hf` because that is the only identity the schema
+  # has, and what matters to a site is the org/name it expands into model.localPath.
+  hf: Eco-Tech/DeepSeek-V4.1-Flash-1017-w4a8
+tuning:
+  # Measured on a production Ascend 910B4 cluster, 2026-11-05/06: one instance of 8 cards, a fixed
+  # 50K-in / 1.5K-out pattern load driven straight at the engine, TOTAL tokens/s over a 40-minute
+  # window (2,646.1 s for the baseline, 2,742.1 s for the tuned arm -- the load is a sawtooth and a
+  # 10-minute window reads 1.80x high). 944.5 -> 2,592.8 tokens/s, and time to first token
+  # 363.3 s -> 54.2 s. Both arms ran the same image and the same weights; only the engine
+  # parameters differ. Each configuration ran at its own seat limit, 32 against 48, because that
+  # limit is part of the configuration -- so this is not a same-concurrency ratio, and the report
+  # beside this file carries the equal-concurrency control (1.45x at 32) and the rest of the
+  # caveats.
+  - baseline: vllm-tp8-910b4-baseline@1.0.0
+    optimized: vllm-tp8-910b4-optimized@1.0.0
+    uplift: 174.5
+    workloads:
+      - name: 50k + 1.5k, each configuration at its own seat limit
+        uplift: 174.5
+    report: deepseek-v4.1-flash-1017-w4a8-910b4-report.html

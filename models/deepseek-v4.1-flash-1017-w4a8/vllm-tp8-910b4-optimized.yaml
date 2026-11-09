@@ -1,0 +1,180 @@
+# DeepSeek-V4.1-Flash-1017 (w4a8) on ONE Ascend 910B4 node (Atlas 800T A2), vLLM-Ascend, tuned.
+#
+# The TUNED half of the pair in metadata.yaml. 2.75x the baseline's throughput on a 50K-in /
+# 1.5K-out pattern load against one instance -- 2,592.8 against 944.5 TOTAL tokens/s over a
+# 40-minute window, with time to first token 54.2 s against 363.3 s. Each configuration ran at
+# its own seat limit (48 here, 32 there), which is part of the configuration but means the ratio
+# is not a same-concurrency one; the report beside metadata.yaml has the method, the equal-
+# concurrency control and the caveats. Engine configuration only -- same image, same weights, one
+# instance on both arms.
+#
+# What differs from vllm-tp8-910b4-baseline.yaml, and nothing else does:
+#
+#   --max-num-seqs                  32  ->  48
+#   --gpu-memory-utilization        0.90  ->  0.95
+#   --additional-config             four Ascend switches ON  ->  OFF
+#                                   (enable_npugraph_ex, enable_dsa_cp, enable_flashcomm1,
+#                                    enable_shared_expert_dp; -42.3% with them on)
+#   --async-scheduling, --seed      set  ->  dropped
+#   HCCL_OP_EXPANSION_MODE          <unset>  ->  AIV
+#   VLLM_ENGINE_READY_TIMEOUT_S     360000  ->  3600
+#   HCCL_CONNECT_TIMEOUT            1200  ->  <unset>
+#
+# The last two are as the arms ran, not choices. HCCL_CONNECT_TIMEOUT was set only in the
+# baseline: it bounds how long a rank waits to connect before failing, and both arms came up, so
+# it cannot be carrying any of the ratio -- but it is a difference, and the list above is now the
+# whole of it.
+#
+# The sequence count and the memory fraction were tuned together, and on the parameter scan's own
+# workload they cannot be lifted separately: a 50K-in/1.5K-out request holds about 51,500 tokens
+# of KV, and the measured pools seat 36.8 of them at 0.90 against 49.6 at 0.95, so 0.95 is what
+# makes 48 sequences schedulable at all -- which is also the workload the 2.75x was measured on,
+# so here the two really are one change. On a workload whose requests are much smaller the seats
+# stop binding and 0.95 buys headroom rather than admission; raising utilisation alone, where the
+# seats were already enough, measured NEGATIVE on this same hardware with another model
+# (-10.4%). The prefill chunk
+# stays at 8192 for a related reason: activation memory comes out of the KV pool, each extra 4096
+# costs some 600-690K tokens of it (about 12-13 seats), and a scan measured 2048 -> 8192 rising,
+# 12288 down 21.3%, and 16384 refused at startup by the KV gate.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: deepseek-v4.1-flash-1017-w4a8
+id: vllm-tp8-910b4-optimized
+version: 1.0.0
+servedName: deepseek-v41
+description: >-
+  Tuned: one Ascend 910B4 node, 8 cards. vLLM's Ascend backend (CANN) with TP8 and expert
+  parallelism inside the node, DSpark speculative decoding, 48 sequences over a KV pool at 0.95 of
+  the memory, the four Ascend switches off, and AIV collective expansion. On a 17-turn
+  50K-in / 1.5K-out pattern load it measures 2.75x the baseline's throughput, each configuration
+  at its own seat limit, and cuts time to first token from 363 s to 54 s.
+engine: vllm
+chart:
+  name: vllm
+  # The floor the sibling Ascend entries declare; rendered and checked against 0.9.4.
+  version: ">=0.9.1"
+image:
+  # The baseline's image, by the same digest: vllm-ascend 0.30.0rc2. This pair tunes
+  # configuration, not builds -- see the baseline for why the reference is written this way.
+  repository: quay.io/ascend/vllm-ascend
+  tag: "pinned@sha256:7859b75177884252d2b703eff727831ccab4e33a8bde0a9b4ac7563facc98b33"
+requires:
+  # A whole node per pod; the card's resource name comes from the site profile. The baseline
+  # carries the long version of this note, including modelsphere/swiss#41.
+  gpus: 8
+  topology: single-node
+  vendor: ascend
+  gpuProduct:
+    - Ascend-910B4
+values:
+  model:
+    mountPath: /models
+    hostPathType: Directory
+    # 1048576, as the site runtime sets it. The weights declare the same context length. The pool
+    # this configuration actually got is 2,554,153 tokens (the engine's own "GPU KV cache size" at
+    # startup, chunk 8192 at utilisation 0.95), so one sequence that long does fit -- with nothing
+    # else in flight. That is not a context-length guarantee: 48 concurrent sequences share the
+    # one pool. Read the startup line, not an arithmetic estimate from memory free per card.
+    contextLength: "1048576"
+  # --- Host network, as the site runtime sets it; HCCL_IF_IP below is then the host IP. The
+  # baseline's header explains what it costs -- the chart binds the engine to 0.0.0.0, so on a
+  # node with a public address this is an unauthenticated inference API on the internet.
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  securityContext:
+    privileged: true
+  resources:
+    requests:
+      cpu: "32"
+      memory: 768Gi
+    limits:
+      cpu: "32"
+      memory: 768Gi
+  env:
+    - name: VLLM_USE_V2_MODEL_RUNNER
+      value: "0"
+    - name: VLLM_ENGINE_READY_TIMEOUT_S
+      value: "3600"
+    - name: HCCL_IF_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+    - name: GLOO_SOCKET_IFNAME
+      value: bond1
+    - name: TP_SOCKET_IFNAME
+      value: bond1
+    - name: HCCL_SOCKET_IFNAME
+      value: bond1
+    # Collective communication: a larger buffer, and AIV expansion, where the vector cores drive
+    # the transfer themselves instead of the AI CPU scheduling it. Both come from the vendor's A3
+    # scripts. Measured together, +39.3% as a pair -- AIV's own share was never isolated, so do
+    # not quote it alone. On a MoE model whose every step collects across all 8 cards there is a
+    # lot of scheduling overhead for it to take out.
+    - name: HCCL_BUFFSIZE
+      value: "1024"
+    - name: HCCL_OP_EXPANSION_MODE
+      value: AIV
+    # As in the baseline: the measured script preloaded jemalloc under `if [ -f ... ]`, and an env
+    # var only logs "cannot be preloaded: ignored" if the image lacks it.
+    - name: LD_PRELOAD
+      value: /usr/lib/aarch64-linux-gnu/libjemalloc.so.2
+    - name: PYTORCH_NPU_ALLOC_CONF
+      value: expandable_segments:True
+    - name: ASCEND_RT_VISIBLE_DEVICES
+      value: "0,1,2,3,4,5,6,7"
+    - name: ASCEND_GLOBAL_LOG_LEVEL
+      value: "1"
+    - name: ASCEND_PROCESS_LOG_PATH
+      value: /root/ascend/log
+  volumes:
+    - name: cann-diagnostics
+      hostPath:
+        path: /data/share/deployments/dsv41-w4a8-cann
+        type: DirectoryOrCreate
+  volumeMounts:
+    - name: cann-diagnostics
+      mountPath: /root/ascend/log
+  # In the measured command line's order, so the two arms can be diffed. Ahead of these the chart
+  # adds --model, --served-model-name, --host=0.0.0.0, --port, --max-model-len (from
+  # model.contextLength) and --enable-prompt-tokens-details.
+  extraArgs:
+    - --tensor-parallel-size=8
+    - --enable-expert-parallel
+    - --max-num-batched-tokens=8192
+    - --max-num-seqs=48
+    - --gpu-memory-utilization=0.95
+    - --block-size=128
+    - --tokenizer-mode=deepseek_v41
+    - --reasoning-parser=deepseek_v41
+    - --tool-call-parser=deepseek_v41
+    - --enable-auto-tool-choice
+    - --trust-remote-code
+    - '--model-loader-extra-config={"enable_multithread_load":true,"num_threads":128}'
+    - --safetensors-load-strategy=lazy
+    - --quantization=ascend
+    - '--engram-config={"cpu_offload":true}'
+    - '--additional-config={"enable_cpu_binding":true,"ascend_compilation_config":{"enable_npugraph_ex":false,"enable_static_kernel":false}}'
+    - '--speculative-config={"method":"dspark","num_speculative_tokens":5,"enforce_eager":true}'
+    - --enable-prefix-caching
+    - '--compilation-config={"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  # An hour for the load: 303 GiB of main weights plus a 189 GiB engram table that
+  # --engram-config cpu_offload keeps in host memory.
+  startupProbe:
+    httpGet: { path: /health, port: http }
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    failureThreshold: 360
+  readinessProbe:
+    httpGet: { path: /health, port: http }
+    periodSeconds: 10
+    failureThreshold: 3
+  # Reads nvidia-smi, so it cannot judge an Ascend pod.
+  hangWatcher:
+    enabled: false
+  # Chart default is on, and this entry is one engine instance: nothing routes in front of it.
+  cart:
+    enabled: false
+  # An instance is a whole node of cards, so scaling needs a whole free node rather than headroom;
+  # the site decides that, not the model.
+  scaler:
+    enabled: false

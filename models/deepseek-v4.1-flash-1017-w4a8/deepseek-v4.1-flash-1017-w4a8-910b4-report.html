@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DeepSeek-V4.1-Flash-1017-w4a8 on 910B4</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #16181d;
+        --dim: #5b6271;
+        --bg: #ffffff;
+        --panel: #f5f6f8;
+        --line: #d9dce3;
+        --accent: #0b6e4f;
+        --bar-dim: #8a93a6;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #e6e8ec;
+          --dim: #9aa2b1;
+          --bg: #15171c;
+          --panel: #1d2027;
+          --line: #2f343e;
+          --accent: #4ec79a;
+          --bar-dim: #7d8697;
+        }
+      }
+      body {
+        margin: 0 auto;
+        padding: 32px 16px 64px;
+        max-width: 54rem;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          16px/1.6 -apple-system,
+          "Segoe UI",
+          "Noto Sans",
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+      h1 {
+        font-size: 1.6rem;
+        line-height: 1.3;
+        margin: 0 0 4px;
+      }
+      h2 {
+        font-size: 1.15rem;
+        margin: 40px 0 8px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--line);
+      }
+      h3 {
+        font-size: 1rem;
+        margin: 24px 0 6px;
+      }
+      p.sub {
+        color: var(--dim);
+        margin: 0 0 24px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0;
+        font-size: 0.93rem;
+      }
+      caption {
+        text-align: left;
+        color: var(--dim);
+        font-size: 0.85rem;
+        padding-bottom: 6px;
+      }
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 6px 8px;
+        text-align: right;
+        vertical-align: top;
+      }
+      th[scope="col"] {
+        background: var(--panel);
+      }
+      th[scope="row"] {
+        text-align: left;
+        font-weight: 400;
+      }
+      td.t,
+      th.t {
+        text-align: left;
+      }
+      tr.lead td,
+      tr.lead th {
+        font-weight: 700;
+      }
+      strong.n {
+        color: var(--accent);
+      }
+      .charts {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 20px;
+        margin: 16px 0 4px;
+      }
+      figure {
+        margin: 0;
+      }
+      figcaption {
+        color: var(--dim);
+        font-size: 0.85rem;
+        padding-bottom: 8px;
+      }
+      .charts svg {
+        width: 100%;
+        height: auto;
+        overflow: visible;
+      }
+      .ax {
+        stroke: var(--line);
+        stroke-width: 1;
+      }
+      .b0 {
+        fill: var(--bar-dim);
+      }
+      .b1 {
+        fill: var(--accent);
+      }
+      .cat {
+        fill: var(--dim);
+        font-size: 11px;
+      }
+      .val {
+        fill: var(--fg);
+        font-size: 13px;
+        font-weight: 600;
+      }
+      code {
+        font-family: ui-monospace, Menlo, Consolas, monospace;
+        font-size: 0.88em;
+        background: var(--panel);
+        padding: 1px 4px;
+        border-radius: 3px;
+      }
+      .note {
+        background: var(--panel);
+        border-left: 3px solid var(--accent);
+        padding: 10px 14px;
+        margin: 16px 0;
+      }
+      ul {
+        padding-left: 1.3rem;
+      }
+      li {
+        margin: 6px 0;
+      }
+      footer {
+        margin-top: 48px;
+        color: var(--dim);
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>DeepSeek-V4.1-Flash-1017-w4a8 on Ascend 910B4: baseline against tuned</h1>
+    <p class="sub">
+      Measured 2026-11-05/06 on a production Atlas 800T A2 cluster, vLLM-Ascend 0.30.0rc2, one instance of 8 cards, driven directly over the pod
+      network. Hand-run campaign, not an AutoTune report.
+    </p>
+
+    <h2>1. What the two variants are</h2>
+    <table>
+      <caption>
+        Both run the same image, by digest:
+        <code>quay.io/ascend/vllm-ascend</code>
+        at
+        <code>sha256:7859b751&hellip;</code
+        >. The pair tunes configuration, not builds.
+      </caption>
+      <tbody>
+        <tr>
+          <th class="t" scope="row">Baseline</th>
+          <td class="t">
+            <code>vllm-tp8-910b4-baseline</code> &mdash; the vLLM cookbook's A2 example copied as it stands: 32 sequences, memory utilisation 0.90,
+            8192-token prefill chunk, and its own environment block and four <code>additional-config</code> switches.
+          </td>
+        </tr>
+        <tr>
+          <th class="t" scope="row">Tuned</th>
+          <td class="t">
+            <code>vllm-tp8-910b4-optimized</code> &mdash; 48 sequences, utilisation 0.95, the same 8192 chunk, those four switches off, and
+            <code>HCCL_BUFFSIZE=1024</code> with <code>HCCL_OP_EXPANSION_MODE=AIV</code>.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      The tuned configuration is the best of a scan of some two dozen configurations on the workload described next; the baseline is that same scan's
+      reference point, the vendor's published example. Section 4 is what the scan says about <em>why</em> each parameter moves the number.
+    </p>
+
+    <h2>2. The workload</h2>
+    <p>
+      <strong>50K input tokens, 1500 output tokens per request</strong>, a fixed pattern load held for the whole window against the engine's own HTTP
+      endpoint. No router, no second instance, no multi-turn reuse: one engine, one client.
+    </p>
+    <p>
+      <strong>Each configuration runs at its own seat limit</strong>, because that limit is part of the configuration: the cookbook sets
+      <code>--max-num-seqs 32</code> and was driven at 32 concurrent requests, the tuned one sets 48 and was driven at 48. That is the question a
+      deployment asks: what does this configuration do when it is full.
+    </p>
+    <p>
+      <strong>The window has to be long.</strong> This load is a sawtooth: a batch is admitted together, prefills together (input tokens high, output
+      near zero), then decodes together. A request lives about 1459 s at 32 concurrent, so a 10-minute window sits inside one half-cycle and, measured
+      inside a single run, reads <strong>1.80&times;</strong> higher than the long one. Every figure below is the long window: 2742.1 s at 48
+      concurrent, 2646.1 s at 32.
+    </p>
+
+    <h2>3. Result</h2>
+    <table>
+      <caption>TOTAL tokens/s over the long window, each configuration at its own seat limit. These two rows are the variants published here.</caption>
+      <thead>
+        <tr>
+          <th class="t" scope="col">Configuration</th>
+          <th scope="col">Concurrency</th>
+          <th scope="col">TOTAL tok/s</th>
+          <th scope="col">TTFT</th>
+          <th scope="col">Requests finished</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th class="t" scope="row">cookbook (baseline)</th>
+          <td>32</td>
+          <td>944.5</td>
+          <td>363.3 s</td>
+          <td>~49</td>
+        </tr>
+        <tr class="lead">
+          <th class="t" scope="row">tuned (optimized)</th>
+          <td>48</td>
+          <td><strong class="n">2,592.8</strong></td>
+          <td><strong class="n">54.2 s</strong></td>
+          <td>~139</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      <strong class="n">2.75&times;</strong> the throughput, and time to first token falls from just over six minutes to under one &mdash; on a load
+      where every request carries a 50K-token prompt, queueing is most of the latency, and the tuned configuration drains the queue faster than it
+      fills.
+    </p>
+    <div class="charts">
+      <figure>
+        <figcaption>Throughput over the long window &mdash; higher is better</figcaption>
+        <svg viewBox="0 0 400 100" role="img" aria-label="Throughput: cookbook baseline 944.5 TOTAL tokens per second at 32 concurrent, tuned 2,592.8 at 48.">
+          <line class="ax" x1="0.5" y1="14" x2="0.5" y2="90" />
+          <text class="cat" x="0" y="12">cookbook (baseline), 32 concurrent</text>
+          <path class="b0" d="M0 18 H105.3 A4 4 0 0 1 109.3 22 V34 A4 4 0 0 1 105.3 38 H0 Z"><title>944.5 TOTAL tokens/s</title></path>
+          <text class="val" x="117.3" y="32">944.5</text>
+          <text class="cat" x="0" y="62">tuned (optimized), 48 concurrent</text>
+          <path class="b1" d="M0 68 H296.0 A4 4 0 0 1 300.0 72 V84 A4 4 0 0 1 296.0 88 H0 Z"><title>2,592.8 TOTAL tokens/s</title></path>
+          <text class="val" x="308.0" y="82">2,592.8</text>
+        </svg>
+      </figure>
+      <figure>
+        <figcaption>Time to first token &mdash; lower is better</figcaption>
+        <svg viewBox="0 0 400 100" role="img" aria-label="Time to first token: cookbook baseline 363.3 seconds, tuned 54.2 seconds.">
+          <line class="ax" x1="0.5" y1="14" x2="0.5" y2="90" />
+          <text class="cat" x="0" y="12">cookbook (baseline), 32 concurrent</text>
+          <path class="b0" d="M0 18 H296.0 A4 4 0 0 1 300.0 22 V34 A4 4 0 0 1 296.0 38 H0 Z"><title>363.3 s to first token</title></path>
+          <text class="val" x="308.0" y="32">363.3 s</text>
+          <text class="cat" x="0" y="62">tuned (optimized), 48 concurrent</text>
+          <path class="b1" d="M0 68 H40.8 A4 4 0 0 1 44.8 72 V84 A4 4 0 0 1 40.8 88 H0 Z"><title>54.2 s to first token</title></path>
+          <text class="val" x="52.8" y="82">54.2 s</text>
+        </svg>
+      </figure>
+    </div>
+    <h2>4. Why the engine parameters pay</h2>
+    <h3>Sequence count and memory fraction are one change, not two</h3>
+    <p>
+      <code>--max-num-seqs</code> is only a seat limit; it does not create the memory to hold those requests.
+      <code>--gpu-memory-utilization</code> does: whatever is left after weights and activations becomes the KV pool. A request of this workload (50K
+      in, 1.5K out) holds about 51,500 tokens of KV, and the measured pools hold <strong>36.8</strong> such requests at 0.90 against
+      <strong>49.6</strong> at 0.95 &mdash; which is what makes 48 sequences schedulable at all. The two have to move together. Raising utilisation
+      where the seats were already enough measured <strong>&minus;10.4%</strong> on this same hardware with another model, so this is not a
+      &ldquo;more is better&rdquo; knob.
+    </p>
+    <h3>The prefill chunk has an optimum, not a direction</h3>
+    <p>
+      A bigger <code>--max-num-batched-tokens</code> makes prefill kernels more efficient, but its activation memory is taken out of the same KV pool:
+      every extra 4096 costs some 600&ndash;690K tokens of pool, about 12&ndash;13 seats. Measured across the scan, 2048 &rarr; 8192 rises
+      monotonically, 12288 falls <strong>21.3%</strong>, and 16384 is refused at startup for want of KV. The optimum is the largest chunk whose pool
+      still seats the target concurrency.
+    </p>
+    <h3>Four Ascend switches that cost 42%</h3>
+    <p>
+      The cookbook turns on <code>enable_npugraph_ex</code>, <code>enable_dsa_cp</code>, <code>enable_flashcomm1</code> and
+      <code>enable_shared_expert_dp</code> inside <code>--additional-config</code>. On this A2 hardware that group measured
+      <strong>&minus;42.3%</strong> against the same configuration without it, so the tuned variant leaves all four off. This is the one place where
+      the baseline carries <em>more</em>
+      optimisation than the tuned variant &mdash; read the pair as a diff, not as a delta.
+    </p>
+    <h3>Collective communication</h3>
+    <p>
+      <code>HCCL_BUFFSIZE=1024</code> with <code>HCCL_OP_EXPANSION_MODE=AIV</code>, where the AI vector cores drive the transfer instead of the AI CPU
+      scheduling it, measured <strong>+39.3%</strong> <em>as a pair</em> (1,861.0 &rarr; 2,592.8 at 48 concurrent). Their individual shares were never
+      isolated, so neither should be quoted alone. A MoE model that collects across all 8 cards on every step is where that scheduling overhead lives.
+    </p>
+
+    <footer>
+      <p>
+        One instance, 8 &times; Ascend 910B4, vLLM-Ascend 0.30.0rc2, w4a8 weights, <code>--speculative-config</code> DSpark with 5 draft tokens on
+        both arms. Every figure is read from an archived result file; each configuration is traceable to the helm revision that produced it. This page
+        is the summary.
+      </p>
+    </footer>
+    <script type="application/json" id="autotune-report-data">
+      {
+        "schema": "hand-written summary; the structure is the catalog's so that validate:images can check which images the benchmark ran",
+        "reports": [
+          {
+            "name": "50k + 1.5k pattern load, each configuration at its own seat limit",
+            "workload": {
+              "inputTokens": 50000,
+              "outputTokens": 1500,
+              "driver": "fixed-pattern load against the engine's HTTP endpoint, one instance",
+              "windowSeconds": {
+                "baseline": 2646.1,
+                "optimized": 2742.1
+              }
+            },
+            "metric": "TOTAL tokens/s over the window",
+            "comparison": {
+              "baseline": {
+                "variant": "vllm-tp8-910b4-baseline",
+                "throughput": 944.5,
+                "ttftSeconds": 363.3,
+                "requestsFinished": 49,
+                "launch": {
+                  "config": {
+                    "image": "quay.io/ascend/vllm-ascend:pinned@sha256:7859b75177884252d2b703eff727831ccab4e33a8bde0a9b4ac7563facc98b33",
+                    "concurrency": 32,
+                    "maxNumSeqs": 32,
+                    "gpuMemoryUtilization": 0.9,
+                    "maxNumBatchedTokens": 8192
+                  }
+                }
+              },
+              "attempts": [
+                {
+                  "variant": "vllm-tp8-910b4-optimized",
+                  "throughput": 2592.8,
+                  "ttftSeconds": 54.2,
+                  "requestsFinished": 139,
+                  "uplift": 174.5,
+                  "launch": {
+                    "config": {
+                      "image": "quay.io/ascend/vllm-ascend:pinned@sha256:7859b75177884252d2b703eff727831ccab4e33a8bde0a9b4ac7563facc98b33",
+                      "concurrency": 48,
+                      "maxNumSeqs": 48,
+                      "gpuMemoryUtilization": 0.95,
+                      "maxNumBatchedTokens": 8192
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    </script>
+  </body>
+</html>

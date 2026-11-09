@@ -1,0 +1,180 @@
+# DeepSeek-V4.1-Flash-1017 (w4a8) on ONE Ascend 910B4 node (Atlas 800T A2), vLLM-Ascend.
+#
+# The BASELINE half of the tuned pair in metadata.yaml: the engine parameters of the vLLM
+# cookbook's A2 script, adapted to a single node. Measured as the baseline, not proposed as a
+# deployment.
+#
+# IT IS NOT "THE TUNED VARIANT MINUS THE OPTIMISATIONS". This arm turns ON four Ascend switches
+# that the tuned one leaves off -- enable_npugraph_ex, enable_dsa_cp, enable_flashcomm1,
+# enable_shared_expert_dp, all inside --additional-config -- and it adds --async-scheduling and
+# --seed. Removing those four is part of what the tuned variant measures (-42.3% when they are on,
+# in the grouped comparison). So the pair differs in both directions, and the diff listed in the
+# tuned file is the whole of it; do not read either file as the other plus a delta.
+#
+# One instance of 8 cards. Which pool to land in (pod labels, node selector, tolerations) and how
+# many instances to run are the cluster's business, not the model's, and a deploy passes them as
+# overrides.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: deepseek-v4.1-flash-1017-w4a8
+id: vllm-tp8-910b4-baseline
+version: 1.0.0
+servedName: deepseek-v41
+description: >-
+  Baseline: one Ascend 910B4 node, 8 cards. vLLM's Ascend backend (CANN) with TP8 and expert
+  parallelism inside the node, DSpark speculative decoding, and the cookbook's engine parameters
+  -- 32 sequences, 0.90 of the memory, an 8192-token prefill chunk, four Ascend switches on.
+engine: vllm
+chart:
+  name: vllm
+  # The floor the sibling Ascend entries declare; rendered and checked against 0.9.4.
+  version: ">=0.9.1"
+image:
+  # By digest as the site's ClusterServingRuntime pins it: vllm-ascend 0.30.0rc2. The site pulls
+  # the same manifest from a Huawei SWR registry, which needs a login; quay.io serves it
+  # anonymously, and docker.io is not reachable from these nodes at all. The vllm chart has no
+  # digest key and renders "<repository>:<tag>", so the digest rides in the tag; the runtime pulls
+  # by digest and ignores "pinned". No live upstream tag points at this digest any more (checked
+  # quay, 2026-10-29). The tuned half runs this same image: the pair tunes configuration, not
+  # builds.
+  repository: quay.io/ascend/vllm-ascend
+  tag: "pinned@sha256:7859b75177884252d2b703eff727831ccab4e33a8bde0a9b4ac7563facc98b33"
+requires:
+  # A whole node per pod. The card's RESOURCE NAME comes from the site profile
+  # (model.gpuResource), as it does for the other Ascend entries -- the variant does not name it,
+  # because the name follows the node's pool: volcano.sh/Ascend910B4-1 under a volcano pool,
+  # huawei.com/Ascend910B4-1 under a hami one, for the same physical cards. On a site whose
+  # profile does not set it, swiss maps vendor: ascend to huawei.com/Ascend910, which those nodes
+  # may advertise as 0 -- that is modelsphere/swiss#41, and until it is fixed such a deploy has to
+  # override the resource. 8 is allocatable per node only where the vDeviceCount patch is applied;
+  # unpatched, the same 8 physical cards are advertised as 32.
+  gpus: 8
+  topology: single-node
+  vendor: ascend
+  gpuProduct:
+    - Ascend-910B4
+values:
+  model:
+    mountPath: /models
+    hostPathType: Directory
+    # 1048576, as the site runtime sets it. The weights declare the same context length. The pool
+    # this configuration actually got is 1,894,802 tokens (the engine's own "GPU KV cache size" at
+    # startup, chunk 8192 at utilisation 0.90), so one sequence that long does fit -- with nothing
+    # else in flight. That is not a context-length guarantee: 32 concurrent sequences share the
+    # one pool. Read the startup line, not an arithmetic estimate from memory free per card.
+    contextLength: "1048576"
+  # --- Host network, as the site runtime sets it; HCCL_IF_IP below is then the host IP.
+  #
+  # TP inside one node goes over HCCS rather than sockets, so a single-node instance does not need
+  # it -- it is kept because this is the configuration that was measured. Note what it costs: the
+  # chart always binds the engine to 0.0.0.0, so on a node with a public address this is an
+  # unauthenticated inference API on the internet. The site this was measured on has such nodes,
+  # and the exposure was accepted for the measurement window only. Either drop hostNetwork or
+  # firewall the node before serving traffic from this variant.
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  securityContext:
+    privileged: true
+  resources:
+    requests:
+      cpu: "32"
+      memory: 768Gi
+    limits:
+      cpu: "32"
+      memory: 768Gi
+  env:
+    - name: VLLM_USE_V2_MODEL_RUNNER
+      value: "0"
+    # 100 hours, as the cookbook-derived script set it (the tuned arm has 3600). Not a typo and
+    # not load-bearing: the startup probe below gives the load 3660 s, and kubelet kills the pod
+    # long before this guard could fire.
+    - name: VLLM_ENGINE_READY_TIMEOUT_S
+      value: "360000"
+    # The cookbook script's HCCL block, kept as measured. Under hostNetwork status.podIP IS the
+    # host IP, which is what the measured script exported into HCCL_IF_IP; the three
+    # *_SOCKET_IFNAME variables matter for multi-node rendezvous and are inert on one node.
+    - name: HCCL_IF_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+    - name: GLOO_SOCKET_IFNAME
+      value: bond1
+    - name: TP_SOCKET_IFNAME
+      value: bond1
+    - name: HCCL_SOCKET_IFNAME
+      value: bond1
+    - name: HCCL_BUFFSIZE
+      value: "1024"
+    - name: HCCL_CONNECT_TIMEOUT
+      value: "1200"
+    # The measured script preloaded jemalloc when the image had it, guarded by `if [ -f ... ]`.
+    # As an env var it is unconditional, which is the same thing where the file exists and only
+    # logs "cannot be preloaded: ignored" where it does not.
+    - name: LD_PRELOAD
+      value: /usr/lib/aarch64-linux-gnu/libjemalloc.so.2
+    - name: PYTORCH_NPU_ALLOC_CONF
+      value: expandable_segments:True
+    - name: ASCEND_RT_VISIBLE_DEVICES
+      value: "0,1,2,3,4,5,6,7"
+    - name: ASCEND_GLOBAL_LOG_LEVEL
+      value: "1"
+    - name: ASCEND_PROCESS_LOG_PATH
+      value: /root/ascend/log
+  volumes:
+    - name: cann-diagnostics
+      hostPath:
+        path: /data/share/deployments/dsv41-w4a8-cann
+        type: DirectoryOrCreate
+  volumeMounts:
+    - name: cann-diagnostics
+      mountPath: /root/ascend/log
+  # In the measured command line's order, so the two can be diffed. Ahead of these the chart adds
+  # --model, --served-model-name, --host=0.0.0.0, --port, --max-model-len (from
+  # model.contextLength) and --enable-prompt-tokens-details -- which is what the measured line
+  # carried in those positions.
+  #
+  # dp_shared_memory is not in --engram-config: it shares the engram table between data-parallel
+  # ranks, and there is no DP group here.
+  extraArgs:
+    - --tensor-parallel-size=8
+    - --enable-expert-parallel
+    - --max-num-batched-tokens=8192
+    - --max-num-seqs=32
+    - --gpu-memory-utilization=0.9
+    - --block-size=128
+    - --seed=1024
+    - --enable-prefix-caching
+    - --async-scheduling
+    - --tokenizer-mode=deepseek_v41
+    - --reasoning-parser=deepseek_v41
+    - --tool-call-parser=deepseek_v41
+    - --enable-auto-tool-choice
+    - --trust-remote-code
+    - '--model-loader-extra-config={"enable_multithread_load":true,"num_threads":128}'
+    - --safetensors-load-strategy=lazy
+    - --quantization=ascend
+    - '--engram-config={"cpu_offload":true}'
+    - '--additional-config={"ascend_compilation_config":{"enable_npugraph_ex":true,"enable_static_kernel":false},"enable_cpu_binding":true,"enable_dsa_cp":true,"enable_flashcomm1":true,"enable_shared_expert_dp":true}'
+    - '--speculative-config={"method":"dspark","num_speculative_tokens":5,"enforce_eager":true}'
+    - '--compilation-config={"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  # An hour for the load: 303 GiB of main weights plus a 189 GiB engram table that
+  # --engram-config cpu_offload keeps in host memory.
+  startupProbe:
+    httpGet: { path: /health, port: http }
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    failureThreshold: 360
+  readinessProbe:
+    httpGet: { path: /health, port: http }
+    periodSeconds: 10
+    failureThreshold: 3
+  # Reads nvidia-smi, so it cannot judge an Ascend pod.
+  hangWatcher:
+    enabled: false
+  # Chart default is on, and this entry is one engine instance: nothing routes in front of it.
+  cart:
+    enabled: false
+  # An instance is a whole node of cards, so scaling needs a whole free node rather than headroom;
+  # the site decides that, not the model.
+  scaler:
+    enabled: false
