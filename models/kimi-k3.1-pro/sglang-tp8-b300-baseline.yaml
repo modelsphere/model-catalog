@@ -1,0 +1,74 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: kimi-k3.1-pro
+id: sglang-tp8-b300-baseline
+version: 1.0.0
+servedName: kimi-k3.1-pro
+description: "Baseline: TP8 on eight B300 GPUs, single node."
+engine: sglang
+chart:
+  name: sglang
+  version: ">=0.9.32"
+image:
+  repository: lmsysorg/sglang
+  tag: dev-kimi-k31-pro
+requires:
+  gpus: 8
+  topology: single-node
+  gpuProduct:
+    - NVIDIA-B300-SXM6-AC
+values:
+  model:
+    mountPath: /model
+    hostPathType: Directory
+    contextLength: ""
+  modelCheck:
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  extraArgs:
+    - --tp-size=8
+    - --reasoning-parser=kimi_k3
+    - --tool-call-parser=kimi_k3
+    - --enable-cache-report
+    - --stream-response-default-include-usage
+    - --trust-remote-code
+  env:
+    - name: NVIDIA_DISABLE_REQUIRE
+      value: "1"
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+  volumes:
+    - name: dot-cache
+      emptyDir:
+        sizeLimit: 10Gi
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 32Gi
+  volumeMounts:
+    - name: dot-cache
+      mountPath: /root/.cache
+    - name: dshm
+      mountPath: /dev/shm
+  resources:
+    requests:
+      ephemeral-storage: 16Gi
+    limits:
+      ephemeral-storage: 16Gi
+  progressDeadlineSeconds: 11100
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 310
+  terminationGracePeriodSeconds: 3600
+  lifecycle:
+    preStop:
+      drainSeconds: 600
+      pollIntervalSeconds: 5
+    forceShutdown: true
+    preStopKill: true
