@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: google-gemma-4-31b-it
 id: vllm-tp4-ascend-910b4-1-baseline
-version: 1.1.0
+version: 1.1.1
 servedName: gemma-4-31B-it
 description: "Baseline: TP4 on four ASCEND-910B4-1 cards, single node."
 engine: vllm
@@ -70,5 +70,4 @@ values:
       mountPath: /root/.cache
     - name: dshm
       mountPath: /dev/shm
-  schedulerName: volcano
   progressDeadlineSeconds: 7200

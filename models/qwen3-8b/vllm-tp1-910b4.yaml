@@ -7,7 +7,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3-8b
 id: vllm-tp1-910b4
-version: 1.1.0
+version: 1.1.1
 servedName: Qwen3-8B
 description: "One Ascend 910B4 card on a volcano-managed pool. vLLM's Ascend backend (CANN). Not tuned."
 engine: vllm
@@ -109,9 +109,3 @@ values:
     # make every pod listing look broken. Turn it back on once the image is
     # reachable from the site.
     enabled: false
-  # --- Scheduling. volcano.sh/* resources are only allocated through
-  # volcano. Which pool to land in
-  # -- podLabels, nodeSelector and tolerations -- is a fact about the
-  # cluster, not the model, so the variant sets none of it and the deploy
-  # passes it as overrides.
-  schedulerName: volcano

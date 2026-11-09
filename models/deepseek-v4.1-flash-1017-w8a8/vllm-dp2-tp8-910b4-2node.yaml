@@ -1,6 +1,6 @@
 # DeepSeek-V4.1-Flash-1017 (w8a8) on two Ascend 910B4 nodes (Atlas 800T A2), vLLM-Ascend.
 #
-# For a volcano-managed Ascend 910B4 site: the volcano scheduler, host networking on bond1 and a
+# For a volcano-managed Ascend 910B4 site: host networking on bond1 and a
 # host path for CANN logs. The site profile's nodes.gpus names the card's resource. Which pool to
 # land in (pod labels, node selector, tolerations) is not set here: that belongs to the cluster,
 # and a deploy passes it as overrides.
@@ -14,7 +14,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4.1-flash-1017-w8a8
 id: vllm-dp2-tp8-910b4-2node
-version: 1.1.0
+version: 1.1.1
 servedName: deepseek-v41
 description: >-
   Two Ascend 910B4 nodes, 8 cards each. vLLM's Ascend backend (CANN) with data-parallel size 2
@@ -82,11 +82,6 @@ values:
   dnsPolicy: ClusterFirstWithHostNet
   securityContext:
     privileged: true
-  # --- Scheduling. volcano.sh/* resources are only allocated through volcano. Which pool to
-  # land in -- podLabels, nodeSelector and tolerations -- is a fact about the cluster, not the
-  # model, so the variant sets none of it and the deploy passes it as overrides. Both pods of
-  # the group must land in one pool.
-  schedulerName: volcano
   resources:
     requests:
       cpu: "32"

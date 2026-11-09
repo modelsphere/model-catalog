@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: kimi-k3
 id: vllm-tp8-b300
-version: 1.0.5
+version: 1.0.6
 servedName: kimi-k3
 engine: vllm
 image:
@@ -121,7 +121,6 @@ values:
     requests:
       cpu: "16"
       ephemeral-storage: 64Gi
-  schedulerName: volcano
   securityContext:
     capabilities:
       add:
