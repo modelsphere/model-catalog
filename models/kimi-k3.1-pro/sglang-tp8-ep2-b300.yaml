@@ -1,0 +1,100 @@
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: kimi-k3.1-pro
+id: sglang-tp8-ep2-b300
+version: 1.0.0
+servedName: kimi-k3.1-pro
+description: "Tuned: TP8 with DCP8 and EP2 on eight B300 GPUs, single node, DFLASH speculative decoding. Normalized throughput within the SLO vs the baseline variant: +50.6% (50k + 1.5k), +16.9% (8k + 1k)."
+engine: sglang
+chart:
+  name: sglang
+  version: ">=0.9.32"
+image:
+  repository: lmsysorg/sglang
+  tag: dev-kimi-k31-pro
+requires:
+  gpus: 8
+  topology: single-node
+  gpuProduct:
+    - NVIDIA-B300-SXM6-AC
+values:
+  model:
+    mountPath: /model
+    hostPathType: Directory
+    contextLength: ""
+  modelCheck:
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  extraArgs:
+    - --trust-remote-code
+    - --tp-size=8
+    - --dcp-size=8
+    - --dcp-comm-backend=fi_a2a
+    - --ep-size=2
+    - --mem-fraction-static=0.85
+    - --max-running-requests=50
+    - --max-mamba-cache-size=270
+    - --weight-loader-prefetch-checkpoints
+    - '--model-loader-extra-config={"enable_multithread_load": true}'
+    - --mamba-radix-cache-strategy=extra_buffer
+    - --reasoning-parser=kimi_k3
+    - --tool-call-parser=kimi_k3
+    - --speculative-algorithm=DFLASH
+    - --speculative-draft-model-path=/draft-model
+    - --speculative-dflash-block-size=5
+    - --speculative-draft-kv-cache-dtype=fp8_e4m3
+    - --speculative-draft-attention-backend=cutedsl_mla
+    - --enable-linear-replayssm-spec
+    - --tokenizer-worker-num=4
+    - --enable-cache-report
+    - --stream-response-default-include-usage
+  env:
+    - name: NVIDIA_DISABLE_REQUIRE
+      value: "1"
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+    - name: SGLANG_DCP_PUSH_COMBINE_MAX_ROWS
+      value: "1536"
+    - name: SGLANG_CUSTOM_ALL_REDUCE_V2_MAX_SIZE_KB
+      value: "32768"
+  volumes:
+    - name: draft-model
+      hostPath:
+        path: /mnt/disk0/models/Kimi-K3.1-Dflash2-Preview
+        type: Directory
+    - name: dot-cache
+      emptyDir:
+        sizeLimit: 10Gi
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 32Gi
+  volumeMounts:
+    - name: draft-model
+      mountPath: /draft-model
+      readOnly: true
+    - name: dot-cache
+      mountPath: /root/.cache
+    - name: dshm
+      mountPath: /dev/shm
+  resources:
+    requests:
+      ephemeral-storage: 16Gi
+    limits:
+      ephemeral-storage: 16Gi
+  progressDeadlineSeconds: 11100
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 310
+  terminationGracePeriodSeconds: 3600
+  lifecycle:
+    preStop:
+      drainSeconds: 600
+      pollIntervalSeconds: 5
+    forceShutdown: true
+    preStopKill: true

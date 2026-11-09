@@ -10,6 +10,16 @@ tags:
   - long-context
   - moe
   - vision
-defaultVariant: sglang-tp8-b300-baseline
+defaultVariant: sglang-tp8-ep2-b300
 source:
   hf: moonshotai/Kimi-K3.1-Pro
+tuning:
+  - baseline: sglang-tp8-b300-baseline@1.0.0
+    optimized: sglang-tp8-ep2-b300@1.0.0
+    uplift: 50.6
+    workloads:
+      - name: 50k + 1.5k
+        uplift: 50.6
+      - name: 8k + 1k
+        uplift: 16.9
+    report: kimi-k3.1-pro-b300-report.html
