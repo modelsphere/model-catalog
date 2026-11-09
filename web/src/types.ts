@@ -8,6 +8,17 @@ export interface Requires {
   vendor?: string;
   gpuProduct?: string[];
   topology?: string;
+  inputs?: Input[];
+}
+
+// A chart value the variant needs and cannot know, answered at deploy.
+export interface Input {
+  path: string;
+  title: string;
+  description?: string;
+  type?: "string" | "integer" | "boolean";
+  pattern?: string;
+  example: string | number | boolean;
 }
 
 export interface Chart {

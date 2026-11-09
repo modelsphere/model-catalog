@@ -27,6 +27,7 @@ const {
   checkIndexV2,
 } = require("./lib/catalog");
 const { reportProblem } = require("./lib/report");
+const { inputProblems } = require("./lib/inputs");
 const { paint, marks, plural } = require("./lib/style");
 
 const {
@@ -225,6 +226,7 @@ function variantProblems(v, at) {
       if (v.requires[key] !== undefined) lines.push(`${at}requires.${key} is set, but requires.gpus 0 is CPU only`);
     }
   }
+  lines.push(...inputProblems(v, at));
   return lines;
 }
 
