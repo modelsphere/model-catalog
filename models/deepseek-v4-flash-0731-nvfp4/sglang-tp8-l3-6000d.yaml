@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: sglang-tp8-l3-6000d
-version: 1.0.5
+version: 1.0.6
 servedName: deepseek-v4-flash-0731-nvfp4
 engine: sglang
 description: >-
@@ -92,8 +92,6 @@ values:
   hostNetwork: true
   rdma:
     enabled: true
-  scaler:
-    enabled: false
   # SPDK needs these three, and NOT privileged: a privileged container receives
   # every device on the host, which defeats the GPU device plugin.
   securityContext:
