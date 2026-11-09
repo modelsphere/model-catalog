@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731
 id: sglang-tp8-h100-optimized
-version: 1.0.1
+version: 1.0.2
 servedName: DeepSeek-V4-Flash-0731
 description: "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node, DSPARK speculative decoding. Normalized throughput within the SLO vs the baseline variant: +58.0% (50k + 1.5k), +23.4% (8k + 1k)."
 engine: sglang
@@ -71,5 +71,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

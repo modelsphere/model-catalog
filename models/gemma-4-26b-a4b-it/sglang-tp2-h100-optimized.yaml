@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: gemma-4-26b-a4b-it
 id: sglang-tp2-h100-optimized
-version: 1.0.1
+version: 1.0.2
 servedName: gemma-4-26B-A4B-it
 description: "Tuned by LLM AutoTune: TP2 on two H100 GPUs, single node, fp8 KV cache. Normalized throughput within the SLO vs the baseline variant: +38.8% (50k + 1.5k), +45.6% (8k + 1k)."
 engine: sglang
@@ -76,5 +76,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: google-gemma-4-31b-it
 id: sglang-tp4-h100-optimized
-version: 2.0.1
+version: 2.0.2
 servedName: gemma-4-31B-it
 description: "Tuned by LLM AutoTune: TP4 on four H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +32.4% (50k + 1.5k), +1.6% (8k + 1k)."
 engine: sglang
@@ -75,5 +75,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

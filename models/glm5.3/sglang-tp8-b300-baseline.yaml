@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp8-b300-baseline
-version: 1.0.5
+version: 1.0.6
 servedName: glm-5.3
 description: "Baseline: TP8 on eight B300 GPUs, single node, modelopt_fp4 weights."
 engine: sglang
@@ -74,5 +74,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

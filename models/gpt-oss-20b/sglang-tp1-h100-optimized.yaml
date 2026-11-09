@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: gpt-oss-20b
 id: sglang-tp1-h100-optimized
-version: 1.0.1
+version: 1.0.2
 description: "Tuned by LLM AutoTune: TP1 on one H100 GPU, single node, fp8 KV cache. Normalized throughput within the SLO vs the baseline variant: +6.2% (50k + 1.5k), +2.2% (8k + 1k)."
 engine: sglang
 chart:
@@ -71,5 +71,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

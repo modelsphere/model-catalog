@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3.8-27b-fp8
 id: sglang-tp2-h100-optimized
-version: 1.0.1
+version: 1.0.2
 servedName: Qwen3.8-27B-FP8
 description: "Tuned by LLM AutoTune: TP2 on two H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +30.1% (50k + 1.5k), +12.1% (8k + 1k)."
 engine: sglang
@@ -71,5 +71,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

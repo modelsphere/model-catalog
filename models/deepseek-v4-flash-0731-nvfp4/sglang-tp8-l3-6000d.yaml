@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: sglang-tp8-l3-6000d
-version: 1.0.4
+version: 1.0.5
 servedName: deepseek-v4-flash-0731-nvfp4
 engine: sglang
 description: >-
@@ -89,8 +89,6 @@ values:
     sizeLimit: 64Gi
   service:
     port: 8050
-  hangWatcher:
-    enabled: true
   hostNetwork: true
   rdma:
     enabled: true

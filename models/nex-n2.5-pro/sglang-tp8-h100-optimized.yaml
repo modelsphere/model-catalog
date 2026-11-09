@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: nex-n2.5-pro
 id: sglang-tp8-h100-optimized
-version: 1.0.1
+version: 1.0.2
 servedName: Nex-N2.5-Pro
 description: "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node, fp8 KV cache. +24% on the tuning benchmark vs the baseline variant."
 engine: sglang
@@ -77,5 +77,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

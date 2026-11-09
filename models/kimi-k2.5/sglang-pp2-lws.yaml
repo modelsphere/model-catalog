@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: kimi-k2.5
 id: sglang-pp2-lws
-version: 1.0.0
+version: 1.0.1
 servedName: kimi-k2.5
 engine: sglang
 description: TP8 per node, PP2 across two nodes over IB.
@@ -86,5 +86,3 @@ values:
       endpointSyncSeconds: 5
       drainSeconds: 600
     forceShutdown: true
-  hangWatcher:
-    enabled: true

@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3.6-35b-a3b
 id: sglang-tp8-h100-optimized
-version: 1.1.1
+version: 1.1.2
 servedName: qwen
 description: "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +4.3% (50k + 1.5k), +10.0% (8k + 1k)."
 engine: sglang
@@ -72,5 +72,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

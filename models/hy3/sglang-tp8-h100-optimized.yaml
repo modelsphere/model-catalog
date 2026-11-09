@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: hy3
 id: sglang-tp8-h100-optimized
-version: 1.0.1
+version: 1.0.2
 servedName: Hy3
 description: "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node, NEXTN speculative decoding. Normalized throughput within the SLO vs the baseline variant: +64.2% (50k + 1.5k), +7.6% (8k + 1k)."
 engine: sglang
@@ -75,5 +75,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

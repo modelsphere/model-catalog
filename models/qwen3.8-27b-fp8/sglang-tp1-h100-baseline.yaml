@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3.8-27b-fp8
 id: sglang-tp1-h100-baseline
-version: 1.0.1
+version: 1.0.2
 servedName: Qwen3.8-27B-FP8
 description: "Baseline: TP1 on one H100 GPU, single node."
 engine: sglang
@@ -70,5 +70,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

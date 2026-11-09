@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: sglang-tp8-pd-6000d
-version: 1.0.1
+version: 1.0.2
 servedName: deepseek-v4-flash-0731-nvfp4
 engine: sglang
 description: >-
@@ -69,8 +69,6 @@ values:
     periodSeconds: 30
     timeoutSeconds: 10
     failureThreshold: 180
-  hangWatcher:
-    enabled: true
   hostNetwork: true
   rdma:
     enabled: true

@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: kimi-k3
 id: sglang-tp8-b300-baseline
-version: 1.0.6
+version: 1.0.7
 servedName: kimi-k3
 description: "Baseline: TP8 on eight B300 GPUs, single node."
 engine: sglang
@@ -72,5 +72,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

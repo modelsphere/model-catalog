@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm-5.3-flash
 id: sglang-tp8-h100-optimized
-version: 1.0.2
+version: 1.0.3
 servedName: GLM-5.3-Flash
 description: "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node. +5% on the tuning benchmark vs the baseline variant."
 engine: sglang
@@ -75,5 +75,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

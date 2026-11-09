@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp8-pp2-ep8-pd-l2-6000d
-version: 1.0.2
+version: 1.0.3
 servedName: glm-5.3
 engine: sglang
 description: >-
@@ -80,8 +80,6 @@ values:
     sizeLimit: 64Gi
   service:
     port: 8050
-  hangWatcher:
-    enabled: true
   hostNetwork: true
   rdma:
     enabled: true

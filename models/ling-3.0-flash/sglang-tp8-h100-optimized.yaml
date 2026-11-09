@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: ling-3.0-flash
 id: sglang-tp8-h100-optimized
-version: 1.0.1
+version: 1.0.2
 servedName: Ling-3.0-flash
 description: "Tuned by LLM AutoTune: TP8 on eight H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +15.5% (50k + 1.5k), +21.3% (8k + 1k)."
 engine: sglang
@@ -76,5 +76,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

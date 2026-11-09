@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3-8b
 id: vllm-tp1-a100
-version: 1.0.2
+version: 1.0.3
 servedName: Qwen3-8B
 description: "Baseline: bf16, TP1 on one NVIDIA A100 SXM4 80GB GPU, single node. Not yet tuned on this hardware."
 engine: vllm
@@ -70,5 +70,3 @@ values:
       pollIntervalSeconds: 5
     shutdownTimeout: 120
     preStopKill: true
-  hangWatcher:
-    enabled: true

@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: mistral-small-4-119b-2603
 id: sglang-tp2-h100-optimized
-version: 1.0.1
+version: 1.0.2
 servedName: Mistral-Small-4-119B-2603
 description: "Tuned by LLM AutoTune: TP2 on two H100 GPUs, single node. Normalized throughput within the SLO vs the baseline variant: +52.5% (50k + 1.5k), +32.1% (8k + 1k)."
 engine: sglang
@@ -74,5 +74,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: nemotron-3.5-lightning-30b-a3b
 id: sglang-tp1-dp8-h100-optimized
-version: 1.0.1
+version: 1.0.2
 servedName: Nemotron-3.5-Lightning-30B-A3B
 description: "Tuned by LLM AutoTune: TP1 DP8 on eight H100 GPUs, single node. +27% on the tuning benchmark vs the baseline variant."
 engine: sglang
@@ -78,5 +78,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

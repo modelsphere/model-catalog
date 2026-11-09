@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp4-b300-optimized
-version: 1.0.5
+version: 1.0.6
 servedName: glm-5.3
 description: "Tuned by LLM AutoTune: TP4 on four B300 GPUs, single node, modelopt_fp4 weights, EAGLE speculative decoding, hierarchical KV cache. Normalized throughput (8 GPUs) within the SLO vs the baseline variant: +195.3% (50k + 1.5k), +30.6% (8k + 1k)."
 engine: sglang
@@ -88,5 +88,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true

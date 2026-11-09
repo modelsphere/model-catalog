@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: kimi-k3
 id: sglang-tp8-pp4-6000d
-version: 1.0.6
+version: 1.0.7
 servedName: kimi-k3
 engine: sglang
 description: >-
@@ -69,5 +69,3 @@ values:
   # The KDA linear-attention kernels compile on first start, so this model
   # comes up slower under sglang than under vLLM.
   progressDeadlineSeconds: 7200
-  hangWatcher:
-    enabled: true

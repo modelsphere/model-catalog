@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: gpt-oss-120b
 id: sglang-tp2-dp4-h100-optimized
-version: 1.0.1
+version: 1.0.2
 description: "Tuned by LLM AutoTune: TP2 DP4 on eight H100 GPUs, single node, fp8 KV cache, EAGLE3 speculative decoding (lmsys/EAGLE3-gpt-oss-120b-bf16).  +44% on the tuning benchmark vs the baseline variant."
 engine: sglang
 chart:
@@ -80,5 +80,3 @@ values:
       pollIntervalSeconds: 5
     forceShutdown: true
     preStopKill: true
-  hangWatcher:
-    enabled: true
