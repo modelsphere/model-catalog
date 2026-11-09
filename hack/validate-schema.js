@@ -569,6 +569,22 @@ function baseChecks(mergeBase) {
     }
   }
 
+  // commandOverride takes the container's command over from the chart: no
+  // --model, none of the flags the chart wires, and the chart refuses
+  // extraArgs beside it, so a deploy that passes extraArgs through swiss fails
+  // to render. Two variants set one from before this rule; a change may keep
+  // theirs as it is or drop it, and adds or changes none.
+  for (const [rel, s] of status) {
+    if (s === "D" || !/^models\/[^/]+\/[^/]+\.yaml$/.test(rel)) continue;
+    const now = doc(path.join(root, rel));
+    if (now?.kind !== "Variant" || now.values?.commandOverride == null) continue;
+    const was = s === "A" ? undefined : parseAt(rel)?.values?.commandOverride;
+    if (JSON.stringify(was ?? null) === JSON.stringify(now.values.commandOverride)) continue;
+    fail(rel, [
+      `values.commandOverride ${was == null ? "added" : "changed"}: it replaces the command line the chart builds, and swiss's extraArgs cannot reach it; put the engine's flags in extraArgs instead`,
+    ]);
+  }
+
   for (const name of modelNames()) {
     const meta = doc(path.join(root, `models/${name}/metadata.yaml`));
     if (schemaOf(meta) !== "v2") continue;
