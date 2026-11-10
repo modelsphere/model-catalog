@@ -1,8 +1,7 @@
 "use strict";
 // requires.inputs, past what the schema can see. A path is declared once; a
 // value values gives it is its default, and like the example it must be a valid
-// answer ("" or null is no default). swiss repeats these checks when it loads a
-// variant (internal/catalog).
+// answer. swiss repeats these checks when it loads a variant (internal/catalog).
 
 // Problems with one variant's inputs, each line prefixed with at.
 function inputProblems(variant, at = "") {
@@ -38,15 +37,13 @@ function inputProblems(variant, at = "") {
     const found = valueAt(variant.values, input.path.split("."));
     if (found.blocked) {
       lines.push(`${where}values.${found.blocked} is not a map, so it cannot hold this input`);
-    } else if (hasDefault(found.value)) {
+    } else if ("value" in found) {
       const problem = answerProblem(found.value);
       if (problem) lines.push(`${where}default ${problem}`);
     }
   }
   return lines;
 }
-
-const hasDefault = (v) => v !== undefined && v !== null && v !== "";
 
 // What values holds at a path: { value }, or { blocked } naming a non-map on the way.
 function valueAt(values, keys) {
@@ -59,4 +56,4 @@ function valueAt(values, keys) {
   return { value: node };
 }
 
-module.exports = { inputProblems, hasDefault, valueAt };
+module.exports = { inputProblems, valueAt };

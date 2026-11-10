@@ -147,7 +147,7 @@
               "default": "nvidia"
             },
             "inputs": {
-              "description": "Chart values a deploy is asked for, such as the address of a service the site runs. A value values gives the path is its default; the site profile's features.inputs answers over it, and the deploy's overrides over both. swiss refuses to compose a plan that leaves one with no default unanswered (\"\" is none). model.localPath is never one: swiss answers it from the site's model.pathTemplate.",
+              "description": "Chart values a deploy is asked for, such as the address of a service the site runs. Every input is required: swiss refuses to compose a plan that leaves one without a valid answer. The answers, each over the one before: a default values gives the path (a valid answer itself, never a blank placeholder), the site profile's features.inputs, the deploy's overrides. model.localPath is never one: swiss answers it from the site's model.pathTemplate.",
               "type": "array",
               "minItems": 1,
               "items": {

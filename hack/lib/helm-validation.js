@@ -5,7 +5,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const YAML = require("yaml");
 const { modelNames, versionFiles, variantFiles, kindOf } = require("./catalog");
-const { hasDefault, valueAt } = require("./inputs");
+const { valueAt } = require("./inputs");
 
 function affectsValidator(file) {
   return (
@@ -143,7 +143,7 @@ function catalogValues(variant) {
   }
   for (const input of variant.requires?.inputs ?? []) {
     const keys = input.path.split(".");
-    if (!hasDefault(valueAt(values, keys).value)) set(keys, input.example);
+    if (!("value" in valueAt(values, keys))) set(keys, input.example);
   }
   return values;
 }

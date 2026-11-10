@@ -13,9 +13,7 @@ const variant = (inputs, values = {}) => ({ requires: { gpus: 8, inputs }, value
 
 test("a declared input with a valid example passes, with or without a default", () => {
   assert.deepEqual(inputProblems(variant([master], { storageKVOffload: { enabled: true, mooncake: { protocol: "rdma" } } })), []);
-  for (const def of ["mc:50051", "", null]) {
-    assert.deepEqual(inputProblems(variant([master], { storageKVOffload: { mooncake: { master: def } } })), []);
-  }
+  assert.deepEqual(inputProblems(variant([master], { storageKVOffload: { mooncake: { master: "mc:50051" } } })), []);
   assert.deepEqual(inputProblems({ requires: { gpus: 1 } }), []);
 });
 
@@ -24,6 +22,8 @@ test("values' default for an input is an answer, and nothing in values is in its
   assert.deepEqual(one({ storageKVOffload: { mooncake: { master: "no-port" } } }), [
     'v: requires.inputs[0] storageKVOffload.mooncake.master: default "no-port" does not match the pattern',
   ]);
+  assert.match(one({ storageKVOffload: { mooncake: { master: "" } } })[0], /default "" does not match the pattern$/);
+  assert.match(one({ storageKVOffload: { mooncake: { master: null } } })[0], /default null is not a string$/);
   assert.match(one({ storageKVOffload: { mooncake: { master: { host: "h" } } } })[0], /default \{"host":"h"\} is not a string$/);
   assert.match(one({ a: { b: "8" } }, { path: "a.b", title: "t", type: "integer", example: 1 })[0], /default "8" is not an integer$/);
   assert.deepEqual(one({ storageKVOffload: { mooncake: "off" } }), [

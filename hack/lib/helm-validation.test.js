@@ -203,17 +203,13 @@ test("a declared input renders with its default, else its example", () => {
     servedName: "m",
     requires: {
       gpus: 8,
-      inputs: [
-        input("storageKVOffload.mooncake.master"),
-        input("storageKVOffload.mooncake.te_meta_data_server"),
-        input("storageKVOffload.mooncake.device"),
-      ],
+      inputs: [input("storageKVOffload.mooncake.master"), input("storageKVOffload.mooncake.device")],
     },
-    values: { storageKVOffload: { enabled: true, mooncake: { protocol: "rdma", te_meta_data_server: "", device: "mlx5_3" } } },
+    values: { storageKVOffload: { enabled: true, mooncake: { protocol: "rdma", device: "mlx5_3" } } },
   };
   assert.deepEqual(catalogValues(variant).storageKVOffload, {
     enabled: true,
-    mooncake: { protocol: "rdma", master: "mooncake-master.example:50051", te_meta_data_server: "mooncake-master.example:50051", device: "mlx5_3" },
+    mooncake: { protocol: "rdma", master: "mooncake-master.example:50051", device: "mlx5_3" },
   });
   assert.equal(variant.values.storageKVOffload.mooncake.master, undefined);
 });
