@@ -1,5 +1,5 @@
 "use strict";
-// A variant's inputs, past what the schema can see. A path is declared once, and
+// A variant's inputs, past what the schema can see. A key is declared once, and
 // values leaves it alone: swiss puts the answer, the site's or else the input's
 // default, in the derived layer. The example and the default are valid answers.
 // swiss repeats these checks when it loads a variant (internal/catalog).
@@ -10,11 +10,11 @@ function inputProblems(variant, at = "") {
   const lines = [];
   const declared = new Set();
   for (const [i, input] of inputs.entries()) {
-    if (typeof input?.path !== "string") continue; // the schema reports it
-    const where = `${at}inputs[${i}] ${input.path}: `;
-    if (declared.has(input.path)) lines.push(`${where}declared twice`);
-    declared.add(input.path);
-    const set = valueSetAt(variant.values, input.path.split("."));
+    if (typeof input?.key !== "string") continue; // the schema reports it
+    const where = `${at}inputs[${i}] ${input.key}: `;
+    if (declared.has(input.key)) lines.push(`${where}declared twice`);
+    declared.add(input.key);
+    const set = valueSetAt(variant.values, input.key.split("."));
     if (set) lines.push(`${where}values.${set} sets it; give the value as the input's default`);
     const type = input.type ?? "string";
     let pattern;
@@ -42,9 +42,9 @@ function inputProblems(variant, at = "") {
   return lines;
 }
 
-// The prefix of keys at which values already says something about a path:
-// the value itself, a value under it, or a non-map on the way to it. Empty
-// when values leaves the path alone.
+// The prefix of keys at which values already says something about a dotted
+// key: the value itself, a value under it, or a non-map on the way to it.
+// Empty when values leaves the key alone.
 function valueSetAt(values, keys) {
   let node = values;
   for (const [i, key] of keys.entries()) {

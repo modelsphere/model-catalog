@@ -169,16 +169,16 @@
           ]
         },
         "inputs": {
-          "description": "Chart values every deploy must answer, such as the address of a service the site runs. Unlike requires, which swiss interprets and checks against the cluster, an input names one chart path, and swiss only relays its answer: swiss puts the answer in the derived layer -- the site profile's inputs, else the input's default -- and the deploy's overrides go over it. swiss refuses to compose a plan that leaves one without a valid answer. values never sets an input's path. model.localPath is never one: swiss answers it from the site's model.pathTemplate.",
+          "description": "Chart values every deploy must answer, such as the address of a service the site runs. Unlike requires, which swiss interprets and checks against the cluster, an input names one chart value by its key, and swiss only relays its answer: swiss puts the answer in the derived layer -- the site profile's inputs, else the input's default -- and the deploy's overrides go over it. swiss refuses to compose a plan that leaves one without a valid answer. values never sets an input's key. model.localPath is never one: swiss answers it from the site's model.pathTemplate.",
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["path", "title", "example"],
+            "required": ["key", "title", "example"],
             "properties": {
-              "path": {
-                "description": "The chart value, as a dotted path: storageKVOffload.mooncake.master. Unique within the variant.",
+              "key": {
+                "description": "The chart value's dotted key, as helm --set takes it: storageKVOffload.mooncake.master. Unique within the variant.",
                 "type": "string",
                 "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(\\.[A-Za-z_][A-Za-z0-9_-]*)*$",
                 "not": { "enum": ["model.localPath"] }

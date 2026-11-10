@@ -202,8 +202,8 @@ test("a declared input renders with its default, else its example", () => {
     servedName: "m",
     requires: { gpus: 8 },
     inputs: [
-      { path: "storageKVOffload.mooncake.master", title: "t", example: "mooncake-master.example:50051" },
-      { path: "storageKVOffload.mooncake.device", title: "t", example: "mlx5_0", default: "mlx5_3" },
+      { key: "storageKVOffload.mooncake.master", title: "t", example: "mooncake-master.example:50051" },
+      { key: "storageKVOffload.mooncake.device", title: "t", example: "mlx5_0", default: "mlx5_3" },
     ],
     values: { storageKVOffload: { enabled: true, mooncake: { protocol: "rdma" } } },
   };
