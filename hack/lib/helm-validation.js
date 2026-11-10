@@ -121,6 +121,10 @@ function parseVersions(file) {
 // (catalogLayer in swiss/internal/compose): its values, with the fields the
 // variant spells first-class projected on top, so they win over the same keys
 // in values. image.digest is not projected.
+//
+// Each declared input is set to its default, else its example, standing in for
+// the answer swiss puts in the derived layer at deploy, so the chart renders
+// every path swiss fills. values never sets one; validate:schema refuses that.
 function catalogValues(variant) {
   const values = structuredClone(variant.values ?? {});
   const set = (keys, value) => {
@@ -136,6 +140,7 @@ function catalogValues(variant) {
     set(["image", "repository"], variant.image.repository);
     set(["image", "tag"], String(variant.image.tag ?? ""));
   }
+  for (const input of variant.inputs ?? []) set(input.key.split("."), "default" in input ? input.default : input.example);
   return values;
 }
 

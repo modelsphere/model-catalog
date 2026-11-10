@@ -48,6 +48,9 @@
     "requires": {
       "$ref": "version.schema.json#/$defs/variant/properties/requires"
     },
+    "inputs": {
+      "$ref": "version.schema.json#/$defs/variant/properties/inputs"
+    },
     "values": {
       "$ref": "version.schema.json#/$defs/variant/properties/values"
     },
