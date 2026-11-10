@@ -147,7 +147,7 @@
               "default": "nvidia"
             },
             "inputs": {
-              "description": "Chart values a deploy is asked for, such as the address of a service the site runs. Every input is required: swiss refuses to compose a plan that leaves one without a valid answer. The answers, each over the one before: a default values gives the path (a valid answer itself, never a blank placeholder), the site profile's features.inputs, the deploy's overrides. model.localPath is never one: swiss answers it from the site's model.pathTemplate.",
+              "description": "Chart values every deploy must answer, such as the address of a service the site runs. swiss puts the answer in the derived layer -- the site profile's features.inputs, else the input's default -- and the deploy's overrides go over it. swiss refuses to compose a plan that leaves one without a valid answer. values never sets an input's path. model.localPath is never one: swiss answers it from the site's model.pathTemplate.",
               "type": "array",
               "minItems": 1,
               "items": {
@@ -182,7 +182,11 @@
                     "minLength": 1
                   },
                   "example": {
-                    "description": "A value of the right shape, never a real one: the deploy form's placeholder, and what CI renders the chart with. Never deployed. Must be of the input's type and match its pattern.",
+                    "description": "A value of the right shape, never a real one: the deploy form's placeholder, and what CI renders the chart with when there is no default. Never deployed. Must be of the input's type and match its pattern.",
+                    "type": ["string", "integer", "boolean"]
+                  },
+                  "default": {
+                    "description": "The answer when the site profile gives none, such as the value of the cluster the variant was tuned on. Must be of the input's type and match its pattern.",
                     "type": ["string", "integer", "boolean"]
                   }
                 }

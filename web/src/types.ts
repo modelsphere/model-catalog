@@ -11,7 +11,7 @@ export interface Requires {
   inputs?: Input[];
 }
 
-// A chart value every deploy must answer; values may give it a default.
+// A chart value every deploy must answer; swiss falls back to default.
 export interface Input {
   path: string;
   title: string;
@@ -19,6 +19,7 @@ export interface Input {
   type?: "string" | "integer" | "boolean";
   pattern?: string;
   example: string | number | boolean;
+  default?: string | number | boolean;
 }
 
 export interface Chart {
