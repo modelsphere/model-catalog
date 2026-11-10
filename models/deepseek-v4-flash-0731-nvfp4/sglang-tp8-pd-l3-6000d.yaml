@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4-flash-0731-nvfp4
 id: sglang-tp8-pd-l3-6000d
-version: 1.0.4
+version: 1.0.5
 servedName: deepseek-v4-flash-0731-nvfp4
 engine: sglang
 description: >-
@@ -41,6 +41,21 @@ requires:
   # ebof.modelsphere.io/storage-net=true; pd.prefill.affinityReplace pins them):
   #   * ~650 GiB of 2 MiB hugepages reserved AND advertised by kubelet
   #   * routes to the EBOF targets on the storage NICs
+inputs:
+  - key: storageKVOffload.mooncake.master
+    title: Mooncake master
+    description: host:port of the standalone Mooncake master, outside Kubernetes, owning NoF volumes no other master holds.
+    pattern: '[^\s:/]+:[0-9]+'
+    example: mooncake-master.example:50051
+  - key: storageKVOffload.mooncake.te_meta_data_server
+    title: Mooncake metadata server
+    description: The transfer engine's metadata server URL, or P2PHANDSHAKE.
+    pattern: 'https?://\S+|P2PHANDSHAKE'
+    example: http://mooncake-master.example:8080/metadata
+  - key: storageKVOffload.mooncake.device
+    title: Mooncake storage HCAs
+    description: The storage NICs, comma-separated. Left to auto-detect, Mooncake picked the management NIC on the cluster this was tuned on.
+    example: mlx5_0,mlx5_1
 values:
   model:
     localPath: /data/models/DeepSeek-V4-Flash-0731-NVFP4

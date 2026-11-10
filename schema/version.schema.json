@@ -169,7 +169,7 @@
           ]
         },
         "inputs": {
-          "description": "Chart values every deploy must answer, such as the address of a service the site runs. Unlike requires, which swiss interprets and checks against the cluster, an input names one chart value by its key, and swiss only relays its answer: swiss puts the answer in the derived layer -- the site profile's inputs, else the input's default -- and the deploy's overrides go over it. swiss refuses to compose a plan that leaves one without a valid answer. values never sets an input's key. model.localPath is never one: swiss answers it from the site's model.pathTemplate.",
+          "description": "Chart values every deploy must answer, such as the address of a service the site runs. Unlike requires, which swiss interprets and checks against the cluster, an input names one chart value by its key, and swiss only relays its answer: swiss puts the answer in the derived layer -- the site profile's inputs, else the input's default -- and the deploy's overrides go over it. swiss refuses to compose a plan that leaves one without a valid answer. A value values gives an input's key is the base its answer overrides. model.localPath is never one: swiss answers it from the site's model.pathTemplate.",
           "type": "array",
           "minItems": 1,
           "items": {

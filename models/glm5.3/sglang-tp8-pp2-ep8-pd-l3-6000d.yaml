@@ -2,7 +2,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm5.3
 id: sglang-tp8-pp2-ep8-pd-l3-6000d
-version: 1.0.5
+version: 1.0.6
 servedName: glm-5.3
 engine: sglang
 description: >-
@@ -24,6 +24,21 @@ requires:
   rdma: true
   gpuProduct:
     - NVIDIA-RTX-6000D
+inputs:
+  - key: storageKVOffload.mooncake.master
+    title: Mooncake master
+    description: host:port of the Mooncake Store master this KV tier uses.
+    pattern: '[^\s:/]+:[0-9]+'
+    example: mooncake-master.example:50051
+  - key: storageKVOffload.mooncake.te_meta_data_server
+    title: Mooncake metadata server
+    description: The transfer engine's metadata server URL, or P2PHANDSHAKE.
+    pattern: 'https?://\S+|P2PHANDSHAKE'
+    example: http://mooncake-master.example:8080/metadata
+  - key: storageKVOffload.mooncake.device
+    title: Mooncake storage HCAs
+    description: The storage NICs, comma-separated. Empty lets Mooncake pick.
+    example: mlx5_0,mlx5_1
 values:
   model:
     localPath: /data/models/GLM-5.3-NVFP4
