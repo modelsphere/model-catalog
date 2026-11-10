@@ -200,13 +200,11 @@ test("variant values get swiss's projection of servedName, requires.gpus and the
 test("a declared input renders with its default, else its example", () => {
   const variant = {
     servedName: "m",
-    requires: {
-      gpus: 8,
-      inputs: [
-        { path: "storageKVOffload.mooncake.master", title: "t", example: "mooncake-master.example:50051" },
-        { path: "storageKVOffload.mooncake.device", title: "t", example: "mlx5_0", default: "mlx5_3" },
-      ],
-    },
+    requires: { gpus: 8 },
+    inputs: [
+      { path: "storageKVOffload.mooncake.master", title: "t", example: "mooncake-master.example:50051" },
+      { path: "storageKVOffload.mooncake.device", title: "t", example: "mlx5_0", default: "mlx5_3" },
+    ],
     values: { storageKVOffload: { enabled: true, mooncake: { protocol: "rdma" } } },
   };
   assert.deepEqual(catalogValues(variant).storageKVOffload, {

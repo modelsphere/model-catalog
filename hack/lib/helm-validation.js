@@ -140,7 +140,7 @@ function catalogValues(variant) {
     set(["image", "repository"], variant.image.repository);
     set(["image", "tag"], String(variant.image.tag ?? ""));
   }
-  for (const input of variant.requires?.inputs ?? []) set(input.path.split("."), "default" in input ? input.default : input.example);
+  for (const input of variant.inputs ?? []) set(input.path.split("."), "default" in input ? input.default : input.example);
   return values;
 }
 

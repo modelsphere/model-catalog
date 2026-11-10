@@ -8,18 +8,6 @@ export interface Requires {
   vendor?: string;
   gpuProduct?: string[];
   topology?: string;
-  inputs?: Input[];
-}
-
-// A chart value every deploy must answer; swiss falls back to default.
-export interface Input {
-  path: string;
-  title: string;
-  description?: string;
-  type?: "string" | "integer" | "boolean";
-  pattern?: string;
-  example: string | number | boolean;
-  default?: string | number | boolean;
 }
 
 export interface Chart {

@@ -145,52 +145,6 @@
               "description": "Accelerator brand this variant is built for. Decides the extended resource the pod requests and the node label its product is published under -- nvidia.com/gpu and nvidia.com/gpu.product, huawei.com/Ascend910 and its own label, and so on. Singular on purpose: a CANN build of an engine is a different image with different flags than a CUDA build, so a model that runs on both publishes two variants rather than one variant claiming both.",
               "enum": ["nvidia", "ascend", "cambricon", "hygon", "amd"],
               "default": "nvidia"
-            },
-            "inputs": {
-              "description": "Chart values every deploy must answer, such as the address of a service the site runs. swiss puts the answer in the derived layer -- the site profile's features.inputs, else the input's default -- and the deploy's overrides go over it. swiss refuses to compose a plan that leaves one without a valid answer. values never sets an input's path. model.localPath is never one: swiss answers it from the site's model.pathTemplate.",
-              "type": "array",
-              "minItems": 1,
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["path", "title", "example"],
-                "properties": {
-                  "path": {
-                    "description": "The chart value, as a dotted path: storageKVOffload.mooncake.master. Unique within the variant.",
-                    "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(\\.[A-Za-z_][A-Za-z0-9_-]*)*$",
-                    "not": { "enum": ["model.localPath"] }
-                  },
-                  "title": {
-                    "description": "What the deploy form labels the field with.",
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "description": {
-                    "description": "What the value is, for the deploy form.",
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "type": {
-                    "description": "What an answer is.",
-                    "enum": ["string", "integer", "boolean"],
-                    "default": "string"
-                  },
-                  "pattern": {
-                    "description": "A regular expression a string answer matches, whole. Keep to the syntax Go and JavaScript read alike: swiss checks it, and so does the deploy form.",
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "example": {
-                    "description": "A value of the right shape, never a real one: the deploy form's placeholder, and what CI renders the chart with when there is no default. Never deployed. Must be of the input's type and match its pattern.",
-                    "type": ["string", "integer", "boolean"]
-                  },
-                  "default": {
-                    "description": "The answer when the site profile gives none, such as the value of the cluster the variant was tuned on. Must be of the input's type and match its pattern.",
-                    "type": ["string", "integer", "boolean"]
-                  }
-                }
-              }
             }
           },
           "allOf": [
@@ -213,6 +167,52 @@
               }
             }
           ]
+        },
+        "inputs": {
+          "description": "Chart values every deploy must answer, such as the address of a service the site runs. Unlike requires, which swiss interprets and checks against the cluster, an input names one chart path, and swiss only relays its answer: swiss puts the answer in the derived layer -- the site profile's inputs, else the input's default -- and the deploy's overrides go over it. swiss refuses to compose a plan that leaves one without a valid answer. values never sets an input's path. model.localPath is never one: swiss answers it from the site's model.pathTemplate.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "title", "example"],
+            "properties": {
+              "path": {
+                "description": "The chart value, as a dotted path: storageKVOffload.mooncake.master. Unique within the variant.",
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(\\.[A-Za-z_][A-Za-z0-9_-]*)*$",
+                "not": { "enum": ["model.localPath"] }
+              },
+              "title": {
+                "description": "What the deploy form labels the field with.",
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "description": "What the value is, for the deploy form.",
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "description": "What an answer is.",
+                "enum": ["string", "integer", "boolean"],
+                "default": "string"
+              },
+              "pattern": {
+                "description": "A regular expression a string answer matches, whole. Keep to the syntax Go and JavaScript read alike: swiss checks it, and so does the deploy form.",
+                "type": "string",
+                "minLength": 1
+              },
+              "example": {
+                "description": "A value of the right shape, never a real one: the deploy form's placeholder, and what CI renders the chart with when there is no default. Never deployed. Must be of the input's type and match its pattern.",
+                "type": ["string", "integer", "boolean"]
+              },
+              "default": {
+                "description": "The answer when the site profile gives none, such as the value of the cluster the variant was tuned on. Must be of the input's type and match its pattern.",
+                "type": ["string", "integer", "boolean"]
+              }
+            }
+          }
         },
         "values": {
           "description": "Chart values this variant sets. Any object",

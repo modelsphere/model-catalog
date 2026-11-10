@@ -1,17 +1,17 @@
 "use strict";
-// requires.inputs, past what the schema can see. A path is declared once, and
+// A variant's inputs, past what the schema can see. A path is declared once, and
 // values leaves it alone: swiss puts the answer, the site's or else the input's
 // default, in the derived layer. The example and the default are valid answers.
 // swiss repeats these checks when it loads a variant (internal/catalog).
 
 // Problems with one variant's inputs, each line prefixed with at.
 function inputProblems(variant, at = "") {
-  const inputs = Array.isArray(variant?.requires?.inputs) ? variant.requires.inputs : [];
+  const inputs = Array.isArray(variant?.inputs) ? variant.inputs : [];
   const lines = [];
   const declared = new Set();
   for (const [i, input] of inputs.entries()) {
     if (typeof input?.path !== "string") continue; // the schema reports it
-    const where = `${at}requires.inputs[${i}] ${input.path}: `;
+    const where = `${at}inputs[${i}] ${input.path}: `;
     if (declared.has(input.path)) lines.push(`${where}declared twice`);
     declared.add(input.path);
     const set = valueSetAt(variant.values, input.path.split("."));

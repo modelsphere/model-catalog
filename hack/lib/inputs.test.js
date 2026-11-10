@@ -9,7 +9,7 @@ const master = {
   pattern: "[^\\s:/]+:[0-9]+",
   example: "mooncake-master.example:50051",
 };
-const variant = (inputs, values = {}) => ({ requires: { gpus: 8, inputs }, values });
+const variant = (inputs, values = {}) => ({ requires: { gpus: 8 }, inputs, values });
 
 test("a declared input that values leaves alone, with a valid example and default, passes", () => {
   const values = { storageKVOffload: { enabled: true, mooncake: { protocol: "rdma" } } };
@@ -25,7 +25,7 @@ test("values may not set an input: at its path, under it, or with a non-map on t
     [{ storageKVOffload: { mooncake: "off" } }, "storageKVOffload.mooncake"],
   ]) {
     assert.deepEqual(inputProblems(variant([master], values), "v: "), [
-      `v: requires.inputs[0] storageKVOffload.mooncake.master: values.${at} sets it; give the value as the input's default`,
+      `v: inputs[0] storageKVOffload.mooncake.master: values.${at} sets it; give the value as the input's default`,
     ]);
   }
 });
@@ -39,7 +39,7 @@ test("the default is an answer: of the input's type, matching its pattern", () =
 });
 
 test("a path is declared once", () => {
-  assert.deepEqual(inputProblems(variant([master, master])), ["requires.inputs[1] storageKVOffload.mooncake.master: declared twice"]);
+  assert.deepEqual(inputProblems(variant([master, master])), ["inputs[1] storageKVOffload.mooncake.master: declared twice"]);
 });
 
 test("the example is an answer: of the input's type, matching its pattern", () => {
