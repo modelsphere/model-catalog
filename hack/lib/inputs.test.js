@@ -18,16 +18,13 @@ test("a declared input that values leaves alone, with a valid example and defaul
   assert.deepEqual(inputProblems({ requires: { gpus: 1 } }), []);
 });
 
-test("values may not set an input: at its key, under it, or with a non-map on the way", () => {
-  for (const [values, at] of [
-    [{ storageKVOffload: { mooncake: { master: "mc:50051" } } }, "storageKVOffload.mooncake.master"],
-    [{ storageKVOffload: { mooncake: { master: { host: "h" } } } }, "storageKVOffload.mooncake.master"],
-    [{ storageKVOffload: { mooncake: "off" } }, "storageKVOffload.mooncake"],
-  ]) {
-    assert.deepEqual(inputProblems(variant([master], values), "v: "), [
-      `v: inputs[0] storageKVOffload.mooncake.master: values.${at} sets it; give the value as the input's default`,
-    ]);
+test("values may set an input's key, as the base an answer overrides, but no non-map above it", () => {
+  for (const value of ["mooncake-master.example:50051", ""]) {
+    assert.deepEqual(inputProblems(variant([master], { storageKVOffload: { mooncake: { master: value } } })), []);
   }
+  assert.deepEqual(inputProblems(variant([master], { storageKVOffload: { mooncake: "off" } }), "v: "), [
+    "v: inputs[0] storageKVOffload.mooncake.master: values.storageKVOffload.mooncake is not a map, so the answer has no place to go",
+  ]);
 });
 
 test("the default is an answer: of the input's type, matching its pattern", () => {

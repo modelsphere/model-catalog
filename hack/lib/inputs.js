@@ -1,8 +1,9 @@
 "use strict";
-// A variant's inputs, past what the schema can see. A key is declared once, and
-// values leaves it alone: swiss puts the answer, the site's or else the input's
-// default, in the derived layer. The example and the default are valid answers.
-// swiss repeats these checks when it loads a variant (internal/catalog).
+// A variant's inputs, past what the schema can see. A key is declared once. A
+// value values gives it is the base an answer overrides: swiss puts the answer,
+// the site's or else the input's default, in the derived layer above it. The
+// example and the default are valid answers. swiss repeats these checks when it
+// loads a variant (internal/catalog).
 
 // Problems with one variant's inputs, each line prefixed with at.
 function inputProblems(variant, at = "") {
@@ -15,7 +16,7 @@ function inputProblems(variant, at = "") {
     if (declared.has(input.key)) lines.push(`${where}declared twice`);
     declared.add(input.key);
     const set = valueSetAt(variant.values, input.key.split("."));
-    if (set) lines.push(`${where}values.${set} sets it; give the value as the input's default`);
+    if (set && set !== input.key) lines.push(`${where}values.${set} is not a map, so the answer has no place to go`);
     const type = input.type ?? "string";
     let pattern;
     if (input.pattern !== undefined && type !== "string") {
@@ -55,4 +56,4 @@ function valueSetAt(values, keys) {
   return keys.join(".");
 }
 
-module.exports = { inputProblems };
+module.exports = { inputProblems, valueSetAt };
