@@ -11,7 +11,7 @@ export interface Requires {
   inputs?: Input[];
 }
 
-// A chart value the variant needs and cannot know, answered at deploy.
+// A chart value the deploy is asked for; values may give it a default.
 export interface Input {
   path: string;
   title: string;

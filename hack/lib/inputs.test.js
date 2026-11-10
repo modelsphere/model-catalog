@@ -11,21 +11,24 @@ const master = {
 };
 const variant = (inputs, values = {}) => ({ requires: { gpus: 8, inputs }, values });
 
-test("a declared input that values leaves alone, with a valid example, passes", () => {
+test("a declared input with a valid example passes, with or without a default", () => {
   assert.deepEqual(inputProblems(variant([master], { storageKVOffload: { enabled: true, mooncake: { protocol: "rdma" } } })), []);
+  for (const def of ["mc:50051", "", null]) {
+    assert.deepEqual(inputProblems(variant([master], { storageKVOffload: { mooncake: { master: def } } })), []);
+  }
   assert.deepEqual(inputProblems({ requires: { gpus: 1 } }), []);
 });
 
-test("values may not answer an input: at its path, under it, or with a non-map on the way", () => {
-  for (const [values, at] of [
-    [{ storageKVOffload: { mooncake: { master: "" } } }, "storageKVOffload.mooncake.master"],
-    [{ storageKVOffload: { mooncake: { master: { host: "h" } } } }, "storageKVOffload.mooncake.master"],
-    [{ storageKVOffload: { mooncake: "off" } }, "storageKVOffload.mooncake"],
-  ]) {
-    const [line, ...rest] = inputProblems(variant([master], values), "v: ");
-    assert.equal(rest.length, 0);
-    assert.match(line, new RegExp(`^v: requires\\.inputs\\[0\\] storageKVOffload\\.mooncake\\.master: values\\.${at.replace(/\./g, "\\.")} sets it`));
-  }
+test("values' default for an input is an answer, and nothing in values is in its way", () => {
+  const one = (values, input = master) => inputProblems(variant([input], values), "v: ");
+  assert.deepEqual(one({ storageKVOffload: { mooncake: { master: "no-port" } } }), [
+    'v: requires.inputs[0] storageKVOffload.mooncake.master: default "no-port" does not match the pattern',
+  ]);
+  assert.match(one({ storageKVOffload: { mooncake: { master: { host: "h" } } } })[0], /default \{"host":"h"\} is not a string$/);
+  assert.match(one({ a: { b: "8" } }, { path: "a.b", title: "t", type: "integer", example: 1 })[0], /default "8" is not an integer$/);
+  assert.deepEqual(one({ storageKVOffload: { mooncake: "off" } }), [
+    "v: requires.inputs[0] storageKVOffload.mooncake.master: values.storageKVOffload.mooncake is not a map, so it cannot hold this input",
+  ]);
 });
 
 test("a path is declared once", () => {

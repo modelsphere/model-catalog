@@ -197,15 +197,23 @@ test("variant values get swiss's projection of servedName, requires.gpus and the
   assert.deepEqual(catalogValues(v2), { model: { name: "served", gpus: "2" } });
 });
 
-test("each declared input renders with its example, beside the values around it", () => {
+test("a declared input renders with its default, else its example", () => {
+  const input = (path) => ({ path, title: "t", example: "mooncake-master.example:50051" });
   const variant = {
     servedName: "m",
-    requires: { gpus: 8, inputs: [{ path: "storageKVOffload.mooncake.master", title: "Mooncake master", example: "mooncake-master.example:50051" }] },
-    values: { storageKVOffload: { enabled: true, mooncake: { protocol: "rdma" } } },
+    requires: {
+      gpus: 8,
+      inputs: [
+        input("storageKVOffload.mooncake.master"),
+        input("storageKVOffload.mooncake.te_meta_data_server"),
+        input("storageKVOffload.mooncake.device"),
+      ],
+    },
+    values: { storageKVOffload: { enabled: true, mooncake: { protocol: "rdma", te_meta_data_server: "", device: "mlx5_3" } } },
   };
   assert.deepEqual(catalogValues(variant).storageKVOffload, {
     enabled: true,
-    mooncake: { protocol: "rdma", master: "mooncake-master.example:50051" },
+    mooncake: { protocol: "rdma", master: "mooncake-master.example:50051", te_meta_data_server: "mooncake-master.example:50051", device: "mlx5_3" },
   });
   assert.equal(variant.values.storageKVOffload.mooncake.master, undefined);
 });

@@ -5,12 +5,13 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const YAML = require("yaml");
 const { modelNames, versionFiles, variantFiles, kindOf } = require("./catalog");
+const { hasDefault, valueAt } = require("./inputs");
 
 function affectsValidator(file) {
   return (
     file.startsWith("schema/crds/") ||
     /^hack\/(validate-helm|install-helm-tools|build-crds)(\.integration)?\.(js|test\.js)$/.test(file) ||
-    /^hack\/lib\/(helm-validation|crd-schema|download|catalog)(\.test)?\.js$/.test(file) ||
+    /^hack\/lib\/(helm-validation|crd-schema|download|catalog|inputs)(\.test)?\.js$/.test(file) ||
     ["package.json", "package-lock.json", ".github/workflows/lint.yml"].includes(file)
   );
 }
@@ -122,10 +123,9 @@ function parseVersions(file) {
 // variant spells first-class projected on top, so they win over the same keys
 // in values. image.digest is not projected.
 //
-// Each declared input is set to its example, standing in for the answer a
-// deploy gives (the site's features.inputs or the deploy's overrides), so the
-// chart renders every path swiss fills. values never sets one; validate:schema
-// refuses that.
+// A declared input without a default is set to its example, standing in for
+// the answer a deploy gives (the site's features.inputs or the deploy's
+// overrides), so the chart renders every path swiss fills.
 function catalogValues(variant) {
   const values = structuredClone(variant.values ?? {});
   const set = (keys, value) => {
@@ -141,7 +141,10 @@ function catalogValues(variant) {
     set(["image", "repository"], variant.image.repository);
     set(["image", "tag"], String(variant.image.tag ?? ""));
   }
-  for (const input of variant.requires?.inputs ?? []) set(input.path.split("."), input.example);
+  for (const input of variant.requires?.inputs ?? []) {
+    const keys = input.path.split(".");
+    if (!hasDefault(valueAt(values, keys).value)) set(keys, input.example);
+  }
   return values;
 }
 
