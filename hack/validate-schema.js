@@ -27,7 +27,7 @@ const {
   checkIndexV2,
 } = require("./lib/catalog");
 const { reportProblem } = require("./lib/report");
-const { inputProblems } = require("./lib/inputs");
+const { variantProblems } = require("./lib/variant-rules");
 const { paint, marks, plural } = require("./lib/style");
 
 const {
@@ -202,51 +202,6 @@ for (const file of versionFilePaths) {
       twice.map((id) => `variants: id ${JSON.stringify(id)} is used twice`),
     );
   }
-}
-
-// An LWS group that disagrees with requires.nodes hangs at rendezvous.
-function variantProblems(v, at) {
-  const lines = [];
-  const lws = v?.values?.lws;
-  if (lws?.enabled === true && lws.size !== v?.requires?.nodes) {
-    lines.push(`${at}values.lws.size ${lws.size} is not requires.nodes ${v?.requires?.nodes}`);
-  }
-  // sglang and vllm run on the chart of their name; a mock has no chart of its
-  // own and runs on one of those; a video service brings its own chart.
-  const engineCharts = ["sglang", "vllm"];
-  const chart = v?.chart?.name;
-  if (chart && engineCharts.includes(v?.engine) && chart !== v.engine) {
-    lines.push(`${at}chart.name ${chart} is not its engine, ${v.engine}`);
-  }
-  if (chart && v?.engine === "mock" && !engineCharts.includes(chart)) {
-    lines.push(`${at}chart.name ${chart}: a mock runs on the sglang or vllm chart`);
-  }
-  if (v?.engine === "video") {
-    if (chart && engineCharts.includes(chart)) {
-      lines.push(`${at}chart.name ${chart}: a video variant runs on a video chart, not an engine chart`);
-    }
-    // requires is one pod of the chart, which lays out its own pods.
-    const topology = v?.requires?.topology;
-    if (topology && topology !== "single-node") {
-      lines.push(`${at}requires.topology ${topology}: a video variant is single-node; its chart lays out its pods`);
-    }
-    if (v?.requires?.nodes != null && v.requires.nodes !== 1) {
-      lines.push(`${at}requires.nodes ${v.requires.nodes}: a video variant describes one pod`);
-    }
-  }
-  // The chart renders what values enable, not what topology says.
-  const topology = v?.requires?.topology;
-  if (["lws", "pd"].includes(topology) && v?.values?.[topology]?.enabled !== true) {
-    lines.push(`${at}requires.topology ${topology} needs values.${topology}.enabled: true`);
-  }
-  // CPU only: no accelerator, so nothing that picks or sizes one.
-  if (v?.requires?.gpus === 0) {
-    for (const key of ["vendor", "gpuProduct", "minGpuMemoryGiB", "rdma"]) {
-      if (v.requires[key] !== undefined) lines.push(`${at}requires.${key} is set, but requires.gpus 0 is CPU only`);
-    }
-  }
-  lines.push(...inputProblems(v, at));
-  return lines;
 }
 
 // What the schema cannot see, per model: it lives in models/<name>/, named
