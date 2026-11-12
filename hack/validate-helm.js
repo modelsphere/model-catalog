@@ -75,7 +75,9 @@ function main(opts, { repositoryRoot = root, runCommand = command } = {}) {
         `      ${paint(
           "yellow",
           `${record.warning}; ${
-            record.skipped ? "its legacy chart cannot be rendered here" : "its values are still checked against the latest chart"
+            record.skipped
+              ? (record.skipReason ?? "its legacy chart cannot be rendered here")
+              : "its values are still checked against the latest chart"
           }`,
         )}`,
       );
@@ -304,6 +306,16 @@ function main(opts, { repositoryRoot = root, runCommand = command } = {}) {
               record.skipped = true;
               continue;
             }
+          }
+          if (variant.engine === "video") {
+            // A video chart reads its database and storage from the cluster at
+            // render time (lookup), which a CI render has no cluster for. Its
+            // chart is still resolved against the repository and the minimum
+            // above; only lint, template and kubeconform are left out.
+            record.skipped = true;
+            record.warning = `engine video: ${pkg.name} ${pkg.declaredVersion} resolved`;
+            record.skipReason = "a video chart reads the cluster at render time, so it is not rendered here";
+            continue;
           }
           record.chart = {
             name: pkg.name,

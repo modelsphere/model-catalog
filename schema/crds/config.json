@@ -6,7 +6,8 @@
   "chartRepository": "https://modelsphere.github.io/helm-charts/",
   "minimumChartVersions": {
     "sglang": "0.8.0",
-    "vllm": "0.5.0"
+    "vllm": "0.5.0",
+    "minimax-h3": "0.3.0"
   },
   "kubernetesSchemaCommit": "39a87cd29966bc0b3434e8cfbc2061782c8cb69a",
   "toolChecksums": {
