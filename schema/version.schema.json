@@ -36,10 +36,32 @@
     }
   },
   "$defs": {
+    "engineChart": {
+      "description": "Which chart each engine runs on: sglang and vllm on the chart of their name, mock on one of those two, video on any chart but those two. validate-schema repeats it with readable messages; here it holds for anything that validates with the schema alone.",
+      "allOf": [
+        {
+          "if": { "required": ["engine"], "properties": { "engine": { "const": "sglang" } } },
+          "then": { "properties": { "chart": { "properties": { "name": { "const": "sglang" } } } } }
+        },
+        {
+          "if": { "required": ["engine"], "properties": { "engine": { "const": "vllm" } } },
+          "then": { "properties": { "chart": { "properties": { "name": { "const": "vllm" } } } } }
+        },
+        {
+          "if": { "required": ["engine"], "properties": { "engine": { "const": "mock" } } },
+          "then": { "properties": { "chart": { "properties": { "name": { "enum": ["sglang", "vllm"] } } } } }
+        },
+        {
+          "if": { "required": ["engine"], "properties": { "engine": { "const": "video" } } },
+          "then": { "properties": { "chart": { "properties": { "name": { "not": { "enum": ["sglang", "vllm"] } } } } } }
+        }
+      ]
+    },
     "variant": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "engine", "chart", "requires"],
+      "allOf": [{ "$ref": "#/$defs/engineChart" }],
       "properties": {
         "id": {
           "description": "Unique within this entry. Convention: <engine>-<parallelism>-<hardware>, e.g. sglang-tp8-b300.",
