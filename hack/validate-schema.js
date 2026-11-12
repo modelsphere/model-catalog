@@ -27,7 +27,7 @@ const {
   checkIndexV2,
 } = require("./lib/catalog");
 const { reportProblem } = require("./lib/report");
-const { inputProblems } = require("./lib/inputs");
+const { variantProblems } = require("./lib/variant-rules");
 const { paint, marks, plural } = require("./lib/style");
 
 const {
@@ -202,32 +202,6 @@ for (const file of versionFilePaths) {
       twice.map((id) => `variants: id ${JSON.stringify(id)} is used twice`),
     );
   }
-}
-
-// An LWS group that disagrees with requires.nodes hangs at rendezvous.
-function variantProblems(v, at) {
-  const lines = [];
-  const lws = v?.values?.lws;
-  if (lws?.enabled === true && lws.size !== v?.requires?.nodes) {
-    lines.push(`${at}values.lws.size ${lws.size} is not requires.nodes ${v?.requires?.nodes}`);
-  }
-  // A mock has no chart of its own: it runs on an engine's chart (the schema limits chart.name to those).
-  if (v?.chart?.name && v?.engine && v.engine !== "mock" && v.chart.name !== v.engine) {
-    lines.push(`${at}chart.name ${v.chart.name} is not its engine, ${v.engine}`);
-  }
-  // The chart renders what values enable, not what topology says.
-  const topology = v?.requires?.topology;
-  if (["lws", "pd"].includes(topology) && v?.values?.[topology]?.enabled !== true) {
-    lines.push(`${at}requires.topology ${topology} needs values.${topology}.enabled: true`);
-  }
-  // CPU only: no accelerator, so nothing that picks or sizes one.
-  if (v?.requires?.gpus === 0) {
-    for (const key of ["vendor", "gpuProduct", "minGpuMemoryGiB", "rdma"]) {
-      if (v.requires[key] !== undefined) lines.push(`${at}requires.${key} is set, but requires.gpus 0 is CPU only`);
-    }
-  }
-  lines.push(...inputProblems(v, at));
-  return lines;
 }
 
 // What the schema cannot see, per model: it lives in models/<name>/, named
