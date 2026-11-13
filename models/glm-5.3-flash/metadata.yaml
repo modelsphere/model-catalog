@@ -1,8 +1,8 @@
 apiVersion: catalog.swiss/v2
 name: glm-5.3-flash
 displayName: GLM-5.3-Flash
-description: GLM-5.3-Flash on eight H100 or B300 GPUs or Ascend 950DT NPUs, with
-  separate hardware-specific serving configurations.
+description: GLM-5.3-Flash on eight H100 or B300 GPUs, or Ascend 950DT or 910B4
+  NPUs, with separate hardware-specific serving configurations.
 family: glm
 tags:
   - chat

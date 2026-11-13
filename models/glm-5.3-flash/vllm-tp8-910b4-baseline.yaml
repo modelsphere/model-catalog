@@ -1,0 +1,191 @@
+# GLM-5.3-Flash (w8a8) on ONE Ascend 910B4 node (Atlas 800T A2), 8 cards, vLLM-Ascend.
+#
+# This is the vendor's own recipe, not a configuration of ours: the vLLM-Ascend cookbook's A2
+# colocated deployment, with the one adaptation its shape forces. The cookbook's A2 script is TWO
+# nodes, DP2 x TP8 = 16 ranks; this runs DP1 x TP8 on one node. Everything else -- every flag,
+# every environment variable -- is as the cookbook writes it.
+#
+# Which pool to land in (pod labels, node selector, tolerations, scheduler) is deliberately not set
+# here: that belongs to the cluster, and a deploy passes it as overrides.
+#
+# ===================== MEASURED =====================
+# Measured on one Ascend 910B4 node, 8 cards, engine-direct, 50K input / 1500 output, 600s window:
+#
+#   concurrency 12    2608.6 TOTAL tok/s    TTFT 29.6s
+#   concurrency 16    2794.6 TOTAL tok/s    TTFT 63.2s     <- peak
+#   concurrency 20    2707.3 TOTAL tok/s    TTFT 101.1s
+#
+# The peak at 16 is not a coincidence and not a tuning choice: the engine builds a KV cache of
+# 802,285 tokens at --gpu-memory-utilization 0.85, which at 51.5K tokens per request seats about
+# 15.6 of them. Concurrency 20 is past that and the figure falls. Read the engine's own
+# "NPU KV cache size: N tokens" line on your own weights before raising any concurrency cap.
+#
+# For context on why this recipe is worth having as the baseline for this hardware: an earlier
+# configuration -- the 950DT baseline variant's model-level arguments spliced with Ascend
+# hardware-level settings taken from a DeepSeek deployment -- measured 1558.4 TOTAL tok/s at
+# concurrency 16 on the same node, same weights, same image and same client. This recipe is 1.79x
+# that at matched concurrency. The single largest contributor found so far is
+# VLLM_USE_V2_MODEL_RUNNER, which that configuration pinned to 0 because the 950DT variant does;
+# setting it to 1 and changing nothing else is worth +30.8% at concurrency 16 and +14.5% at 20.
+#
+# Two shapes were measured and LOST on this hardware, so they are recorded here rather than left
+# for someone to rediscover:
+#   - TP2/DP4 on one node (the shape the 950DT optimized variant uses, where it gains): -36.5%.
+#     Four data-parallel ranks each build their own KV cache on two cards, and the pool collapses
+#     from 802,285 tokens to 142,114. TTFT goes 63s -> 153s.
+#   - DP2 x TP8 across two nodes, i.e. the cookbook's own two-node recipe: 2641.4 TOTAL tok/s at
+#     concurrency 32, which is 0.95x of ONE node here and 0.47x per card. On this hardware, run
+#     independent single-node instances behind a router rather than spanning machines.
+#
+# No AutoTune run on this hardware; "baseline" is meant literally.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: glm-5.3-flash
+id: vllm-tp8-910b4-baseline
+version: 1.0.0
+servedName: GLM-5.3-Flash
+description: >-
+  Baseline: TP8/DP1 on one Ascend 910B4 node, 8 cards, using Eco-Tech/GLM-5.3-Flash-w8a8 weights.
+  The vLLM-Ascend cookbook's A2 colocated recipe, adapted from its two nodes to one. 2794.6 TOTAL
+  tok/s at concurrency 16 (50K + 1.5K, 600s, engine-direct).
+engine: vllm
+chart:
+  name: vllm
+  # 0.9.1 renders requires.gpus under the site's resource (model.gpuResource).
+  version: ">=0.9.1"
+image:
+  # By digest: no live upstream tag points at this manifest any more. The vllm chart has no digest
+  # key and renders "<repository>:<tag>", so the digest rides in the tag and "pinned" is ignored.
+  # quay serves it anonymously. Same image the 910B4 DeepSeek variant pins, and the same one every
+  # figure above was measured on -- vllm 0.30.0 / vllm_ascend 0.30.0rc2, whose ModelRegistry
+  # carries Glm5NextForCausalLM and re-registers it onto vllm_ascend.models.glm5next, so the NPU
+  # implementation is used rather than vLLM's generic path.
+  #
+  # Do NOT substitute an "-a5-" tag. A5 is 950DT, this is A2, and the capability tables differ
+  # where it matters: FP8_ATTENTION and the compressed-cache formats are A5-only.
+  repository: quay.io/ascend/vllm-ascend
+  tag: "pinned@sha256:7859b75177884252d2b703eff727831ccab4e33a8bde0a9b4ac7563facc98b33"
+requires:
+  # A whole node.
+  gpus: 8
+  topology: single-node
+  vendor: ascend
+  gpuProduct:
+    - Ascend-910B4
+values:
+  # Keep the API port on the pod network. On some Ascend sites every NodePort, and any socket bound
+  # to the host's data address, answers from the public internet; the engine has no authentication
+  # of its own, so it should not be published by default.
+  hostNetwork: false
+  securityContext:
+    privileged: true
+  model:
+    # Pre-stage the weights here, or override the path in the site profile.
+    localPath: /data/share/models/GLM-5.3-Flash-w8a8
+    mountPath: /model
+    hostPathType: Directory
+    # = --max-model-len below, which is the cookbook's value rather than the checkpoint's own
+    # 1048576. At --gpu-memory-utilization 0.85 the KV cache holds 802,285 tokens, so a single
+    # 1M-token request would not fit and the engine would refuse to start. Serving the full
+    # context needs 1048576 here AND 0.9 below, and costs throughput; it has not been measured.
+    contextLength: "133120"
+  modelCheck:
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  resources:
+    requests:
+      cpu: "32"
+      memory: 768Gi
+      ephemeral-storage: 16Gi
+    limits:
+      cpu: "32"
+      memory: 768Gi
+      ephemeral-storage: 16Gi
+  shm:
+    enabled: true
+    sizeLimit: 1Gi
+  extraArgs:
+    - --trust-remote-code
+    - --quantization=ascend
+    # Not in the cookbook script, and kept anyway: this is a served model, not a benchmark target.
+    # Without them tool calls are not parsed and reasoning text leaks into content. They do not
+    # affect throughput. All three move together -- vLLM refuses to start with
+    # --enable-auto-tool-choice and no --tool-call-parser. glm47, NOT a glm53 name: GLM-5.3 reuses
+    # the GLM-4.7 reasoning and tool-call surface and the parsers are registered under the older one.
+    - --tool-call-parser=glm47
+    - --reasoning-parser=glm47
+    - --enable-auto-tool-choice
+    - --data-parallel-size=1
+    - --tensor-parallel-size=8
+    - --enable-expert-parallel
+    - --max-num-seqs=32
+    - --seed=1024
+    - --max-model-len=133120
+    - --max-num-batched-tokens=8192
+    - --gpu-memory-utilization=0.85
+    - --limit-mm-per-prompt={"image":1,"video":0}
+    - --compilation-config={"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[4,8,16,32,64,96,128]}
+    - --speculative-config={"method":"deepseek_mtp","num_speculative_tokens":3,"enforce_eager":true}
+    # Load time only, not throughput: 311 GiB of weights read in about 18 minutes with these, which
+    # is what VLLM_ENGINE_READY_TIMEOUT_S below is sized against. The cookbook instead sets
+    # --safetensors-load-strategy prefetch and no loader config; either is fine, but the load time
+    # quoted here belongs to these.
+    - --model-loader-extra-config={"enable_multithread_load":true,"num_threads":128}
+    - --safetensors-load-strategy=lazy
+    # DELIBERATELY ABSENT, because the cookbook's A2 script has neither:
+    #   --block-size        no A2 script on the cookbook page sets it.
+    #   --additional-config so enable_npugraph_ex inherits the engine default (True) and
+    #                       enable_cpu_binding its default (also True, ascend_config.py:568) --
+    #                       dropping the block does not cost CPU binding.
+    # Note that forcing enable_npugraph_ex to false measured -13.9% on this model inside a
+    # DIFFERENT configuration (VLLM_USE_V2_MODEL_RUNNER=0). That result does not transfer here and
+    # has not been re-measured on this one.
+  env:
+    # The cookbook sets 1. A configuration derived from the 950DT variant pinned it to 0, and that
+    # single difference is worth +30.8% at concurrency 16 -- see the measured block at the top.
+    - name: VLLM_USE_V2_MODEL_RUNNER
+      value: "1"
+    - name: PYTORCH_NPU_ALLOC_CONF
+      value: expandable_segments:True
+    - name: HCCL_BUFFSIZE
+      value: "1024"
+    - name: HCCL_OP_EXPANSION_MODE
+      value: AIV
+    # Timeouts only: they decide how long a stuck call waits before it is called stuck.
+    - name: VLLM_RPC_TIMEOUT
+      value: "3600000"
+    - name: VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS
+      value: "3000"
+    - name: HCCL_EXEC_TIMEOUT
+      value: "3600"
+    - name: HCCL_CONNECT_TIMEOUT
+      value: "1200"
+    # 311 GiB takes about 18 minutes to load; the engine's own default budget is shorter.
+    - name: VLLM_ENGINE_READY_TIMEOUT_S
+      value: "3600"
+    - name: ASCEND_RT_VISIBLE_DEVICES
+      value: "0,1,2,3,4,5,6,7"
+    - name: ASCEND_GLOBAL_LOG_LEVEL
+      value: "1"
+    - name: ASCEND_PROCESS_LOG_PATH
+      value: /root/ascend/log
+  volumes:
+    - name: cann-diagnostics
+      hostPath:
+        path: /data/share/deployments/glm-5.3-flash-910b4-cann
+        type: DirectoryOrCreate
+  volumeMounts:
+    - name: cann-diagnostics
+      mountPath: /root/ascend/log
+  # 90 minutes. The load is about 18, and graph capture adds a few more.
+  startupProbe:
+    httpGet: { path: /health, port: http }
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 180
+  readinessProbe:
+    httpGet: { path: /health, port: http }
+    periodSeconds: 10
+    failureThreshold: 3
+  progressDeadlineSeconds: 7200
