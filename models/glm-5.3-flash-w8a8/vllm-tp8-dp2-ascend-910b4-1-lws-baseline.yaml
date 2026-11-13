@@ -1,0 +1,162 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: glm-5.3-flash-w8a8
+id: vllm-tp8-dp2-ascend-910b4-1-lws-baseline
+version: 1.0.0
+servedName: glm-5.3-flash
+description: 'Baseline: TP8 DP2 on eight ASCEND-910B4-1 cards per node, 2 nodes, ascend weights.'
+engine: vllm
+chart:
+  name: vllm
+  version: '>=0.8.23'
+image:
+  repository: quay.io/ascend/vllm-ascend
+  tag: pinned@sha256:7859b75177884252d2b703eff727831ccab4e33a8bde0a9b4ac7563facc98b33
+requires:
+  gpus: 0
+  nodes: 2
+  topology: lws
+values:
+  env:
+    - name: SERVED_MODEL_NAME
+      value: glm-5.3-flash
+    - name: POD_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.hostIP
+    - name: NIC_NAME
+      value: bond1
+    - name: VLLM_USE_V2_MODEL_RUNNER
+      value: '0'
+    - name: VLLM_ENGINE_READY_TIMEOUT_S
+      value: '3600'
+    - name: PYTORCH_NPU_ALLOC_CONF
+      value: expandable_segments:True
+    - name: ASCEND_RT_VISIBLE_DEVICES
+      value: 0,1,2,3,4,5,6,7
+    - name: ASCEND_GLOBAL_LOG_LEVEL
+      value: '1'
+    - name: ASCEND_PROCESS_LOG_PATH
+      value: /root/ascend/log
+    - name: HCCL_OP_EXPANSION_MODE
+      value: AIV
+    - name: HCCL_BUFFSIZE
+      value: '1024'
+    - name: VLLM_RPC_TIMEOUT
+      value: '3600000'
+    - name: VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS
+      value: '3000'
+    - name: HCCL_EXEC_TIMEOUT
+      value: '3600'
+    - name: HCCL_CONNECT_TIMEOUT
+      value: '1200'
+  lws:
+    size: 2
+    enabled: true
+    distPort: 13399
+    replicas: 1
+    restartPolicy: RecreateGroupOnPodRestart
+    startupPolicy: LeaderCreated
+    waitForLeader: true
+    rolloutStrategy:
+      type: RollingUpdate
+      rollingUpdateConfiguration:
+        maxSurge: 0
+        maxUnavailable: 1
+    workerTerminationGracePeriodSeconds: 60
+  cart:
+    enabled: false
+  model:
+    mountPath: /models
+    hostPathType: Directory
+    contextLength: '133120'
+  scaler:
+    enabled: false
+  volumes:
+    - name: cann-diagnostics
+      hostPath:
+        path: /data/share/deployments/glm-5.3-flash-w8a8-cann
+        type: DirectoryOrCreate
+  dnsPolicy: ClusterFirstWithHostNet
+  resources:
+    limits:
+      cpu: '32'
+      memory: 768Gi
+      volcano.sh/Ascend910B4-1: '8'
+    requests:
+      cpu: '32'
+      memory: 768Gi
+      volcano.sh/Ascend910B4-1: '8'
+  modelCheck:
+    enabled: false
+  hangWatcher:
+    enabled: false
+  hostNetwork: true
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 10
+    failureThreshold: 360
+    initialDelaySeconds: 60
+  volumeMounts:
+    - name: cann-diagnostics
+      mountPath: /root/ascend/log
+  schedulerName: volcano
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 10
+    failureThreshold: 3
+  commandOverride:
+    - bash
+    - -c
+    - |
+      set -euo pipefail
+      RANK="${LWS_WORKER_INDEX:-0}"
+      case "$RANK" in 0|1) ;; *) echo "Invalid node rank: $RANK" >&2; exit 1 ;; esac
+      export HCCL_IF_IP="${POD_IP:?}"
+      export GLOO_SOCKET_IFNAME="${NIC_NAME:?}" TP_SOCKET_IFNAME="$NIC_NAME" HCCL_SOCKET_IFNAME="$NIC_NAME"
+      if [ -f /usr/lib/aarch64-linux-gnu/libjemalloc.so.2 ]; then
+        export LD_PRELOAD="/usr/lib/aarch64-linux-gnu/libjemalloc.so.2${LD_PRELOAD:+:$LD_PRELOAD}"
+      fi
+      LEADER_IP=''
+      for _ in $(seq 1 60); do
+        if LEADER_IP=$(python3 -c 'import socket,sys; print(socket.gethostbyname(sys.argv[1]))' \
+                         "${LWS_LEADER_ADDRESS:?}"); then break; fi
+        sleep 5
+      done
+      [ -n "$LEADER_IP" ] || { echo "Timed out resolving leader address" >&2; exit 1; }
+      set -- /models \
+        --host 0.0.0.0 --port 8000 \
+        --served-model-name "${SERVED_MODEL_NAME}" \
+        --data-parallel-rpc-port 13399 \
+        --data-parallel-size 2 \
+        --data-parallel-size-local 1 \
+        --tensor-parallel-size 8 \
+        --enable-expert-parallel \
+        --max-model-len 133120 \
+        --max-num-batched-tokens 8192 \
+        --max-num-seqs 32 \
+        --gpu-memory-utilization 0.85 \
+        --enable-auto-tool-choice \
+        --tool-call-parser glm47 \
+        --trust-remote-code \
+        --enable-prompt-tokens-details \
+        --safetensors-load-strategy prefetch \
+        --quantization ascend \
+        --speculative-config '{"num_speculative_tokens":3,"method":"deepseek_mtp","enforce_eager":true}' \
+        --compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[4,8,16,32,64,96,128]}'
+      # Rank 1 owns DP ranks 1.. and runs headless: no HTTP server, so nothing probes it.
+      if [ "$RANK" = 1 ]; then
+        set -- "$@" --headless --data-parallel-start-rank 1
+      else
+        set -- "$@" --api-server-count 1
+      fi
+      exec vllm serve "$@" --data-parallel-address "$LEADER_IP"
+  securityContext:
+    privileged: true
+  progressDeadlineSeconds: 7200
+  terminationGracePeriodSeconds: 1200
