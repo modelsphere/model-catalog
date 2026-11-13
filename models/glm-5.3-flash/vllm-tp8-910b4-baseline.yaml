@@ -8,17 +8,31 @@
 # Which pool to land in (pod labels, node selector, tolerations, scheduler) is deliberately not set
 # here: that belongs to the cluster, and a deploy passes it as overrides.
 #
-# ===================== MEASURED =====================
-# Measured on one Ascend 910B4 node, 8 cards, engine-direct, 50K input / 1500 output, 600s window:
+# ===================== MEASURED, AND WHAT THIS FILE SHIPS =====================
+# READ THIS BEFORE QUOTING THE FIGURES BELOW. They were measured with the cookbook's own
+# --max-model-len 133120 and --gpu-memory-utilization 0.85. This variant ships 1048576 and 0.9
+# instead, so that it serves the model's full context -- and that is a DIFFERENT configuration
+# whose throughput has NOT been measured. What is known about the shipped pairing: it starts, and
+# the engine reports a KV cache of 1,103,697 tokens, "Maximum concurrency for 1,048,576 tokens per
+# request: 1.05x" -- i.e. exactly one request of the full context fits at a time.
+#
+# The direction is not obvious and should not be guessed: 0.85 left the cookbook configuration
+# pool-bound at c=16 (802,285 tokens seats ~15.6 requests of 51.5K), so 0.9 may well be FASTER
+# rather than a concession for context. On a different configuration on this hardware, raising
+# utilisation from 0.9 to 0.95 measured -10.4%; that result does not transfer here either.
+#
+# Measured on one Ascend 910B4 node, 8 cards, engine-direct, 50K input / 1500 output, 600s window,
+# at 133120 / 0.85:
 #
 #   concurrency 12    2608.6 TOTAL tok/s    TTFT 29.6s
 #   concurrency 16    2794.6 TOTAL tok/s    TTFT 63.2s     <- peak
 #   concurrency 20    2707.3 TOTAL tok/s    TTFT 101.1s
 #
-# The peak at 16 is not a coincidence and not a tuning choice: the engine builds a KV cache of
-# 802,285 tokens at --gpu-memory-utilization 0.85, which at 51.5K tokens per request seats about
-# 15.6 of them. Concurrency 20 is past that and the figure falls. Read the engine's own
-# "NPU KV cache size: N tokens" line on your own weights before raising any concurrency cap.
+# The peak at 16 is not a coincidence and not a tuning choice: at 0.85 the engine builds a KV cache
+# of 802,285 tokens, which at 51.5K tokens per request seats about 15.6 of them. Concurrency 20 is
+# past that and the figure falls. At the 0.9 this file ships, the cache is 1,103,697 tokens and
+# seats about 21, so the peak is likely HIGHER than 16 -- unmeasured. Read the engine's own
+# "NPU KV cache size: N tokens" line on your own weights before setting any concurrency cap.
 #
 # For context on why this recipe is worth having as the baseline for this hardware: an earlier
 # configuration -- the 950DT baseline variant's model-level arguments spliced with Ascend
@@ -42,12 +56,13 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm-5.3-flash
 id: vllm-tp8-910b4-baseline
-version: 1.0.0
+version: 1.0.1
 servedName: GLM-5.3-Flash
 description: >-
   Baseline: TP8/DP1 on one Ascend 910B4 node, 8 cards, using Eco-Tech/GLM-5.3-Flash-w8a8 weights.
-  The vLLM-Ascend cookbook's A2 colocated recipe, adapted from its two nodes to one. 2794.6 TOTAL
-  tok/s at concurrency 16 (50K + 1.5K, 600s, engine-direct).
+  The vLLM-Ascend cookbook's A2 colocated recipe, adapted from its two nodes to one and raised to
+  the checkpoint's full 1M context. The cookbook's own 133120/0.85 measured 2794.6 TOTAL tok/s at
+  concurrency 16 (50K + 1.5K, 600s, engine-direct); the 1M pairing here starts but is unmeasured.
 engine: vllm
 chart:
   name: vllm
@@ -84,11 +99,11 @@ values:
     localPath: /data/share/models/GLM-5.3-Flash-w8a8
     mountPath: /model
     hostPathType: Directory
-    # = --max-model-len below, which is the cookbook's value rather than the checkpoint's own
-    # 1048576. At --gpu-memory-utilization 0.85 the KV cache holds 802,285 tokens, so a single
-    # 1M-token request would not fit and the engine would refuse to start. Serving the full
-    # context needs 1048576 here AND 0.9 below, and costs throughput; it has not been measured.
-    contextLength: "133120"
+    # = --max-model-len below: the checkpoint's own max_position_embeddings, so this variant
+    # serves the full context. The cookbook instead caps it at 133120, and the figures in the
+    # header were measured at that cap -- see the note there before quoting them for this
+    # configuration.
+    contextLength: "1048576"
   modelCheck:
     requiredGlobs:
       - config.json
@@ -121,9 +136,13 @@ values:
     - --enable-expert-parallel
     - --max-num-seqs=32
     - --seed=1024
-    - --max-model-len=133120
+    - --max-model-len=1048576
     - --max-num-batched-tokens=8192
-    - --gpu-memory-utilization=0.85
+    # 0.9, NOT the cookbook's 0.85, and the pairing is forced: at 0.85 the KV cache holds
+    # 802,285 tokens, one 1,048,576-token request does not fit, and the engine REFUSES TO
+    # START with "ValueError: To serve at least one request with the model's max seq len".
+    # The two values move together or not at all.
+    - --gpu-memory-utilization=0.9
     - --limit-mm-per-prompt={"image":1,"video":0}
     - --compilation-config={"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[4,8,16,32,64,96,128]}
     - --speculative-config={"method":"deepseek_mtp","num_speculative_tokens":3,"enforce_eager":true}
