@@ -8,31 +8,47 @@
 # Which pool to land in (pod labels, node selector, tolerations, scheduler) is deliberately not set
 # here: that belongs to the cluster, and a deploy passes it as overrides.
 #
-# ===================== MEASURED, AND WHAT THIS FILE SHIPS =====================
-# READ THIS BEFORE QUOTING THE FIGURES BELOW. They were measured with the cookbook's own
-# --max-model-len 133120 and --gpu-memory-utilization 0.85. This variant ships 1048576 and 0.9
-# instead, so that it serves the model's full context -- and that is a DIFFERENT configuration
-# whose throughput has NOT been measured. What is known about the shipped pairing: it starts, and
-# the engine reports a KV cache of 1,103,697 tokens, "Maximum concurrency for 1,048,576 tokens per
-# request: 1.05x" -- i.e. exactly one request of the full context fits at a time.
+# ===================== MEASURED =====================
+# One Ascend 910B4 node, 8 cards, engine-direct, 50K input / 1500 output, 600s window, same
+# weights, image and client throughout.
 #
-# The direction is not obvious and should not be guessed: 0.85 left the cookbook configuration
-# pool-bound at c=16 (802,285 tokens seats ~15.6 requests of 51.5K), so 0.9 may well be FASTER
-# rather than a concession for context. On a different configuration on this hardware, raising
-# utilisation from 0.9 to 0.95 measured -10.4%; that result does not transfer here either.
+# WHAT THIS FILE SHIPS -- 1048576 / 0.9, the full context -- measures 2789.7 TOTAL tok/s at
+# concurrency 16 (INPUT 2733.2 + OUTPUT 56.5), TTFT 73.1s, with a KV cache of 1,103,697 tokens that
+# the engine reports as "Maximum concurrency for 1,048,576 tokens per request: 1.05x".
 #
-# Measured on one Ascend 910B4 node, 8 cards, engine-direct, 50K input / 1500 output, 600s window,
-# at 133120 / 0.85:
+# THE FULL CONTEXT IS ESSENTIALLY FREE IN THROUGHPUT. The cookbook's own 133120 / 0.85 measures
+# 2794.6 at the same concurrency -- a difference of -0.2%, inside run-to-run noise. What it does
+# cost is TTFT, 63.2s against 73.1s (+16%), and the ceiling of one full-length request at a time.
+# Predicting otherwise would have been wrong in both directions: the larger pool bought nothing,
+# because at this concurrency the binding constraint is compute, not KV capacity.
+#
+# Figures at the cookbook's 133120 / 0.85, kept because the concurrency curve was measured there:
 #
 #   concurrency 12    2608.6 TOTAL tok/s    TTFT 29.6s
 #   concurrency 16    2794.6 TOTAL tok/s    TTFT 63.2s     <- peak
 #   concurrency 20    2707.3 TOTAL tok/s    TTFT 101.1s
 #
-# The peak at 16 is not a coincidence and not a tuning choice: at 0.85 the engine builds a KV cache
-# of 802,285 tokens, which at 51.5K tokens per request seats about 15.6 of them. Concurrency 20 is
-# past that and the figure falls. At the 0.9 this file ships, the cache is 1,103,697 tokens and
-# seats about 21, so the peak is likely HIGHER than 16 -- unmeasured. Read the engine's own
-# "NPU KV cache size: N tokens" line on your own weights before setting any concurrency cap.
+# At 0.85 the peak at 16 is a capacity effect: the KV cache holds 802,285 tokens, which at 51.5K
+# per request seats about 15.6 of them, and concurrency 20 is past that. At the 0.9 this file
+# ships the cache holds 1,103,697 and seats about 21, so the ceiling is no longer capacity -- yet
+# throughput at 16 is the same, which is what says the constraint there is compute. Whether the
+# peak moves above 16 at 0.9 is unmeasured. Read the engine's own "NPU KV cache size: N tokens"
+# line on your own weights before setting any concurrency cap.
+#
+# A LARGER PREFILL CHUNK IS WORTH MORE THAN THE CONTEXT, AND YOU CANNOT HAVE BOTH.
+# --max-num-batched-tokens 16384 instead of 8192, at 133120 / 0.85, measures 3003.7 TOTAL tok/s at
+# concurrency 16: +7.5% over the recipe, and the only change measured on this hardware that beats
+# it. It wins while SHRINKING the KV cache to 691,154 tokens, which is the clearest evidence that
+# prefill compute rather than KV capacity is what limits this model here. It costs TTFT: 85.6s.
+#
+# Combining it with the full context does not start at all:
+#   ValueError: To serve at least one request with the model's max seq len (1048576), 12.88 GiB
+#   KV cache is needed, which is larger than the available KV cache memory (12.1 GiB)
+# Short by 0.78 GiB, about 6%. So this hardware offers the full context OR +7.5%, not both, at
+# 0.9. Whether 0.95 buys enough for both is untested, and on an older configuration here 0.95
+# measured -10.4%, so it is not an obviously free fix. This file chooses the context; a deployment
+# that does not need more than ~130K should set --max-num-batched-tokens 16384 and
+# --max-model-len 133120 and take the 7.5%.
 #
 # For context on why this recipe is worth having as the baseline for this hardware: an earlier
 # configuration -- the 950DT baseline variant's model-level arguments spliced with Ascend
@@ -56,13 +72,13 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: glm-5.3-flash
 id: vllm-tp8-910b4-baseline
-version: 1.0.1
+version: 1.0.2
 servedName: GLM-5.3-Flash
 description: >-
   Baseline: TP8/DP1 on one Ascend 910B4 node, 8 cards, using Eco-Tech/GLM-5.3-Flash-w8a8 weights.
   The vLLM-Ascend cookbook's A2 colocated recipe, adapted from its two nodes to one and raised to
-  the checkpoint's full 1M context. The cookbook's own 133120/0.85 measured 2794.6 TOTAL tok/s at
-  concurrency 16 (50K + 1.5K, 600s, engine-direct); the 1M pairing here starts but is unmeasured.
+  the checkpoint's full 1M context. 2789.7 TOTAL tok/s at concurrency 16 (50K + 1.5K, 600s,
+  engine-direct), which the full context costs nothing against the cookbook's own 133120/0.85.
 engine: vllm
 chart:
   name: vllm
@@ -157,9 +173,11 @@ values:
     #   --additional-config so enable_npugraph_ex inherits the engine default (True) and
     #                       enable_cpu_binding its default (also True, ascend_config.py:568) --
     #                       dropping the block does not cost CPU binding.
-    # Note that forcing enable_npugraph_ex to false measured -13.9% on this model inside a
-    # DIFFERENT configuration (VLLM_USE_V2_MODEL_RUNNER=0). That result does not transfer here and
-    # has not been re-measured on this one.
+    # enable_npugraph_ex is worth leaving at its default True. An earlier measurement on this
+    # model recorded -13.9% for True -- but that was taken inside a different configuration, with
+    # VLLM_USE_V2_MODEL_RUNNER=0. Re-measured on THIS one, the sign is reversed: forcing it false
+    # costs -7.3% (2591.6 against 2794.6) and pushes TTFT from 63.2s to 92.8s. A parameter's effect
+    # here is a property of the configuration it sits in, not of the parameter.
   env:
     # The cookbook sets 1. A configuration derived from the 950DT variant pinned it to 0, and that
     # single difference is worth +30.8% at concurrency 16 -- see the measured block at the top.
