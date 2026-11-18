@@ -53,8 +53,6 @@ values:
   env:
     - name: NVIDIA_DISABLE_REQUIRE
       value: "1"
-    - name: PYTHONHASHSEED
-      value: "0"
     - name: PYTORCH_ALLOC_CONF
       value: expandable_segments:True
     - name: SGLANG_HICACHE_MOONCAKE_CONFIG_PATH
