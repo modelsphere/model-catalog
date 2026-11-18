@@ -41,3 +41,10 @@ tuning:
       - name: 8k + 1k
         uplift: 11.7
     report: glm-5.3-flash-950dt-report.html
+  - baseline: vllm-tp8-910b4-baseline@1.0.2
+    optimized: vllm-tp8-910b4-optimized@1.0.0
+    metric: input_tpm
+    uplift: 66.0
+    workloads:
+      - name: 50k + 1.5k
+        uplift: 66.0
