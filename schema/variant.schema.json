@@ -6,6 +6,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["apiVersion", "kind", "model", "id", "version", "engine", "chart", "requires"],
+  "allOf": [{ "$ref": "version.schema.json#/$defs/engineChart" }],
   "properties": {
     "apiVersion": {
       "const": "catalog.swiss/v2"

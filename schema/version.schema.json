@@ -36,10 +36,32 @@
     }
   },
   "$defs": {
+    "engineChart": {
+      "description": "Which chart each engine runs on: sglang and vllm on the chart of their name, mock on one of those two, video on any chart but those two. validate-schema repeats it with readable messages; here it holds for anything that validates with the schema alone.",
+      "allOf": [
+        {
+          "if": { "required": ["engine"], "properties": { "engine": { "const": "sglang" } } },
+          "then": { "properties": { "chart": { "properties": { "name": { "const": "sglang" } } } } }
+        },
+        {
+          "if": { "required": ["engine"], "properties": { "engine": { "const": "vllm" } } },
+          "then": { "properties": { "chart": { "properties": { "name": { "const": "vllm" } } } } }
+        },
+        {
+          "if": { "required": ["engine"], "properties": { "engine": { "const": "mock" } } },
+          "then": { "properties": { "chart": { "properties": { "name": { "enum": ["sglang", "vllm"] } } } } }
+        },
+        {
+          "if": { "required": ["engine"], "properties": { "engine": { "const": "video" } } },
+          "then": { "properties": { "chart": { "properties": { "name": { "not": { "enum": ["sglang", "vllm"] } } } } } }
+        }
+      ]
+    },
     "variant": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "engine", "chart", "requires"],
+      "allOf": [{ "$ref": "#/$defs/engineChart" }],
       "properties": {
         "id": {
           "description": "Unique within this entry. Convention: <engine>-<parallelism>-<hardware>, e.g. sglang-tp8-b300.",
@@ -61,8 +83,8 @@
           "type": "boolean"
         },
         "engine": {
-          "description": "The server the variant runs. mock is a stand-in server for tests, such as mock-llmd: it has no chart of its own and runs on the sglang or vllm chart through commandOverride. Every other engine's chart is its own.",
-          "enum": ["sglang", "vllm", "mock"]
+          "description": "The server the variant runs. mock is a stand-in server for tests, such as mock-llmd: it has no chart of its own and runs on the sglang or vllm chart through commandOverride. video is a video generation service on a chart of its own, such as minimax-h3: any chart but sglang or vllm, and requires describes one pod of it (single-node, no nodes), because the chart lays out its own pods. sglang and vllm each run on the chart of their name.",
+          "enum": ["sglang", "vllm", "mock", "video"]
         },
         "chart": {
           "description": "Chart name and version only. Never a repository -- the site profile maps the name to its own registry, because this file cannot know it.",
@@ -71,7 +93,9 @@
           "required": ["name", "version"],
           "properties": {
             "name": {
-              "enum": ["sglang", "vllm"]
+              "description": "The chart: the engine's own for sglang and vllm, one of those two for mock, a video chart for video.",
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
             },
             "version": {
               "description": "One chart version, or a range of them in helm's constraint syntax. A bare version pins exactly: 0.8.0 is 0.8.0 and nothing else. A range lets a chart fix reach this model version without publishing a new one: >=0.8.0, ^0.8.0 (0.8.x from 0.8.0), >=0.8.0 <0.9.0. A deploy records the one version the range resolved to, so the deploy itself stays pinned. Prereleases match only a range that names one.",

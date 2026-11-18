@@ -193,6 +193,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "version", "path", "digest", "engine", "chart", "requires", "history"],
+      "allOf": [{ "$ref": "version.schema.json#/$defs/engineChart" }],
       "properties": {
         "id": {
           "$ref": "version.schema.json#/$defs/variant/properties/id"
