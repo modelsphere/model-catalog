@@ -1,9 +1,9 @@
 apiVersion: catalog.swiss/v2
 kind: Variant
 model: minimax-h3
-id: sglang-tp4-a100
+id: sglang-tp4
 version: 1.0.0
-description: "Two pools, FL2VA and Ref2VA (with the 8-step Turbo LoRA), each one pod of four A100 SXM4 80GB GPUs at TP4."
+description: "Two pools, FL2VA and Ref2VA (with the 8-step Turbo LoRA), each one pod of four A100 SXM4 80GB, H100 or H800 GPUs at TP4."
 engine: video
 chart:
   name: minimax-h3
@@ -14,6 +14,8 @@ requires:
   vendor: nvidia
   gpuProduct:
     - NVIDIA-A100-SXM4-80GB
+    - NVIDIA-H100-80GB-HBM3
+    - NVIDIA-H800
 inputs:
   - key: sharedStorage.storageClass
     title: Shared asset volume storage class
