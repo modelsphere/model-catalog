@@ -40,8 +40,9 @@ function variantProblems(v, at) {
       if (v?.values?.[key] !== undefined) lines.push(`${at}values.${key}: a video chart has no ${key} layout`);
     }
   }
-  // The chart renders what values enable, not what topology says.
-  if (["lws", "pd"].includes(topology) && v?.values?.[topology]?.enabled !== true) {
+  // The chart renders what values enable, not what topology says. A video
+  // variant is already refused its topology above, and has no such values.
+  if (v?.engine !== "video" && ["lws", "pd"].includes(topology) && v?.values?.[topology]?.enabled !== true) {
     lines.push(`${at}requires.topology ${topology} needs values.${topology}.enabled: true`);
   }
   // CPU only: no accelerator, so nothing that picks or sizes one.

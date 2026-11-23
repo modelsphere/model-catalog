@@ -11,6 +11,10 @@ const { command, selectFiles, kubeconformArgs, failureLines, parseVersions, cata
 const { paint, marks } = require("./lib/style");
 const config = require("../schema/crds/config.json");
 
+// What a video chart would otherwise look up in the cluster. Layered under the
+// variant's own values, so a variant that names a database.url keeps its own.
+const VIDEO_CI_VALUES = { database: { url: "postgresql://ci:ci@ci-db.ci.svc.cluster.local:5432/ci" } };
+
 function options(args) {
   const { values, positionals } = parseArgs({
     args,
@@ -75,9 +79,7 @@ function main(opts, { repositoryRoot = root, runCommand = command } = {}) {
         `      ${paint(
           "yellow",
           `${record.warning}; ${
-            record.skipped
-              ? (record.skipReason ?? "its legacy chart cannot be rendered here")
-              : "its values are still checked against the latest chart"
+            record.skipped ? "its legacy chart cannot be rendered here" : "its values are still checked against the latest chart"
           }`,
         )}`,
       );
@@ -307,15 +309,14 @@ function main(opts, { repositoryRoot = root, runCommand = command } = {}) {
               continue;
             }
           }
+          // A video chart reads its database from the cluster at render time
+          // (lookup), and CI has no cluster: give it a placeholder DSN, which the
+          // chart takes over the lookup, so the variant still renders in full.
+          const videoValues = [];
           if (variant.engine === "video") {
-            // A video chart reads its database and storage from the cluster at
-            // render time (lookup), which a CI render has no cluster for. Its
-            // chart is still resolved against the repository and the minimum
-            // above; only lint, template and kubeconform are left out.
-            record.skipped = true;
-            record.warning = `engine video: ${pkg.name} ${pkg.declaredVersion} resolved`;
-            record.skipReason = "a video chart reads the cluster at render time, so it is not rendered here";
-            continue;
+            const file = path.join(dir, "video-ci.json");
+            fs.writeFileSync(file, JSON.stringify(VIDEO_CI_VALUES, null, 2) + "\n");
+            videoValues.push("--values", file);
           }
           record.chart = {
             name: pkg.name,
@@ -329,6 +330,7 @@ function main(opts, { repositoryRoot = root, runCommand = command } = {}) {
           const shared = [
             "--values",
             path.join(root, "schema/crds/ci-values.yaml"),
+            ...videoValues,
             "--values",
             valuesFile,
             "--kube-version",

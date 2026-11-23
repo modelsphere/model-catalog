@@ -20,7 +20,10 @@ test("a video variant on its own chart, one pod, passes", () => {
 });
 
 test("a video variant describes one pod: no pd or lws topology, no nodes", () => {
-  assert.match(problems(video({ requires: { gpus: 4, topology: "pd" } })).join("\n"), /requires\.topology pd: a video variant is single-node/);
+  // One problem, not also "needs values.pd.enabled", which the next rule would then refuse.
+  assert.deepStrictEqual(problems(video({ requires: { gpus: 4, topology: "pd" } })), [
+    "requires.topology pd: a video variant is single-node; its chart lays out its pods",
+  ]);
   assert.match(problems(video({ requires: { gpus: 4, nodes: 2 } })).join("\n"), /requires\.nodes 2: a video variant takes no nodes/);
   // The schema documents "no nodes": even 1 is refused.
   assert.match(problems(video({ requires: { gpus: 4, nodes: 1 } })).join("\n"), /requires\.nodes 1: a video variant takes no nodes/);
