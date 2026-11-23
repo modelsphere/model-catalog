@@ -3,7 +3,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: kimi-k3
 id: sglang-tp8-b300-optimized
-version: 1.0.7
+version: 1.0.8
 servedName: kimi-k3
 description: "Tuned by LLM AutoTune: TP8 on eight B300 GPUs, single node, fp8 KV cache, DSPARK speculative decoding, hierarchical KV cache. Normalized throughput within the SLO vs the baseline variant: +57.6% (50k + 1.5k), +21.4% (8k + 1k)."
 engine: sglang
@@ -19,6 +19,11 @@ requires:
   topology: single-node
   gpuProduct:
     - NVIDIA-B300-SXM6-AC
+inputs:
+  - key: volumes.[name=draft-model].hostPath.path
+    title: Draft model host path
+    description: Where the Kimi-K3-DSpark draft weights sit on each eligible node. Mounted at /draft-model.
+    example: /data/models/Kimi-K3-DSpark
 values:
   model:
     mountPath: /model

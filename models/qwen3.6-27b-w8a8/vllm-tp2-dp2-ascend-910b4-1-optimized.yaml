@@ -1,0 +1,95 @@
+# Serving configs measured, and where marked tuned, by LLM AutoTune.
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: qwen3.6-27b-w8a8
+id: vllm-tp2-dp2-ascend-910b4-1-optimized
+version: 1.0.0
+servedName: qwen3.6-27b
+description: 'Tuned by LLM AutoTune: TP2 DP2 on four ASCEND-910B4-1 GPUs, single node, ascend weights. Normalized throughput within the SLO vs the baseline variant: +2.1% (50k + 1.5k), +4.9% (8k + 1k).'
+engine: vllm
+chart:
+  name: vllm
+  version: '>=0.9.1'
+image:
+  repository: quay.io/ascend/vllm-ascend
+  tag: pinned@sha256:7859b75177884252d2b703eff727831ccab4e33a8bde0a9b4ac7563facc98b33
+requires:
+  gpus: 4
+  topology: single-node
+  vendor: ascend
+  gpuProduct:
+    - Ascend-910B4
+values:
+  env:
+    - name: PYTORCH_NPU_ALLOC_CONF
+      value: expandable_segments:True
+    - name: HCCL_BUFFSIZE
+      value: '1024'
+    - name: HCCL_OP_EXPANSION_MODE
+      value: AIV
+    - name: OMP_PROC_BIND
+      value: 'false'
+    - name: OMP_NUM_THREADS
+      value: '1'
+    - name: OPENBLAS_NUM_THREADS
+      value: '1'
+    - name: TASK_QUEUE_ENABLE
+      value: '1'
+  model:
+    mountPath: /models
+    hostPathType: Directory
+    contextLength: '133120'
+  dnsPolicy: ClusterFirstWithHostNet
+  extraArgs:
+    - --data-parallel-size=2
+    - --tensor-parallel-size=2
+    - --quantization=ascend
+    - --max-num-seqs=64
+    - --max-model-len=133120
+    - --max-num-batched-tokens=16384
+    - --trust-remote-code
+    - --allowed-local-media-path=/
+    - --dtype=bfloat16
+    - --reasoning-parser=qwen3
+    - --mm-processor-cache-gb=0
+    - --mm-encoder-tp-mode=data
+    - --mm-processor-cache-type=shm
+    - --gpu-memory-utilization=0.92
+    - --speculative-config={"method":"qwen3_5_mtp","num_speculative_tokens":3}
+    - --compilation-config={"cudagraph_capture_sizes":[1,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64,68,72,76,80,84,88,92,96,100,104,108,112,116,120,124,128],"cudagraph_mode":"FULL_DECODE_ONLY"}
+    - --additional-config={"enable_cpu_binding":true,"multistream_overlap_shared_expert":true}
+    - --async-scheduling
+    - --enable-prefix-caching
+    - --enable-auto-tool-choice
+    - --tool-call-parser=qwen3_coder
+    - --enable-prompt-tokens-details
+  lifecycle:
+    shutdownTimeout: 0
+  resources:
+    limits:
+      cpu: '16'
+      memory: 128Gi
+    requests:
+      cpu: '16'
+      memory: 128Gi
+  hangWatcher:
+    enabled: false
+  hostNetwork: true
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 10
+    failureThreshold: 360
+    initialDelaySeconds: 60
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 10
+    failureThreshold: 3
+  securityContext:
+    privileged: true
+  promptTokensDetails: true
+  progressDeadlineSeconds: 7200
+  terminationGracePeriodSeconds: 1200

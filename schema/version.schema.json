@@ -202,10 +202,15 @@
             "required": ["key", "title", "example"],
             "properties": {
               "key": {
-                "description": "The chart value's dotted key, as helm --set takes it: storageKVOffload.mooncake.master. Unique within the variant.",
+                "description": "The chart value's key, a kustomize kyaml-style path of segments joined by \".\": a field (storageKVOffload.mooncake.master), [field=value] for the list item whose field equals value (volumes.[name=draft-model].hostPath.path), [=value] for the scalar list item equal to value, [^=prefix] for the scalar list item starting with prefix, or a bare number N for a list index (the key \"N\" on a map). - and * are not implemented. A key of fields only may be absent from values; any other must select exactly one string, number or boolean there. Unique within the variant.",
                 "type": "string",
-                "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(\\.[A-Za-z_][A-Za-z0-9_-]*)*$",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(\\.([A-Za-z_][A-Za-z0-9_-]*|0|[1-9][0-9]*|\\[[A-Za-z_][A-Za-z0-9_-]*=[^\\]]*\\]|\\[=[^\\]]*\\]|\\[\\^=[^\\]]+\\]))*$",
                 "not": { "enum": ["model.localPath"] }
+              },
+              "patcher": {
+                "description": "For a string input, how the answer goes into the selected value: a template with {value} exactly once, such as \"--speculative-draft-model-path={value}\". Without it the answer replaces the whole value. No escaping: any other text, braces included, is literal. A value values gives the key must fit it.",
+                "type": "string",
+                "pattern": "\\{value\\}"
               },
               "title": {
                 "description": "What the deploy form labels the field with.",

@@ -99,6 +99,7 @@ What a variant needs to know:
 | `image` | on a public registry, pullable without a login |
 | `chart.version` | exact (`0.8.0`) or a [semver range](https://github.com/Masterminds/semver#checking-version-constraints), quoted (`">=0.8.0"`, `"^0.8.0"`). A new or changed variant's must resolve to a release at or above the chart's minimum in `schema/crds/config.json` |
 | `values` | chart values. Site-specific keys (namespace, host paths, registry, route ConfigMaps) are refused by the schema |
+| `inputs` | chart values each deploy answers. `key` is a [kyaml-style path](https://github.com/modelsphere/modelsphere/issues/75): fields joined by `.`, plus `[field=value]`, `[=value]`, `[^=prefix]` and bare list indexes (`volumes.[name=draft-model].hostPath.path`); a key that goes through a list must select exactly one string, number or boolean in `values`. Optional `patcher` (string inputs) is a template with one `{value}`, e.g. `"--speculative-draft-model-path={value}"` |
 | `deprecated` | `true` or a reason: the variant is on its way out |
 | `replaces` | the id of a variant this one renames or supersedes |
 

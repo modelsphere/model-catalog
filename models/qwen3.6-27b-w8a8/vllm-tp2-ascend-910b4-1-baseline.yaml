@@ -3,13 +3,13 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: qwen3.6-27b-w8a8
 id: vllm-tp2-ascend-910b4-1-baseline
-version: 1.1.2
+version: 1.1.3
 servedName: qwen3.6-27b
-description: "Baseline: TP2 on two ASCEND-910B4-1 cards, single node, ascend weights."
+description: 'Baseline: TP2 on two ASCEND-910B4-1 cards, single node, ascend weights.'
 engine: vllm
 chart:
   name: vllm
-  version: ">=0.9.1"
+  version: '>=0.9.1'
 image:
   repository: quay.io/ascend/vllm-ascend
   tag: pinned@sha256:7859b75177884252d2b703eff727831ccab4e33a8bde0a9b4ac7563facc98b33
@@ -24,11 +24,11 @@ values:
     - name: PYTORCH_NPU_ALLOC_CONF
       value: expandable_segments:True
     - name: HCCL_BUFFSIZE
-      value: "512"
+      value: '512'
   model:
     mountPath: /models
     hostPathType: Directory
-    contextLength: "133120"
+    contextLength: '133120'
   dnsPolicy: ClusterFirstWithHostNet
   extraArgs:
     - --data-parallel-size=1
@@ -48,14 +48,17 @@ values:
     - --speculative-config={"method":"qwen3_5_mtp","num_speculative_tokens":3}
     - --compilation-config={"cudagraph_capture_sizes":[1,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64,68,72,76,80,84,88,92,96,100,104,108,112,116,120,124,128],"cudagraph_mode":"FULL_DECODE_ONLY"}
     - --additional-config={"enable_cpu_binding":true}
+    - --enable-prefix-caching
+    - --enable-auto-tool-choice
+    - --tool-call-parser=qwen3_coder
   lifecycle:
     shutdownTimeout: 0
   resources:
     limits:
-      cpu: "16"
+      cpu: '16'
       memory: 128Gi
     requests:
-      cpu: "16"
+      cpu: '16'
       memory: 128Gi
   hangWatcher:
     enabled: false

@@ -1,0 +1,117 @@
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: kimi-k3
+id: sglang-tp8-b300-l3
+version: 1.1.3
+servedName: kimi-k3
+description: TP8 and DCP8 on eight B300 GPUs, single node, with FP8 KV cache, DSPARK speculative decoding, and Mooncake as the HiCache L3 backend.
+engine: sglang
+chart:
+  name: sglang
+  version: ">=0.8.0"
+image:
+  repository: 4pdosc/sglang
+  tag: v0.5.23-dcp-l3
+requires:
+  gpus: 8
+  topology: single-node
+  rdma: true
+  gpuProduct:
+    - NVIDIA-B300-SXM6-AC
+values:
+  model:
+    mountPath: /model
+    hostPathType: Directory
+    contextLength: ""
+  modelCheck:
+    requiredGlobs:
+      - config.json
+      - "*.safetensors"
+  extraArgs:
+    - --chunked-prefill-size=16384
+    - --dcp-size=8
+    - --enable-cache-report
+    - --enable-hierarchical-cache
+    - --enable-linear-replayssm-spec
+    - --hicache-io-backend=direct
+    - --hicache-mem-layout=page_first_direct
+    - --hicache-size=150
+    - --hicache-storage-backend=mooncake
+    - --kv-cache-dtype=fp8_e4m3
+    - --mamba-full-memory-ratio=2
+    - --max-running-requests=51
+    - --mem-fraction-static=0.85
+    - --reasoning-parser=kimi_k3
+    - --speculative-algorithm=DSPARK
+    - --speculative-draft-model-path=/draft-model
+    - --speculative-dspark-block-size=4
+    - --stream-response-default-include-usage
+    - --tokenizer-worker-num=4
+    - --tool-call-parser=kimi_k3
+    - --tp-size=8
+    - --trust-remote-code
+  env:
+    - name: NVIDIA_DISABLE_REQUIRE
+      value: "1"
+    - name: PYTHONHASHSEED
+      value: "0"
+    - name: PYTORCH_ALLOC_CONF
+      value: expandable_segments:True
+    - name: SGLANG_HICACHE_MOONCAKE_CONFIG_PATH
+      value: /root/mc-config/mooncake_sglang_k3_config.json
+    - name: TORCHINDUCTOR_COMPILE_THREADS
+      value: "8"
+  volumes:
+    - name: draft-model
+      hostPath:
+        path: /mnt/disk0/models/Kimi-K3-DSpark
+        type: Directory
+    - name: dot-cache
+      emptyDir:
+        sizeLimit: 10Gi
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 32Gi
+    - name: mooncake-config
+      hostPath:
+        path: /mnt/disk0/models/config/mc-config
+        type: Directory
+  volumeMounts:
+    - name: draft-model
+      mountPath: /draft-model
+      readOnly: true
+    - name: dot-cache
+      mountPath: /root/.cache
+    - name: dshm
+      mountPath: /dev/shm
+    - name: mooncake-config
+      mountPath: /root/mc-config
+      readOnly: true
+  resources:
+    requests:
+      ephemeral-storage: 16Gi
+    limits:
+      ephemeral-storage: 16Gi
+      rdma/hca_shared: "1"
+  securityContext:
+    capabilities:
+      add:
+        - SYS_PTRACE
+        - SYS_NICE
+        - IPC_LOCK
+  progressDeadlineSeconds: 9300
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 250
+  terminationGracePeriodSeconds: 3600
+  lifecycle:
+    preStop:
+      drainSeconds: 600
+      pollIntervalSeconds: 5
+    forceShutdown: true
+    preStopKill: true

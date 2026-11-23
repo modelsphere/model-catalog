@@ -6,6 +6,7 @@ family: qwen
 tags:
   - chat
   - reasoning
+  - tool-use
 origins:
   - variant: vllm-tp2-ascend-910b4-1-baseline@1.0.0
     tool: baseline-hub
@@ -13,3 +14,13 @@ origins:
     url: http://172.28.4.5:30522/baseline-hub/86
 source:
   hf: Eco-Tech/Qwen3.6-27B-w8a8
+tuning:
+- baseline: vllm-tp2-ascend-910b4-1-baseline@1.1.3
+  optimized: vllm-tp2-dp2-ascend-910b4-1-optimized@1.0.0
+  uplift: 4.9
+  workloads:
+  - name: 50k + 1.5k
+    uplift: 2.1
+  - name: 8k + 1k
+    uplift: 4.9
+  report: qwen3.6-27b-w8a8-ascend-910b4-1-report.html

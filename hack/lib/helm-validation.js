@@ -5,7 +5,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const YAML = require("yaml");
 const { modelNames, versionFiles, variantFiles, kindOf } = require("./catalog");
-const { valueSetAt } = require("./inputs");
+const { valueSetAt, splitKey, findAt } = require("./inputs");
 
 function affectsValidator(file) {
   return (
@@ -125,7 +125,7 @@ function parseVersions(file) {
 //
 // Each declared input renders as swiss composes it with no site answer: its
 // default, else the value values gives it, else its example, standing in for
-// the answer a deploy gives.
+// the answer a deploy gives. A patcher templates it into the selected value.
 function catalogValues(variant) {
   const values = structuredClone(variant.values ?? {});
   const set = (keys, value) => {
@@ -142,9 +142,13 @@ function catalogValues(variant) {
     set(["image", "tag"], String(variant.image.tag ?? ""));
   }
   for (const input of variant.inputs ?? []) {
-    const keys = input.key.split(".");
-    if ("default" in input) set(keys, input.default);
-    else if (valueSetAt(values, keys) !== input.key) set(keys, input.example);
+    const keys = splitKey(input.key);
+    const found = findAt(values, keys);
+    if (!("default" in input) && found.length) continue;
+    const answer = "default" in input ? input.default : input.example;
+    const value = input.patcher ? input.patcher.replace("{value}", () => String(answer)) : answer;
+    if (found.length === 1 && found[0].parent) found[0].parent[found[0].at] = value;
+    else set(keys, value);
   }
   return values;
 }
