@@ -5,8 +5,8 @@
 # land in (pod labels, node selector, tolerations) is not set here: that belongs to the cluster,
 # and a deploy passes it as overrides.
 #
-# Translated from the site's own serving runtime for these weights; the command line keeps the
-# runtime's order so the two can be diffed. Deployed through swissd with vllm chart 0.8.23 on such
+# Translated from the site's own serving runtime for these weights. The original commandOverride
+# was deployed through swissd with vllm chart 0.8.23 on such
 # a site (2026-10-30): health, models, chat, streaming and tool calls pass, directly and through
 # the ModelRoute, and an unserved model name returns 404. It needs two nodes in one pool with 8
 # free cards each, and LeaderWorkerSet installed.
@@ -14,7 +14,7 @@ apiVersion: catalog.swiss/v2
 kind: Variant
 model: deepseek-v4.1-flash-1017-w8a8
 id: vllm-dp2-tp8-910b4-2node
-version: 1.1.2
+version: 1.1.3
 servedName: deepseek-v41
 description: >-
   Two Ascend 910B4 nodes, 8 cards each. vLLM's Ascend backend (CANN) with data-parallel size 2
@@ -23,8 +23,8 @@ description: >-
 engine: vllm
 chart:
   name: vllm
-  # 0.9.1 renders requires.gpus under the site's resource (model.gpuResource).
-  version: ">=0.9.1"
+  # Native LWS data-parallel mode handles leader resolution and worker ranks.
+  version: ">=0.9.10"
 image:
   # From the ClusterServingRuntime, by digest as the runtime pins it. quay.io and this
   # Huawei SWR registry are both reachable from the site's nodes; docker.io is not.
@@ -54,6 +54,11 @@ values:
   lws:
     enabled: true
     size: 2
+    mode: dp
+    dataParallel:
+      sizeLocal: 1
+      apiServerCount: 1
+      resolveLeaderAddress: true
     replicas: 1
     startupPolicy: LeaderCreated
     # = the ISVC's lifecycle.updateStrategy: RecreatePod. A cross-node vLLM instance cannot
@@ -61,10 +66,7 @@ values:
     restartPolicy: RecreateGroupOnPodRestart
     # Closest thing to the ISVC's readyPolicy: AllPodReady.
     waitForLeader: true
-    # The port waitForLeader's init container blocks on. The chart's default (29500) is its own
-    # --master-port, which commandOverride never starts, so the worker would wait forever
-    # while the leader waits for the worker's DP rank: a deadlock, hit on the first install
-    # (2026-10-30). 13399 is --data-parallel-rpc-port below, the one port the leader does bind.
+    # DP RPC port, also used by waitForLeader's init container.
     distPort: 13399
     # The chart's default rollout is maxSurge 1 / maxUnavailable 0: bring a second group up
     # before tearing the first down. This group takes every card in the cluster, so the surge
@@ -90,8 +92,6 @@ values:
       cpu: "32"
       memory: 768Gi
   env:
-    - name: SERVED_MODEL_NAME
-      value: deepseek-v41
     - name: POD_IP
       valueFrom:
         fieldRef:
@@ -119,73 +119,33 @@ values:
   volumeMounts:
     - name: cann-diagnostics
       mountPath: /root/ascend/log
-  # --- Why the whole command line is written out here.
-  #
-  # The chart's own multi-node support derives --nnodes, --node-rank (${LWS_WORKER_INDEX}),
-  # --master-addr (${LWS_LEADER_ADDRESS}), --master-port and --headless, and sets
-  # --distributed-executor-backend=mp; lws.yaml refuses any of those in extraArgs, because
-  # vLLM takes the last occurrence of a repeated flag and a restated --node-rank would give
-  # every pod rank 0. This engine spans the nodes a different way: vLLM's data-parallel
-  # engine (--data-parallel-size/-size-local/-address/-rpc-port, --data-parallel-start-rank on
-  # the worker). The chart has no --data-parallel-* concept, so the two cannot be mixed
-  # through extraArgs -- commandOverride skips the chart's command line entirely and the rank
-  # branch is written by hand. extraArgs is refused under commandOverride, so every engine
-  # flag lives here.
-  #
-  # Kept in the runtime's own order so the two can be diffed: rank guard, HCCL/GLOO/TP
-  # interface exports, jemalloc, resolve the leader, the rank branch, exec. OME's
-  # OME_INSTANCE_POD_RANK and OME_LEADER_ADDRESS are LWS_WORKER_INDEX and LWS_LEADER_ADDRESS
-  # here; OME_INSTANCE_POD_COUNT is lws.size, known at render time, so its guard is dropped.
-  commandOverride:
-    - bash
-    - -c
-    - |
-      set -euo pipefail
-      RANK="${LWS_WORKER_INDEX:-0}"
-      case "$RANK" in 0|1) ;; *) echo "Invalid node rank: $RANK" >&2; exit 1 ;; esac
-      export HCCL_IF_IP="${POD_IP:?}"
-      export GLOO_SOCKET_IFNAME="${NIC_NAME:?}" TP_SOCKET_IFNAME="$NIC_NAME" HCCL_SOCKET_IFNAME="$NIC_NAME"
-      if [ -f /usr/lib/aarch64-linux-gnu/libjemalloc.so.2 ]; then
-        export LD_PRELOAD="/usr/lib/aarch64-linux-gnu/libjemalloc.so.2${LD_PRELOAD:+:$LD_PRELOAD}"
-      fi
-      LEADER_IP=''
-      for _ in $(seq 1 60); do
-        if LEADER_IP=$(python3 -c 'import socket,sys; print(socket.gethostbyname(sys.argv[1]))' \
-                         "${LWS_LEADER_ADDRESS:?}"); then break; fi
-        sleep 5
-      done
-      [ -n "$LEADER_IP" ] || { echo "Timed out resolving leader address" >&2; exit 1; }
-      set -- /models \
-        --host 0.0.0.0 --port 8000 \
-        --served-model-name "${SERVED_MODEL_NAME}" \
-        --data-parallel-rpc-port 13399 \
-        --data-parallel-size 2 \
-        --data-parallel-size-local 1 \
-        --tensor-parallel-size 8 \
-        --enable-expert-parallel \
-        --max-model-len 1048576 \
-        --max-num-batched-tokens 4096 \
-        --max-num-seqs 32 \
-        --gpu-memory-utilization 0.90 \
-        --block-size 128 \
-        --tokenizer-mode deepseek_v41 \
-        --reasoning-parser deepseek_v41 \
-        --tool-call-parser deepseek_v41 \
-        --enable-auto-tool-choice \
-        --trust-remote-code \
-        --enable-prompt-tokens-details \
-        --model-loader-extra-config '{"enable_multithread_load":true,"num_threads":128}' \
-        --safetensors-load-strategy lazy \
-        --quantization ascend \
-        --engram-config '{"cpu_offload":true,"dp_shared_memory":true}' \
-        --additional-config '{"enable_cpu_binding":true,"ascend_compilation_config":{"enable_npugraph_ex":false,"enable_static_kernel":false}}' \
-        --speculative-config '{"method":"dspark","num_speculative_tokens":5,"enforce_eager":true}' \
-        --compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
-      # Rank 1 owns DP ranks 1.. and runs headless: no HTTP server, so nothing probes it.
-      if [ "$RANK" = 1 ]; then
-        set -- "$@" --headless --data-parallel-start-rank 1
-      fi
-      exec vllm serve "$@" --data-parallel-address "$LEADER_IP"
+  # Site-specific initialization; the chart builds the DP command for each node.
+  extraInitShell: |
+    export HCCL_IF_IP="${POD_IP:?}"
+    export GLOO_SOCKET_IFNAME="${NIC_NAME:?}" TP_SOCKET_IFNAME="$NIC_NAME" HCCL_SOCKET_IFNAME="$NIC_NAME"
+    if [ -f /usr/lib/aarch64-linux-gnu/libjemalloc.so.2 ]; then
+      export LD_PRELOAD="/usr/lib/aarch64-linux-gnu/libjemalloc.so.2${LD_PRELOAD:+:$LD_PRELOAD}"
+    fi
+  extraArgs:
+    - --tensor-parallel-size=8
+    - --enable-expert-parallel
+    - --max-num-batched-tokens=4096
+    - --max-num-seqs=32
+    - --gpu-memory-utilization=0.90
+    - --block-size=128
+    - --tokenizer-mode=deepseek_v41
+    - --reasoning-parser=deepseek_v41
+    - --tool-call-parser=deepseek_v41
+    - --enable-auto-tool-choice
+    - --trust-remote-code
+    - --enable-prompt-tokens-details
+    - --model-loader-extra-config={"enable_multithread_load":true,"num_threads":128}
+    - --safetensors-load-strategy=lazy
+    - --quantization=ascend
+    - --engram-config={"cpu_offload":true,"dp_shared_memory":true}
+    - --additional-config={"enable_cpu_binding":true,"ascend_compilation_config":{"enable_npugraph_ex":false,"enable_static_kernel":false}}
+    - --speculative-config={"method":"dspark","num_speculative_tokens":5,"enforce_eager":true}
+    - --compilation-config={"cudagraph_mode":"FULL_DECODE_ONLY"}
   # The runtime gives the load an hour; 2.8TiB of weights over a lazy safetensors load needs it.
   startupProbe:
     httpGet: { path: /health, port: http }
