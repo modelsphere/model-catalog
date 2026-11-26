@@ -1,0 +1,25 @@
+apiVersion: catalog.swiss/v2
+kind: Variant
+model: minimax-h3
+id: sglang-tp4
+version: 1.0.0
+description: "Two pools, FL2VA and Ref2VA (with the 8-step Turbo LoRA), each one pod of four A100 SXM4 80GB, H100 or H800 GPUs at TP4. Pick one GPU product per release: a generation runs about 2.5x longer on A100 than on H800, so a pool spread across both serves unevenly and scales on a misleading queue depth."
+engine: video
+chart:
+  name: minimax-h3
+  version: ">=0.3.0"
+requires:
+  gpus: 4
+  topology: single-node
+  vendor: nvidia
+  gpuProduct:
+    - NVIDIA-A100-SXM4-80GB
+    - NVIDIA-H100-80GB-HBM3
+    - NVIDIA-H800
+inputs:
+  - key: sharedStorage.storageClass
+    title: Shared asset volume storage class
+    description: "A class that can do ReadWriteMany (CephFS, NFS): a task generated on one replica is downloaded from another. Empty is the cluster default class."
+    pattern: "|[a-z0-9]([-a-z0-9.]*[a-z0-9])?"
+    example: ceph-filesystem
+    default: ""

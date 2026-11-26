@@ -1,0 +1,11 @@
+apiVersion: catalog.swiss/v2
+name: minimax-h3
+displayName: MiniMax-H3
+description: MiniMax H3 video generation -- first/last-frame (FL2VA) and reference-media (Ref2VA,
+  with the 8-step Turbo LoRA) pools behind the H3 job API, on SGLang diffusion.
+family: minimax
+tags:
+  - video
+defaultVariant: sglang-tp4
+source:
+  hf: MiniMaxAI/MiniMax-H3
